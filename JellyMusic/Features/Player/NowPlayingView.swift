@@ -176,6 +176,12 @@ struct QueueView: View {
                 }
 
                 let upNext = engine.queue.upNext
+                // Captured together, deliberately. A drag delivers offsets in the
+                // index space of the rows SwiftUI last rendered, so `offset` has to
+                // come from that same evaluation — reading `queue.position` inside
+                // the drop closure reads it *live*, and a track boundary during the
+                // drag would then reorder the wrong entry.
+                let queueOffset = (engine.queue.position ?? 0) + 1
                 if !upNext.isEmpty {
                     Section("Up Next") {
                         ForEach(upNext) { entry in
@@ -191,11 +197,9 @@ struct QueueView: View {
                             }
                         }
                         .onMove { source, destination in
-                            guard let position = engine.queue.position else { return }
-                            let offset = position + 1
                             engine.move(
-                                fromOffsets: IndexSet(source.map { $0 + offset }),
-                                toOffset: destination + offset
+                                fromOffsets: IndexSet(source.map { $0 + queueOffset }),
+                                toOffset: destination + queueOffset
                             )
                         }
                     }

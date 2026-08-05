@@ -57,8 +57,15 @@ extension JellyfinClient {
             URLQueryItem(name: "audioCodec", value: "aac"),
             // Progressive HTTP rather than HLS. HLS segments carry no packet table,
             // which costs ~62ms of silence at every track boundary and cannot be
-            // recovered on the client — it alone would rule out gapless playback.
-            URLQueryItem(name: "transcodingContainer", value: "mp4"),
+            // recovered on the client.
+            //
+            // ADTS AAC rather than mp4 for the transcode: Jellyfin only treats mp4
+            // as a valid container on its HLS branch, and over the progressive path
+            // it writes mp4 through a pipe with no guarantee the moov atom lands at
+            // the front — which is precisely what AVPlayer needs. ADTS is headerless
+            // and streams correctly. Nothing transcoded is gapless anyway, so the
+            // container should be chosen for playing at all.
+            URLQueryItem(name: "transcodingContainer", value: "aac"),
             URLQueryItem(name: "transcodingProtocol", value: "http"),
         ]
         // A bitrate ceiling forces the server to transcode even a source iOS could

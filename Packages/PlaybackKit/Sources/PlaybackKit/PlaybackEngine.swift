@@ -9,19 +9,6 @@ import MediaPlayer
 import UIKit
 import os
 
-/// Identifies one *rendering* of a queue entry.
-///
-/// The occurrence index is load-bearing rather than decorative: with repeat-one
-/// engaged, two live `AVPlayerItem`s map to the same `QueueEntry`, and the window
-/// diff has to be able to tell them apart. Keyed on the entry id alone the two
-/// would compare equal and the second copy would never be enqueued — which is
-/// exactly the case where the gap is most obvious, since you hear the same track
-/// stitched to itself.
-private struct RenderID: Hashable {
-    let entry: UUID
-    let occurrence: Int
-}
-
 /// The single source of truth for what is playing.
 ///
 /// There is exactly one of these per process, and both the phone UI and the CarPlay
@@ -85,12 +72,28 @@ public final class PlaybackEngine {
     /// skipping around.
     private let lookahead = 2
 
-    /// What is currently loaded into the player, in order. `enqueued[0]` always
-    /// corresponds to `player.items()[0]`, i.e. the current item.
-    private var enqueued: [RenderID] = []
+    /// What is currently loaded into the player, in order, identified by object
+    /// identity. `enqueued[i]` corresponds to `player.items()[i]`.
+    ///
+    /// Object identity rather than the queue entry's id, because repeat-one loads
+    /// the same entry as two distinct `AVPlayerItem`s and locating "the one that is
+    /// playing now" has to distinguish them. Ordering is what makes the *diff*
+    /// work: position `i` in both lists means "the i-th thing that will play", so
+    /// comparing entry ids index-wise is exact.
+    private var enqueued: [ObjectIdentifier] = []
 
     /// Maps a live `AVPlayerItem` back to the queue entry it renders.
-    private var entryForItem: [ObjectIdentifier: RenderID] = [:]
+    private var entryForItem: [ObjectIdentifier: UUID] = [:]
+
+    /// Real decoded durations, which can differ from the server's metadata. Cached
+    /// per item because a look-ahead item reaches `.readyToPlay` long before it
+    /// becomes current, and `status` only transitions once.
+    private var assetDurations: [ObjectIdentifier: Duration] = [:]
+
+    /// Entries whose item failed to load. Filtered out of the render window so a
+    /// dead track doesn't get re-enqueued, fail, and be re-enqueued forever.
+    /// Cleared whenever a new queue is loaded.
+    private var failedEntries: Set<UUID> = []
 
     /// Per-item KVO, keyed so several simultaneously live items can each be
     /// observed. The previous single-observation design silently stopped watching
@@ -125,13 +128,23 @@ public final class PlaybackEngine {
     public func play(_ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false) {
         guard !tracks.isEmpty else { return }
         stopReportingCurrent()
+        // A fresh queue gets a fresh chance for anything that failed before — the
+        // failure may well have been a passing network problem.
+        failedEntries = []
         queue.load(tracks, startingAt: index, shuffled: shuffled)
         beginCurrentTrack(autoplay: true)
     }
 
     public func playNext(_ tracks: [Track]) {
+        // Into an empty queue this becomes a load, so it has to actually start —
+        // otherwise the track sits loaded and silent and is never reported.
+        let wasEmpty = queue.isEmpty
         queue.playNext(tracks)
-        syncPlayer()
+        if wasEmpty {
+            beginCurrentTrack(autoplay: true)
+        } else {
+            syncPlayer()
+        }
     }
 
     public func addToQueue(_ tracks: [Track]) {
@@ -146,6 +159,7 @@ public final class PlaybackEngine {
 
     public func clearQueue() {
         stopReportingCurrent()
+        failedEntries = []
         queue.clear()
         finishPlayback()
     }
@@ -181,26 +195,36 @@ public final class PlaybackEngine {
     public func next() {
         // If the player auto-advanced while this tap was in flight, adopt where it
         // actually is before skipping — otherwise the queue skips from a stale
-        // position and the listener loses a whole track.
-        reconcileWithPlayer()
-
-        stopReportingCurrent()
+        // position and the listener loses a whole track. Reconciling reports the
+        // outgoing track itself, so don't report it twice.
+        if !reconcileWithPlayer() {
+            stopReportingCurrent()
+        }
         switch queue.skipToNext() {
         case .moved, .repeatCurrent:
             beginCurrentTrack(autoplay: true)
         case .ended:
+            stopReportingCurrent()
             finishPlayback()
         }
     }
 
     /// Previous restarts the current track unless we're still near its beginning.
     public func previous() {
-        if elapsed > restartThreshold {
-            seek(to: .zero)
-            return
+        // Reconcile first. Right after a boundary `elapsed` still holds the
+        // *outgoing* track's position, so testing the restart rule before adopting
+        // the new track would restart the one that just started instead of going
+        // back to the one that just finished.
+        let advanced = reconcileWithPlayer()
+
+        if !advanced {
+            if elapsed > restartThreshold {
+                seek(to: .zero)
+                return
+            }
+            stopReportingCurrent()
         }
-        reconcileWithPlayer()
-        stopReportingCurrent()
+
         switch queue.skipToPrevious() {
         case .moved, .repeatCurrent:
             beginCurrentTrack(autoplay: true)
@@ -210,8 +234,11 @@ public final class PlaybackEngine {
     }
 
     public func jump(to entryId: UUID) {
-        guard queue.jump(to: entryId) else { return }
+        guard queue.current?.id != entryId else { return }
+        // Report the outgoing track before moving, or the stop is attributed to
+        // the track the user just jumped to.
         stopReportingCurrent()
+        guard queue.jump(to: entryId) else { return }
         beginCurrentTrack(autoplay: true)
     }
 
@@ -293,10 +320,15 @@ public final class PlaybackEngine {
     /// The repeat and shuffle rules live in ``PlayQueue/renderWindow(count:)``,
     /// which is platform-free and unit-tested — including the subtle rule that
     /// repeat-one applies to a natural ending but not to a deliberate skip.
-    private func desiredWindow() -> [(id: RenderID, track: Track)] {
-        queue.renderWindow(count: lookahead + 1).map {
-            (RenderID(entry: $0.entryId, occurrence: $0.occurrence), $0.track)
+    private func desiredWindow() -> [RenderSlot] {
+        guard !failedEntries.isEmpty else {
+            return queue.renderWindow(count: lookahead + 1)
         }
+        // Ask for extra slots so filtering a dead track still fills the window.
+        return queue.renderWindow(count: lookahead + 1 + failedEntries.count)
+            .filter { !failedEntries.contains($0.entryId) }
+            .prefix(lookahead + 1)
+            .map { $0 }
     }
 
     /// The only function permitted to mutate the player's item list.
@@ -311,8 +343,10 @@ public final class PlaybackEngine {
             return
         }
 
+        let loaded = enqueued.map { entryForItem[$0] }
+
         // A changed head means the user moved somewhere — rebuild wholesale.
-        guard enqueued.first == desired.first?.id else {
+        guard loaded.first == desired.first?.entryId else {
             rebuildWindow(play: state.isPlaying)
             return
         }
@@ -320,7 +354,14 @@ public final class PlaybackEngine {
         // Otherwise only the tail can differ. Leaving an already-correct next item
         // in place is the point: rebuilding it shortly before a boundary costs
         // ~378ms of silence at exactly the moment we're trying to eliminate.
-        let common = zip(enqueued, desired).prefix { $0 == $1.id }.count
+        //
+        // Comparing entry ids position-wise is exact even under repeat-one, where
+        // the same entry appears twice: index `i` means "the i-th thing that will
+        // play" in both lists.
+        let matching = zip(loaded, desired).prefix { $0 == $1.entryId }.count
+        // Never slice the player's list with an index derived from ours without
+        // clamping — if they ever drift, an out-of-range slice is a hard crash.
+        let common = min(matching, player.items().count, enqueued.count)
         guard common < desired.count || common < enqueued.count else { return }
 
         let items = player.items()
@@ -333,11 +374,11 @@ public final class PlaybackEngine {
         enqueued = Array(enqueued.prefix(common))
 
         var after = player.items().last
-        for entry in desired[common...] {
-            let item = makeItem(for: entry.track, id: entry.id)
+        for slot in desired[common...] {
+            let item = makeItem(for: slot.track, entryId: slot.entryId)
             player.insert(item, after: after)
             after = item
-            enqueued.append(entry.id)
+            enqueued.append(ObjectIdentifier(item))
         }
     }
 
@@ -347,11 +388,11 @@ public final class PlaybackEngine {
         enqueued = []
 
         var after: AVPlayerItem?
-        for entry in desiredWindow() {
-            let item = makeItem(for: entry.track, id: entry.id)
+        for slot in desiredWindow() {
+            let item = makeItem(for: slot.track, entryId: slot.entryId)
             player.insert(item, after: after)
             after = item
-            enqueued.append(entry.id)
+            enqueued.append(ObjectIdentifier(item))
         }
         if shouldPlay { player.play() }
     }
@@ -361,40 +402,53 @@ public final class PlaybackEngine {
     /// `AVPlayerItem` is single-owner for life: re-adding a removed one, or moving
     /// one between players, raises an uncatchable `NSInvalidArgumentException` that
     /// takes the app down. The same item also cannot appear twice in one queue,
-    /// which is the other reason repeat-one needs two distinct items.
-    private func makeItem(for track: Track, id: RenderID) -> AVPlayerItem {
+    /// which is why repeat-one needs two distinct items for one entry.
+    private func makeItem(for track: Track, entryId: UUID) -> AVPlayerItem {
         let item = AVPlayerItem(url: track.streamURL)
         let key = ObjectIdentifier(item)
-        entryForItem[key] = id
+        entryForItem[key] = entryId
         itemObservations[key] = observations(for: item)
         return item
     }
 
     private func release(_ item: AVPlayerItem) {
-        let key = ObjectIdentifier(item)
+        release(key: ObjectIdentifier(item))
+    }
+
+    private func release(key: ObjectIdentifier) {
         itemObservations[key]?.forEach { $0.invalidate() }
         itemObservations[key] = nil
         entryForItem[key] = nil
+        assetDurations[key] = nil
     }
 
     private func releaseAllItems() {
         itemObservations.values.forEach { $0.forEach { $0.invalidate() } }
         itemObservations = [:]
         entryForItem = [:]
+        assetDurations = [:]
     }
 
     /// Pulls ``PlayQueue`` onto whatever the player is actually playing.
     ///
     /// Needed because the player advances on its own: a tap that arrives in the
     /// window between the boundary and the observer running would otherwise act on
-    /// a stale position.
-    private func reconcileWithPlayer() {
+    /// a stale position. Returns whether it had to move.
+    ///
+    /// Reports the outgoing track's stop itself, because at this point the boundary
+    /// observer hasn't run and nothing else will attribute it correctly.
+    @discardableResult
+    private func reconcileWithPlayer() -> Bool {
         guard
             let item = player.currentItem,
-            let rendered = entryForItem[ObjectIdentifier(item)],
-            queue.current?.id != rendered.entry
-        else { return }
-        _ = queue.jump(to: rendered.entry)
+            let entryId = entryForItem[ObjectIdentifier(item)],
+            queue.current?.id != entryId
+        else { return false }
+
+        stopReportingCurrent()
+        _ = queue.jump(to: entryId)
+        elapsed = .zero
+        return true
     }
 
     // MARK: - Boundary
@@ -411,29 +465,42 @@ public final class PlaybackEngine {
     }
 
     private func handleCurrentItemChanged(_ key: ObjectIdentifier?) {
-        guard let key, let rendered = entryForItem[key] else {
-            // The queue drained on its own.
-            if player.currentItem == nil, !enqueued.isEmpty { finishPlayback() }
+        guard let key, let entryId = entryForItem[key] else {
+            // The queue drained on its own. Report the last track's stop before
+            // tearing down — otherwise the final track of every queue never counts
+            // as played on the server.
+            if player.currentItem == nil, !enqueued.isEmpty {
+                stopReportingCurrent()
+                finishPlayback()
+            }
             return
         }
 
         // Ignore the echo from our own rebuild — that path already did this work.
-        guard rendered != enqueued.first else { return }
+        guard key != enqueued.first else { return }
 
         // Report the *outgoing* track before the queue moves. Reading
         // queue.currentTrack after the move would attribute the scrobble to the
         // track that just started.
         stopReportingCurrent()
 
-        _ = queue.jump(to: rendered.entry)
+        _ = queue.jump(to: entryId)
 
-        if let index = enqueued.firstIndex(of: rendered) {
+        // Release everything the player retired on its way here, or the observation
+        // maps grow for the whole session.
+        if let index = enqueued.firstIndex(of: key) {
+            for retired in enqueued.prefix(index) { release(key: retired) }
             enqueued.removeFirst(index)
         }
 
         elapsed = .zero
         lastReportedSecond = -1
-        duration = queue.currentTrack?.duration
+        // Prefer the real decoded length. A look-ahead item reaches .readyToPlay
+        // while it is still queued, so its duration was cached there rather than
+        // arriving now.
+        duration = assetDurations[key]
+            ?? player.currentItem?.duration.validDuration
+            ?? queue.currentTrack?.duration
         state = player.rate > 0 ? .playing : .paused
 
         // Synchronous, so a car head unit never shows the previous title over the
@@ -487,10 +554,16 @@ public final class PlaybackEngine {
 
         switch status {
         case .readyToPlay:
+            // Cache regardless of whether this item is current. Look-ahead items
+            // become ready while still queued, and `status` only transitions once —
+            // so not caching here means every track after the first falls back to
+            // the server's metadata for its length.
+            if let assetDuration { assetDurations[key] = assetDuration }
             guard isCurrent else { return }
             if let assetDuration { duration = assetDuration }
             if state == .buffering { state = player.rate > 0 ? .playing : .paused }
             updateNowPlayingInfo()
+
         case .failed:
             let message = error ?? "This track couldn't be played."
             if isCurrent {
@@ -500,15 +573,21 @@ public final class PlaybackEngine {
                 // A queued track failed while something else plays. Don't interrupt
                 // the music — drop it so the boundary doesn't stall on it.
                 log.error("Queued track failed, dropping: \(message, privacy: .public)")
+
+                // Read the entry id BEFORE releasing, which clears the mapping.
+                if let entryId = entryForItem[key] {
+                    // Remember it, or syncPlayer immediately re-creates the same
+                    // broken item and it fails again, forever.
+                    failedEntries.insert(entryId)
+                }
                 if let item = player.items().first(where: { ObjectIdentifier($0) == key }) {
                     player.remove(item)
-                    release(item)
-                    if let idx = enqueued.firstIndex(where: { entryForItem[key] == $0 }) {
-                        enqueued.remove(at: idx)
-                    }
-                    syncPlayer()
                 }
+                enqueued.removeAll { $0 == key }
+                release(key: key)
+                syncPlayer()
             }
+
         default:
             break
         }

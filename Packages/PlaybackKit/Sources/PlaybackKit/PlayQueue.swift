@@ -15,11 +15,14 @@ public struct QueueEntry: Identifiable, Hashable, Sendable {
     }
 }
 
-/// One track loaded into the player, ahead of when it is needed.
+/// One track to load into the player, ahead of when it is needed.
 ///
-/// `occurrence` exists because repeat-one renders the same queue entry twice in a
-/// row and each rendering needs its own `AVPlayerItem` — items are single-use, so
-/// two identical slots must still compare unequal.
+/// `occurrence` counts how many times this entry has already appeared earlier in
+/// the same window — non-zero only under repeat-one, where the same entry is
+/// rendered twice in a row and each rendering needs its own `AVPlayerItem`.
+/// It describes the window rather than identifying an item: the engine tracks
+/// loaded items by object identity, since position in the window already says
+/// which rendering is which.
 public struct RenderSlot: Hashable, Sendable {
     public let entryId: UUID
     public let track: Track
@@ -258,7 +261,15 @@ public struct PlayQueue: Sendable {
     }
 
     /// Reorders the Up Next list by drag.
+    ///
+    /// Ignores the whole gesture if any index is out of range rather than partially
+    /// applying it. A drag can be delivered against a stale index space — a track
+    /// boundary moves the queue underneath an open Up Next list — and performing a
+    /// *different* reorder than the user drew is worse than performing none.
     public mutating func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard source.allSatisfy({ entries.indices.contains($0) }) else { return }
+        guard (0...entries.count).contains(destination) else { return }
+
         let currentId = current?.id
         entries.moveElements(fromOffsets: source, toOffset: destination)
         if let currentId {

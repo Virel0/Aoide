@@ -271,6 +271,40 @@ struct EditingTests {
         #expect(queue.currentTitle == "a")
     }
 
+    /// A drag is delivered in the index space of the rows SwiftUI last rendered.
+    /// A track boundary landing mid-drag shifts the queue underneath it, and the
+    /// resulting index used to run straight into an unguarded subscript.
+    @Test("an out-of-range drag index is ignored rather than crashing")
+    func rejectsStaleDragIndex() {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a", "b", "c"))
+        let before = queue.titles
+
+        queue.move(fromOffsets: IndexSet(integer: 99), toOffset: 1)
+        #expect(queue.titles == before)
+
+        queue.move(fromOffsets: IndexSet([0, 42]), toOffset: 1)
+        #expect(queue.titles == before, "a partially-valid set must be ignored whole, not applied in part")
+
+        queue.move(fromOffsets: IndexSet(integer: 0), toOffset: 99)
+        #expect(queue.titles == before)
+    }
+
+    @Test("a drag on an empty queue is a no-op")
+    func moveOnEmptyQueue() {
+        var queue = PlayQueue()
+        queue.move(fromOffsets: IndexSet(integer: 0), toOffset: 0)
+        #expect(queue.isEmpty)
+    }
+
+    @Test("moving to the very end is still allowed")
+    func moveToEnd() {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a", "b", "c"))
+        queue.move(fromOffsets: IndexSet(integer: 0), toOffset: 3)
+        #expect(queue.titles == ["b", "c", "a"])
+    }
+
     @Test("reordering Up Next doesn't change which song is playing")
     func reorderKeepsCurrent() {
         var queue = PlayQueue()
