@@ -2,6 +2,11 @@ import Foundation
 
 /// How much bandwidth to spend on a stream. Jellyfin transcodes down to the ceiling
 /// when the source exceeds it, and direct-plays untouched when it doesn't.
+/// How much bandwidth to spend on a stream.
+///
+/// Anything other than ``lossless`` sets a ceiling, and a ceiling makes the server
+/// transcode — which reintroduces the gap between tracks. Gapless playback and a
+/// bitrate cap are mutually exclusive.
 public enum StreamQuality: Sendable, CaseIterable, Identifiable {
     case low        // 128 kbps — cellular in a dead zone
     case medium     // 320 kbps
@@ -45,13 +50,20 @@ extension JellyfinClient {
             URLQueryItem(name: "userId", value: credentials.userId),
             URLQueryItem(name: "deviceId", value: device.deviceId),
             URLQueryItem(name: "api_key", value: credentials.accessToken),
-            // Formats iOS decodes natively. Anything else, the server transcodes.
-            URLQueryItem(name: "container", value: "mp3,aac,m4a,m4b,flac,alac,wav,aiff"),
+            // Containers iOS decodes natively, so the server hands the file over
+            // untouched. `alac` is deliberately absent: ALAC is a codec that lives
+            // inside m4a, not a Jellyfin container, so listing it matches nothing.
+            URLQueryItem(name: "container", value: "mp3,aac,m4a,m4b,flac,wav,aiff"),
             URLQueryItem(name: "audioCodec", value: "aac"),
-            URLQueryItem(name: "transcodingContainer", value: "ts"),
-            URLQueryItem(name: "transcodingProtocol", value: "hls"),
-            URLQueryItem(name: "enableRedirection", value: "true"),
+            // Progressive HTTP rather than HLS. HLS segments carry no packet table,
+            // which costs ~62ms of silence at every track boundary and cannot be
+            // recovered on the client — it alone would rule out gapless playback.
+            URLQueryItem(name: "transcodingContainer", value: "mp4"),
+            URLQueryItem(name: "transcodingProtocol", value: "http"),
         ]
+        // A bitrate ceiling forces the server to transcode even a source iOS could
+        // have played directly, which reintroduces the boundary gap. Only lossless
+        // leaves the file alone.
         if let bitrate = quality.bitrate {
             query.append(URLQueryItem(name: "maxStreamingBitrate", value: String(bitrate)))
         }

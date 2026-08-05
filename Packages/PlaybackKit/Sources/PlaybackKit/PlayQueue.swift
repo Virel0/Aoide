@@ -15,6 +15,17 @@ public struct QueueEntry: Identifiable, Hashable, Sendable {
     }
 }
 
+/// One track loaded into the player, ahead of when it is needed.
+///
+/// `occurrence` exists because repeat-one renders the same queue entry twice in a
+/// row and each rendering needs its own `AVPlayerItem` — items are single-use, so
+/// two identical slots must still compare unequal.
+public struct RenderSlot: Hashable, Sendable {
+    public let entryId: UUID
+    public let track: Track
+    public let occurrence: Int
+}
+
 /// What the caller should do after a queue movement.
 public enum AdvanceOutcome: Equatable, Sendable {
     /// Position changed — play whatever is now current.
@@ -61,6 +72,36 @@ public struct PlayQueue: Sendable {
     public var upNext: [QueueEntry] {
         guard let position, position + 1 < entries.count else { return [] }
         return Array(entries[(position + 1)...])
+    }
+
+    /// The next `count` things that will play, current first, without mutating
+    /// anything.
+    ///
+    /// Gapless playback needs the following track decoded *before* the boundary
+    /// arrives, so the player has to be told what's coming. Rather than restating
+    /// the repeat and shuffle rules — and letting them drift from the ones above —
+    /// this walks a copy of the queue through ``advanceAutomatically()``, which is
+    /// the same code path a natural track ending takes.
+    ///
+    /// Under repeat-one the same entry legitimately appears more than once; the
+    /// `occurrence` index distinguishes those renderings, because the player needs
+    /// two separate items for them and would otherwise treat them as one.
+    public func renderWindow(count: Int) -> [RenderSlot] {
+        guard count > 0, let current else { return [] }
+
+        var occurrences: [UUID: Int] = [current.id: 0]
+        var window = [RenderSlot(entryId: current.id, track: current.track, occurrence: 0)]
+
+        // A copy — `PlayQueue` is a value type, so this look-ahead cannot disturb
+        // what is actually playing.
+        var probe = self
+        while window.count < count {
+            guard probe.advanceAutomatically() != .ended, let entry = probe.current else { break }
+            let n = (occurrences[entry.id] ?? -1) + 1
+            occurrences[entry.id] = n
+            window.append(RenderSlot(entryId: entry.id, track: entry.track, occurrence: n))
+        }
+        return window
     }
 
     // MARK: - Loading
