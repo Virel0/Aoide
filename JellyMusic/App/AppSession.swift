@@ -1,6 +1,7 @@
 import Foundation
 import JellyfinKit
 import UIKit
+import os
 
 /// Owns "who are we signed in as, and against which server".
 ///
@@ -17,6 +18,19 @@ final class AppSession {
         case signedOut
         case signedIn(JellyfinUser)
     }
+
+    enum SessionError: LocalizedError {
+        case couldNotStoreCredentials
+
+        var errorDescription: String? {
+            switch self {
+            case .couldNotStoreCredentials:
+                "Signed in, but this device wouldn't save the login securely. Check Console for a keychain error."
+            }
+        }
+    }
+
+    private static let log = Logger(subsystem: "com.example.jellymusic", category: "session")
 
     private(set) var state: State = .loading
     private(set) var client: JellyfinClient?
@@ -59,13 +73,22 @@ final class AppSession {
     func restore() {
         guard case .loading = state else { return }
 
+        let urlString = UserDefaults.standard.string(forKey: Keys.serverURL)
+        let userId = UserDefaults.standard.string(forKey: Keys.userId)
+        let username = UserDefaults.standard.string(forKey: Keys.username)
+        let token = KeychainStore.get(forKey: Keys.token)
+
         guard
-            let urlString = UserDefaults.standard.string(forKey: Keys.serverURL),
-            let serverURL = URL(string: urlString),
-            let userId = UserDefaults.standard.string(forKey: Keys.userId),
-            let username = UserDefaults.standard.string(forKey: Keys.username),
-            let token = KeychainStore.get(forKey: Keys.token)
+            let urlString, let serverURL = URL(string: urlString),
+            let userId, let username, let token
         else {
+            // Having the profile but not the token means the keychain lost the
+            // secret — worth saying out loud, because it looks identical to a
+            // normal first launch from the outside.
+            if urlString != nil, token == nil {
+                let who = username ?? "?"
+                Self.log.error("Stored profile for \(who, privacy: .public) but no keychain token; signing out.")
+            }
             state = .signedOut
             return
         }
@@ -93,10 +116,15 @@ final class AppSession {
 
         let (credentials, user) = try await anonymous.signIn(username: username, password: password)
 
+        // The token goes in first and its failure is fatal to signing in. Writing
+        // the other three and then discovering we can't keep the secret would leave
+        // a half-signed-in state that looks fine until the next launch.
+        guard KeychainStore.set(credentials.accessToken, forKey: Keys.token) else {
+            throw SessionError.couldNotStoreCredentials
+        }
         UserDefaults.standard.set(serverURL.absoluteString, forKey: Keys.serverURL)
         UserDefaults.standard.set(credentials.userId, forKey: Keys.userId)
         UserDefaults.standard.set(credentials.username, forKey: Keys.username)
-        KeychainStore.set(credentials.accessToken, forKey: Keys.token)
 
         let authenticated = anonymous.authenticated(as: credentials)
         client = authenticated

@@ -1,11 +1,13 @@
 import Foundation
 import Security
+import os
 
 /// Minimal keychain wrapper for the one secret this app holds: the Jellyfin access
 /// token. It lives here rather than in `UserDefaults` because `UserDefaults` is a
 /// plist in the app container — readable from any unencrypted device backup.
 enum KeychainStore {
     private static let service = "com.example.jellymusic.credentials"
+    private static let log = Logger(subsystem: "com.example.jellymusic", category: "keychain")
 
     /// `afterFirstUnlock` rather than `whenUnlocked`: CarPlay can wake the app and
     /// start playback while the phone is still locked in a pocket, and we need the
@@ -15,26 +17,38 @@ enum KeychainStore {
     /// which Swift 6 won't let us hold in a `static let`.
     private static var accessibility: CFString { kSecAttrAccessibleAfterFirstUnlock }
 
-    static func set(_ value: String?, forKey key: String) {
+    /// Stores a value, reporting whether it actually landed.
+    ///
+    /// The status is returned rather than swallowed because a silent failure here
+    /// is indistinguishable from success right up until the next launch, when the
+    /// user is mysteriously signed out again.
+    @discardableResult
+    static func set(_ value: String?, forKey key: String) -> Bool {
         guard let value else {
             remove(forKey: key)
-            return
+            return true
         }
-        let data = Data(value.utf8)
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
         let attributes: [String: Any] = [
-            kSecValueData as String: data,
+            kSecValueData as String: Data(value.utf8),
             kSecAttrAccessible as String: accessibility,
         ]
 
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
+            status = SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
         }
+
+        guard status == errSecSuccess else {
+            log.error("Keychain write for \(key, privacy: .public) failed: \(describe(status), privacy: .public)")
+            return false
+        }
+        return true
     }
 
     static func get(forKey key: String) -> String? {
@@ -46,11 +60,20 @@ enum KeychainStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: CFTypeRef?
-        guard
-            SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-            let data = result as? Data
-        else { return nil }
-        return String(decoding: data, as: UTF8.self)
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data else { return nil }
+            return String(decoding: data, as: UTF8.self)
+        case errSecItemNotFound:
+            // Ordinary on a first launch or after signing out — not worth logging
+            // as an error.
+            return nil
+        default:
+            log.error("Keychain read for \(key, privacy: .public) failed: \(describe(status), privacy: .public)")
+            return nil
+        }
     }
 
     static func remove(forKey key: String) {
@@ -59,6 +82,16 @@ enum KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess, status != errSecItemNotFound {
+            log.error("Keychain delete for \(key, privacy: .public) failed: \(describe(status), privacy: .public)")
+        }
+    }
+
+    /// `OSStatus` alone is an opaque number in a log; `-34018` in particular means
+    /// "missing entitlement" and is the one worth recognising on sight.
+    private static func describe(_ status: OSStatus) -> String {
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? "unknown"
+        return "\(message) (\(status))"
     }
 }

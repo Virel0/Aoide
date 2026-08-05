@@ -50,13 +50,22 @@ public struct JellyfinClient: Sendable {
     /// Turns what someone actually types into a usable base URL.
     ///
     /// Accepts `jellyfin.example.com`, `192.168.1.10:8096`, `https://host/jellyfin/`.
-    /// A bare host gets `http://` — most Jellyfin servers are on a LAN without TLS, and
-    /// defaulting to `https://` there produces a confusing connection failure instead.
+    ///
+    /// When no scheme is typed we have to guess one, and the guess has to agree with
+    /// App Transport Security or the connection dies before it starts: ATS permits
+    /// plain HTTP to local addresses but not to public ones. So a LAN-looking host
+    /// gets `http://` and anything else gets `https://`.
     public static func normalizeServerURL(_ raw: String) throws -> URL {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw JellyfinError.malformedServerURL(raw) }
 
-        let withScheme = trimmed.contains("://") ? trimmed : "http://\(trimmed)"
+        let withScheme: String
+        if trimmed.contains("://") {
+            withScheme = trimmed
+        } else {
+            let host = trimmed.split(separator: "/").first.map(String.init) ?? trimmed
+            withScheme = (isLocalHost(host) ? "http://" : "https://") + trimmed
+        }
 
         // Strip trailing slashes so path joining stays predictable.
         var cleaned = withScheme
@@ -73,6 +82,31 @@ public struct JellyfinClient: Sendable {
             throw JellyfinError.malformedServerURL(raw)
         }
         return url
+    }
+
+    /// Whether a host is one ATS will let us reach over plain HTTP.
+    ///
+    /// Mirrors what `NSAllowsLocalNetworking` actually covers: loopback, `.local`
+    /// (Bonjour), single-label hostnames like `jellyfin`, and the private IPv4
+    /// ranges. Anything else is a public name and must go over TLS.
+    static func isLocalHost(_ hostAndPort: String) -> Bool {
+        let host = hostAndPort.split(separator: ":").first.map(String.init)?.lowercased() ?? ""
+        guard !host.isEmpty else { return false }
+
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" { return true }
+        if host.hasSuffix(".local") { return true }
+        // No dot at all — a bare LAN hostname, never a public domain.
+        if !host.contains(".") { return true }
+
+        let octets = host.split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4 else { return false }
+        switch (octets[0], octets[1]) {
+        case (10, _): return true
+        case (192, 168): return true
+        case (172, 16...31): return true
+        case (169, 254): return true  // link-local
+        default: return false
+        }
     }
 
     // MARK: - Request building

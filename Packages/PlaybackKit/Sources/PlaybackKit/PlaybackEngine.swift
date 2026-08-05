@@ -522,10 +522,6 @@ public final class PlaybackEngine {
 // MARK: - Time conversions
 
 extension Duration {
-    var seconds: Double {
-        Double(components.seconds) + Double(components.attoseconds) / 1e18
-    }
-
     var cmTime: CMTime {
         CMTime(seconds: seconds, preferredTimescale: 600)
     }

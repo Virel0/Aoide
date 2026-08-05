@@ -37,7 +37,7 @@ struct LoginView: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("The address of your Jellyfin server. `https://` is assumed only if you type it — a bare address connects over plain HTTP, which is how most home servers run.")
+                    Text("The address of your Jellyfin server. Home addresses like `192.168.1.10:8096` connect over plain HTTP; anything else uses HTTPS. Type a full address to override.")
                 }
 
                 Section("Account") {

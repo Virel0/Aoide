@@ -1,3 +1,5 @@
+import JellyfinKit
+import PlaybackKit
 import SwiftUI
 
 struct RootView: View {
@@ -10,30 +12,46 @@ struct RootView: View {
         case .signedOut:
             LoginView()
         case .signedIn:
-            LibraryPlaceholderView()
+            if let client = session.client {
+                // Keyed on the user id so signing in as someone else builds a fresh
+                // store rather than showing the previous account's cached library.
+                MainTabView(client: client)
+                    .id(client.credentials?.userId)
+                    .environment(session)
+            } else {
+                ProgressView()
+            }
         }
     }
 }
 
-/// Stands in until the real tabbed library lands. Kept deliberately plain so it's
-/// obvious this is scaffolding, not a design decision.
-struct LibraryPlaceholderView: View {
-    @State private var session = AppSession.shared
+struct MainTabView: View {
+    @State private var store: LibraryStore
+    @State private var isShowingNowPlaying = false
+    @State private var engine = PlaybackEngine.shared
+
+    init(client: JellyfinClient) {
+        _store = State(initialValue: LibraryStore(client: client))
+    }
 
     var body: some View {
-        NavigationStack {
-            ContentUnavailableView {
-                Label("Signed in", systemImage: "checkmark.circle")
-            } description: {
-                if case .signedIn(let user) = session.state {
-                    Text("Connected as \(user.name). The library UI is next.")
-                }
-            } actions: {
-                Button("Sign Out", role: .destructive) {
-                    Task { await session.signOut() }
-                }
+        TabView {
+            Tab("Library", systemImage: "music.note.list") {
+                LibraryView()
             }
-            .navigationTitle("JellyMusic")
+            Tab("Search", systemImage: "magnifyingglass", role: .search) {
+                SearchView()
+            }
+        }
+        // iOS 26's bottom accessory slot — the same one Apple Music's mini player
+        // lives in, so it picks up the glass material and collapse behaviour rather
+        // than us faking a bar on top of the tab bar.
+        .tabViewBottomAccessory {
+            MiniPlayerView(isShowingNowPlaying: $isShowingNowPlaying)
+        }
+        .environment(store)
+        .sheet(isPresented: $isShowingNowPlaying) {
+            NowPlayingView()
         }
     }
 }

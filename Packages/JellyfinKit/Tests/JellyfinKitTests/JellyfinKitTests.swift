@@ -6,10 +6,42 @@ import Testing
 
 @Suite("Server URL normalisation")
 struct ServerURLTests {
-    @Test("a bare host gets http, because most Jellyfin servers are LAN-only")
-    func bareHost() throws {
-        let url = try JellyfinClient.normalizeServerURL("192.168.1.10:8096")
-        #expect(url.absoluteString == "http://192.168.1.10:8096")
+    @Test(
+        "a bare LAN host gets http, which ATS permits",
+        arguments: [
+            ("192.168.1.10:8096", "http://192.168.1.10:8096"),
+            ("10.0.0.5:8096", "http://10.0.0.5:8096"),
+            ("172.16.3.1", "http://172.16.3.1"),
+            ("jellyfin.local:8096", "http://jellyfin.local:8096"),
+            ("localhost:8096", "http://localhost:8096"),
+            ("jellyfin", "http://jellyfin"),
+        ]
+    )
+    func bareLocalHost(_ input: String, _ expected: String) throws {
+        let url = try JellyfinClient.normalizeServerURL(input)
+        #expect(url.absoluteString == expected)
+    }
+
+    /// Regression: this used to become `http://music.example.net`, which ATS blocks
+    /// outright — the connection failed before it was ever attempted.
+    @Test(
+        "a bare public host gets https, because ATS forbids plain HTTP to one",
+        arguments: [
+            ("music.example.net", "https://music.example.net"),
+            ("jellyfin.example.com:8096", "https://jellyfin.example.com:8096"),
+            ("example.com/jellyfin", "https://example.com/jellyfin"),
+            ("172.32.0.1", "https://172.32.0.1"),
+        ]
+    )
+    func barePublicHost(_ input: String, _ expected: String) throws {
+        let url = try JellyfinClient.normalizeServerURL(input)
+        #expect(url.absoluteString == expected)
+    }
+
+    @Test("an explicitly typed scheme always wins over the guess")
+    func explicitSchemeWins() throws {
+        let insecure = try JellyfinClient.normalizeServerURL("http://music.example.net")
+        #expect(insecure.absoluteString == "http://music.example.net")
     }
 
     @Test("an explicit scheme is preserved")

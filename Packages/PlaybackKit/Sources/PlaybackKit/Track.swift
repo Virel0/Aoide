@@ -46,6 +46,15 @@ public struct Track: Identifiable, Hashable, Sendable {
     }
 }
 
+extension Duration {
+    /// `Duration` as a plain `Double` of seconds — what sliders, `CMTime`, and
+    /// `MPNowPlayingInfoCenter` all want. Public because the UI needs it too; it
+    /// lives here rather than in the iOS-only engine file so tests can reach it.
+    public var seconds: Double {
+        Double(components.seconds) + Double(components.attoseconds) / 1e18
+    }
+}
+
 public enum RepeatMode: String, CaseIterable, Sendable {
     case off
     /// Loop the whole queue.

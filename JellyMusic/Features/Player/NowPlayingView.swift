@@ -1,0 +1,243 @@
+import PlaybackKit
+import SwiftUI
+
+/// Full-screen Now Playing: cover, scrubber, transport, and the queue.
+struct NowPlayingView: View {
+    @State private var engine = PlaybackEngine.shared
+    @Environment(\.dismiss) private var dismiss
+
+    /// While a drag is in progress the scrubber has to follow the finger, not the
+    /// player — otherwise every time update yanks the thumb back.
+    @State private var scrubPosition: Double?
+    @State private var isShowingQueue = false
+
+    private var track: Track? { engine.currentTrack }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            grabber
+
+            if let track {
+                Spacer(minLength: 8)
+
+                ArtworkView(url: track.artworkURL, cornerRadius: 10)
+                    .padding(.horizontal, 32)
+                    .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
+                    // The cover shrinks while paused, the way Apple Music does.
+                    .scaleEffect(engine.state.isPlaying ? 1.0 : 0.86)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: engine.state.isPlaying)
+
+                Spacer(minLength: 16)
+
+                titleBlock(track)
+                scrubber
+                transportControls
+                secondaryControls
+
+                Spacer(minLength: 8)
+            } else {
+                Spacer()
+                ContentUnavailableView("Nothing Playing", systemImage: "music.note")
+                Spacer()
+            }
+        }
+        .padding(.bottom, 16)
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $isShowingQueue) {
+            QueueView()
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var grabber: some View {
+        Capsule()
+            .fill(.secondary.opacity(0.5))
+            .frame(width: 36, height: 5)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+    }
+
+    private func titleBlock(_ track: Track) -> some View {
+        VStack(spacing: 2) {
+            Text(track.title)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+            Text(track.artist)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 32)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Scrubber
+
+    private var scrubber: some View {
+        let total = engine.duration?.seconds ?? 0
+        let current = scrubPosition ?? engine.elapsed.seconds
+
+        return VStack(spacing: 2) {
+            Slider(
+                value: Binding(
+                    get: { min(current, max(total, 0.01)) },
+                    set: { scrubPosition = $0 }
+                ),
+                in: 0...max(total, 0.01),
+                onEditingChanged: { editing in
+                    // Commit only when the finger lifts. Seeking continuously during
+                    // the drag would stutter a network stream badly.
+                    if !editing, let position = scrubPosition {
+                        engine.seek(to: .seconds(position))
+                        scrubPosition = nil
+                    }
+                }
+            )
+            .disabled(total <= 0)
+
+            HStack {
+                Text(Duration.seconds(current).clockDescription)
+                Spacer()
+                Text(total > 0 ? "-" + Duration.seconds(max(total - current, 0)).clockDescription : "--:--")
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 32)
+    }
+
+    // MARK: - Controls
+
+    private var transportControls: some View {
+        HStack(spacing: 44) {
+            Button { engine.previous() } label: {
+                Image(systemName: "backward.fill")
+            }
+            Button { engine.togglePlayPause() } label: {
+                Image(systemName: engine.state.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 44))
+                    .frame(width: 60, height: 60)
+            }
+            Button { engine.next() } label: {
+                Image(systemName: "forward.fill")
+            }
+        }
+        .font(.system(size: 30))
+        .foregroundStyle(.primary)
+        .buttonStyle(.plain)
+        .padding(.vertical, 20)
+    }
+
+    private var secondaryControls: some View {
+        HStack {
+            Button {
+                engine.setShuffled(!engine.isShuffled)
+            } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(engine.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+
+            Spacer()
+
+            Button {
+                isShowingQueue = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                engine.repeatMode = engine.repeatMode.next
+            } label: {
+                Image(systemName: engine.repeatMode == .one ? "repeat.1" : "repeat")
+                    .foregroundStyle(engine.repeatMode == .off ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
+            }
+        }
+        .font(.title3)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 48)
+    }
+}
+
+/// Up Next, reorderable and swipe-to-delete.
+struct QueueView: View {
+    @State private var engine = PlaybackEngine.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let current = engine.queue.current {
+                    Section("Now Playing") {
+                        QueueRow(entry: current)
+                    }
+                }
+
+                let upNext = engine.queue.upNext
+                if !upNext.isEmpty {
+                    Section("Up Next") {
+                        ForEach(upNext) { entry in
+                            QueueRow(entry: entry)
+                                .contentShape(.rect)
+                                .onTapGesture { engine.jump(to: entry.id) }
+                        }
+                        .onDelete { offsets in
+                            // `offsets` index into Up Next, but the engine works in
+                            // whole-queue terms — map through the entry ids.
+                            for index in offsets {
+                                engine.remove(entryId: upNext[index].id)
+                            }
+                        }
+                        .onMove { source, destination in
+                            guard let position = engine.queue.position else { return }
+                            let offset = position + 1
+                            engine.move(
+                                fromOffsets: IndexSet(source.map { $0 + offset }),
+                                toOffset: destination + offset
+                            )
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Queue")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { EditButton() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct QueueRow: View {
+    let entry: QueueEntry
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ArtworkView(url: entry.track.artworkURL, cornerRadius: 4)
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.track.title).lineLimit(1)
+                Text(entry.track.artist)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+extension RepeatMode {
+    /// Cycles the way the button implies: off → all → one → off.
+    var next: RepeatMode {
+        switch self {
+        case .off: .all
+        case .all: .one
+        case .one: .off
+        }
+    }
+}
