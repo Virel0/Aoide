@@ -270,18 +270,23 @@ public final class PlaybackEngine {
             }
         }
 
+        // KVO fires on whichever thread mutated the property, and AVFoundation uses
+        // its own queues — so `assumeIsolated` here would trap exactly the way the
+        // artwork handler did. Read what's needed synchronously, then hop to the
+        // main actor carrying only Sendable values.
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            MainActor.assumeIsolated {
+            let status = item.status
+            let assetDuration = item.duration.validDuration
+            let errorMessage = item.error?.localizedDescription
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                switch item.status {
+                switch status {
                 case .readyToPlay:
-                    if let assetDuration = item.duration.validDuration {
-                        self.duration = assetDuration
-                    }
+                    if let assetDuration { self.duration = assetDuration }
                     if self.state == .buffering { self.state = .playing }
                     self.updateNowPlayingInfo()
                 case .failed:
-                    let message = item.error?.localizedDescription ?? "This track couldn't be played."
+                    let message = errorMessage ?? "This track couldn't be played."
                     self.log.error("Playback failed: \(message, privacy: .public)")
                     self.state = .failed(message)
                 default:
@@ -291,9 +296,10 @@ public final class PlaybackEngine {
         }
 
         bufferObservation = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] item, _ in
-            MainActor.assumeIsolated {
+            let likelyToKeepUp = item.isPlaybackLikelyToKeepUp
+            Task { @MainActor [weak self] in
                 guard let self, self.state != .idle else { return }
-                if item.isPlaybackLikelyToKeepUp, self.state == .buffering {
+                if likelyToKeepUp, self.state == .buffering {
                     self.state = self.player.rate > 0 ? .playing : .paused
                 }
             }
@@ -404,10 +410,9 @@ public final class PlaybackEngine {
 
         Task { [weak self] in
             guard let data = await artworkLoader(url) else { return }
-            guard let image = UIImage(data: data) else { return }
+            guard let artwork = makeArtwork(from: data) else { return }
             await MainActor.run {
                 guard let self, self.queue.currentTrack?.id == track.id else { return }
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
         }
@@ -420,31 +425,33 @@ public final class PlaybackEngine {
     private func configureRemoteCommands() {
         let commands = MPRemoteCommandCenter.shared()
 
+        // These arrive from outside the app — the lock screen, a steering wheel, a
+        // headphone button — and the calling thread isn't guaranteed to be main.
+        // Hop to the main actor rather than asserting we're already on it.
         commands.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.resume() }
+            Task { @MainActor in self?.resume() }
             return .success
         }
         commands.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
+            Task { @MainActor in self?.pause() }
             return .success
         }
         commands.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlayPause() }
+            Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
         commands.nextTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.next() }
+            Task { @MainActor in self?.next() }
             return .success
         }
         commands.previousTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.previous() }
+            Task { @MainActor in self?.previous() }
             return .success
         }
         commands.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            MainActor.assumeIsolated {
-                self?.seek(to: .seconds(event.positionTime))
-            }
+            let position = event.positionTime
+            Task { @MainActor in self?.seek(to: .seconds(position)) }
             return .success
         }
 
@@ -517,6 +524,19 @@ public final class PlaybackEngine {
             pause()
         }
     }
+}
+
+/// Builds the artwork **outside** any actor, deliberately.
+///
+/// `MPMediaItemArtwork` stores its request handler and calls it later, on
+/// MediaPlayer's own private queue, every time it needs the image at a new size.
+/// A closure formed inside a `@MainActor` context carries that isolation with it,
+/// so Swift 6's executor check trips the instant MediaPlayer invokes it — an
+/// `EXC_BREAKPOINT` crash the moment a track with cover art starts playing.
+/// Declaring this at file scope keeps the closure non-isolated.
+private func makeArtwork(from data: Data) -> MPMediaItemArtwork? {
+    guard let image = UIImage(data: data) else { return nil }
+    return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
 }
 
 // MARK: - Time conversions
