@@ -95,6 +95,9 @@ extension JellyfinClient {
         return response.items
     }
 
+    /// Deliberately **not** scoped to a music library: Jellyfin stores playlists in
+    /// their own top-level collection, so passing a music library's `parentId` here
+    /// returns nothing.
     public func playlists() async throws -> [JellyfinItem] {
         let response = try await items(includeTypes: ["Playlist"], sort: .name, direction: .ascending)
         return response.items
@@ -120,28 +123,75 @@ extension JellyfinClient {
 
     // MARK: - Home screen shelves
 
-    public func recentlyAdded(limit: Int = 20) async throws -> [JellyfinItem] {
+    public func recentlyAdded(parentId: String? = nil, limit: Int = 20) async throws -> [JellyfinItem] {
         try await items(
             includeTypes: ["MusicAlbum"],
+            parentId: parentId,
             sort: .dateAdded,
             direction: .descending,
             limit: limit
         ).items
     }
 
-    public func mostPlayed(limit: Int = 20) async throws -> [JellyfinItem] {
-        try await items(
-            includeTypes: ["MusicAlbum"],
+    /// How many tracks to pull when rolling statistics up to albums. Generous,
+    /// because an album contributes many tracks and we want the top `limit` albums
+    /// to be stable rather than an artefact of where the page happened to cut.
+    private static let rollupSampleSize = 400
+
+    /// Albums ranked by how often their tracks have been started.
+    ///
+    /// Queries **tracks**, not albums, and aggregates client-side. Jellyfin keeps no
+    /// play statistics on `MusicAlbum` at all — it declares
+    /// `SupportsPlayedStatus => false`, so `sortBy=PlayCount` and `filters=IsPlayed`
+    /// resolve against an always-empty user-data row and return arbitrary albums.
+    /// (That was this function's previous implementation.)
+    ///
+    /// Caveat worth knowing: Jellyfin increments `PlayCount` at playback *start*,
+    /// so this is honestly "most started" — skipping through an album counts every
+    /// track on it.
+    public func mostPlayedAlbums(parentId: String? = nil, limit: Int = 20) async throws -> [JellyfinItem] {
+        let tracks = try await items(
+            includeTypes: ["Audio"],
+            parentId: parentId,
             sort: .playCount,
             direction: .descending,
             filters: ["IsPlayed"],
+            limit: Self.rollupSampleSize
+        ).items
+        return AlbumRollup.rankedByPlayCount(AlbumRollup.aggregate(tracks: tracks), limit: limit)
+    }
+
+    /// Albums ranked by how recently any of their tracks was played. Same rollup
+    /// reasoning as ``mostPlayedAlbums(parentId:limit:)``.
+    public func recentlyPlayedAlbums(parentId: String? = nil, limit: Int = 20) async throws -> [JellyfinItem] {
+        let tracks = try await items(
+            includeTypes: ["Audio"],
+            parentId: parentId,
+            sort: .datePlayed,
+            direction: .descending,
+            filters: ["IsPlayed"],
+            limit: Self.rollupSampleSize
+        ).items
+        return AlbumRollup.rankedByRecency(AlbumRollup.aggregate(tracks: tracks), limit: limit)
+    }
+
+    /// Favourites are the one place album-level user data is real, because the user
+    /// sets it directly rather than it being derived from playback.
+    public func favoriteAlbums(parentId: String? = nil, limit: Int? = nil) async throws -> [JellyfinItem] {
+        try await items(
+            includeTypes: ["MusicAlbum"],
+            parentId: parentId,
+            sort: .name,
+            direction: .ascending,
+            filters: ["IsFavorite"],
             limit: limit
         ).items
     }
 
-    public func favoriteTracks(limit: Int? = nil) async throws -> [JellyfinItem] {
+    public func favoriteTracks(parentId: String? = nil, limit: Int? = nil) async throws -> [JellyfinItem] {
         try await items(
             includeTypes: ["Audio"],
+            parentId: parentId,
             sort: .name,
             direction: .ascending,
             filters: ["IsFavorite"],
@@ -151,11 +201,14 @@ extension JellyfinClient {
 
     // MARK: - Search
 
-    public func search(_ term: String, limit: Int = 40) async throws -> [JellyfinItem] {
+    /// Scope this to a music library wherever possible. Unscoped, `includeItemTypes=Audio`
+    /// also matches audiobook chapters, which Jellyfin stores as `Audio` items too.
+    public func search(_ term: String, parentId: String? = nil, limit: Int = 40) async throws -> [JellyfinItem] {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return try await items(
             includeTypes: ["Audio", "MusicAlbum", "MusicArtist", "Playlist"],
+            parentId: parentId,
             searchTerm: trimmed,
             sort: .name,
             direction: .ascending,

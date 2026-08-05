@@ -22,19 +22,24 @@ public enum ItemKind: String, Codable, Sendable {
 public struct UserItemData: Codable, Hashable, Sendable {
     public var isFavorite: Bool
     public var played: Bool
+    /// Note: Jellyfin increments this at playback *start*, not on completion — so it
+    /// counts "times started", and skipping through an album marks every track.
     public var playCount: Int
     public var playbackPositionTicks: Int64
+    public var lastPlayedDate: Date?
 
     public init(
         isFavorite: Bool = false,
         played: Bool = false,
         playCount: Int = 0,
-        playbackPositionTicks: Int64 = 0
+        playbackPositionTicks: Int64 = 0,
+        lastPlayedDate: Date? = nil
     ) {
         self.isFavorite = isFavorite
         self.played = played
         self.playCount = playCount
         self.playbackPositionTicks = playbackPositionTicks
+        self.lastPlayedDate = lastPlayedDate
     }
 
     public init(from decoder: any Decoder) throws {
@@ -43,6 +48,7 @@ public struct UserItemData: Codable, Hashable, Sendable {
         played = try c.decodeIfPresent(Bool.self, forKey: .played) ?? false
         playCount = try c.decodeIfPresent(Int.self, forKey: .playCount) ?? 0
         playbackPositionTicks = try c.decodeIfPresent(Int64.self, forKey: .playbackPositionTicks) ?? 0
+        lastPlayedDate = try c.decodeIfPresent(Date.self, forKey: .lastPlayedDate)
     }
 }
 
@@ -88,6 +94,48 @@ public struct JellyfinItem: Codable, Hashable, Identifiable, Sendable {
         if let tag = imageTags["Primary"] { return (id, tag) }
         if let tag = albumPrimaryImageTag, let albumId { return (albumId, tag) }
         return nil
+    }
+
+    /// For items we synthesise locally rather than decode — chiefly the album
+    /// records rolled up from tracks in ``AlbumRollup``.
+    public init(
+        id: String,
+        name: String,
+        type: ItemKind,
+        albumId: String? = nil,
+        album: String? = nil,
+        albumArtist: String? = nil,
+        artists: [String] = [],
+        artistItems: [NameIdPair] = [],
+        genres: [String] = [],
+        indexNumber: Int? = nil,
+        parentIndexNumber: Int? = nil,
+        productionYear: Int? = nil,
+        childCount: Int? = nil,
+        collectionType: String? = nil,
+        runTimeTicks: Int64? = nil,
+        imageTags: [String: String] = [:],
+        albumPrimaryImageTag: String? = nil,
+        userData: UserItemData? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.albumId = albumId
+        self.album = album
+        self.albumArtist = albumArtist
+        self.artists = artists
+        self.artistItems = artistItems
+        self.genres = genres
+        self.indexNumber = indexNumber
+        self.parentIndexNumber = parentIndexNumber
+        self.productionYear = productionYear
+        self.childCount = childCount
+        self.collectionType = collectionType
+        self.runTimeTicks = runTimeTicks
+        self.imageTags = imageTags
+        self.albumPrimaryImageTag = albumPrimaryImageTag
+        self.userData = userData
     }
 
     /// What Apple Music would show as the subtitle line.
