@@ -39,15 +39,12 @@
 		</dict>
 	</dict>
 
-	<!-- Jellyfin servers are overwhelmingly self-hosted on a LAN over plain HTTP
-	     with no certificate. Without these exceptions the app cannot reach the
-	     single most common deployment. Both keys are declared because Apple's
-	     guidance pairs them for the local-HTTP case; expect App Review to ask,
-	     and the honest answer is "user-supplied private media server". -->
+	<!-- music.example.net is HTTPS, so we do NOT need a blanket arbitrary-loads
+	     exception — and asking for one invites an App Review question we'd have
+	     no good answer to. `NSAllowsLocalNetworking` alone still permits plain
+	     HTTP to LAN addresses, which is all a self-hosted fallback needs. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

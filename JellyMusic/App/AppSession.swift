@@ -76,8 +76,10 @@ final class AppSession {
             username: username,
             accessToken: token
         )
-        client = JellyfinClient(serverURL: serverURL, device: Self.deviceProfile)
+        let restored = JellyfinClient(serverURL: serverURL, device: Self.deviceProfile)
             .authenticated(as: credentials)
+        client = restored
+        JellyfinPlaybackBridge.connect(client: restored)
         state = .signedIn(JellyfinUser(id: userId, name: username, serverId: nil))
     }
 
@@ -96,11 +98,17 @@ final class AppSession {
         UserDefaults.standard.set(credentials.username, forKey: Keys.username)
         KeychainStore.set(credentials.accessToken, forKey: Keys.token)
 
-        client = anonymous.authenticated(as: credentials)
+        let authenticated = anonymous.authenticated(as: credentials)
+        client = authenticated
+        JellyfinPlaybackBridge.connect(client: authenticated)
         state = .signedIn(user)
     }
 
     func signOut() async {
+        // Stop the music and drop the reporter before the token goes away, so the
+        // server doesn't keep showing a session that no longer exists.
+        JellyfinPlaybackBridge.disconnect()
+
         // Tell the server if we can, but never let a network failure trap someone
         // in a signed-in state they're trying to leave.
         try? await client?.signOut()

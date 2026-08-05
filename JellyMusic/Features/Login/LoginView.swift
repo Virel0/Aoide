@@ -4,7 +4,9 @@ import SwiftUI
 struct LoginView: View {
     @State private var session = AppSession.shared
 
-    @State private var serverAddress = ""
+    /// Pre-filled: this build is for one server and a handful of people, so making
+    /// everyone type an address serves nobody. Still editable.
+    @State private var serverAddress = "https://music.example.net"
     @State private var username = ""
     @State private var password = ""
     @State private var isConnecting = false

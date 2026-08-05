@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		100000000000000000000014 /* JellyfinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000012 /* JellyfinKit */; };
+		100000000000000000000015 /* PlaybackKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000013 /* PlaybackKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000014 /* JellyfinKit in Frameworks */,
+				100000000000000000000015 /* PlaybackKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +85,7 @@
 			name = JellyMusic;
 			packageProductDependencies = (
 				100000000000000000000012 /* JellyfinKit */,
+				100000000000000000000013 /* PlaybackKit */,
 			);
 			productName = JellyMusic;
 			productReference = 100000000000000000000005 /* JellyMusic.app */;
@@ -114,6 +117,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/JellyfinKit" */,
+				100000000000000000000011 /* XCLocalSwiftPackageReference "Packages/PlaybackKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 100000000000000000000003 /* Products */;
@@ -289,12 +293,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/JellyfinKit;
 		};
+		100000000000000000000011 /* XCLocalSwiftPackageReference "Packages/PlaybackKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/PlaybackKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		100000000000000000000012 /* JellyfinKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = JellyfinKit;
+		};
+		100000000000000000000013 /* PlaybackKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PlaybackKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
