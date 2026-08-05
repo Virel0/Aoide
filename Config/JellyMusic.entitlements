@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  CarPlay audio.
+
+	  IMPORTANT: this entitlement is not self-service. Apple must grant it against
+	  this exact App ID, on request at https://developer.apple.com/contact/carplay/
+	  (app type: Audio). Until that grant lands, signing a *device* build with this
+	  key will fail with "provisioning profile doesn't include the
+	  com.apple.developer.carplay-audio entitlement".
+
+	  Simulator builds ignore it, so the CarPlay Simulator works while you wait.
+	  If you need a device build before the grant arrives, comment this key out —
+	  everything except the car screen still runs.
+	-->
+	<key>com.apple.developer.carplay-audio</key>
+	<true/>
+</dict>
+</plist>

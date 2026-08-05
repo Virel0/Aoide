@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Audio must keep playing when the screen locks or the app backgrounds.
+	     Without this, CarPlay playback dies the moment the phone sleeps. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<!-- CarPlay requires multiple-scene support: the car screen and the phone
+		     screen are two live scenes at once. -->
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<!-- The phone window. Declared with no delegate class so the SwiftUI
+			     App lifecycle supplies its own. -->
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+				</dict>
+			</array>
+			<!-- The car screen. -->
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlay Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+
+	<!-- Jellyfin servers are overwhelmingly self-hosted on a LAN over plain HTTP
+	     with no certificate. Without these exceptions the app cannot reach the
+	     single most common deployment. Both keys are declared because Apple's
+	     guidance pairs them for the local-HTTP case; expect App Review to ask,
+	     and the honest answer is "user-supplied private media server". -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>JellyMusic needs local network access to reach your Jellyfin server at home.</string>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>
