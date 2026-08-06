@@ -37,6 +37,11 @@ final class DownloadStore: NSObject {
     /// Keyed by Jellyfin item id.
     private(set) var states: [String: State] = [:]
 
+    /// Where each downloaded track actually lives, including its extension.
+    /// Held in memory so resolving a local file is a dictionary lookup rather than
+    /// a directory scan — the bridge asks once per track when building a queue.
+    private(set) var files: [String: URL] = [:]
+
     private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
     @ObservationIgnored private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "com.example.aoide.downloads")
@@ -70,15 +75,43 @@ final class DownloadStore: NSObject {
         return base
     }()
 
-    /// One file per track. The extension is deliberately absent: the server decides
-    /// the container, and guessing it wrong would stop AVFoundation opening the file.
-    nonisolated static func fileURL(for trackId: String) -> URL {
+    /// One file per track, **with the container's extension**.
+    ///
+    /// The extension is not cosmetic: AVFoundation works out how to decode a local
+    /// file from it, and a file saved without one cannot be opened at all. Saving
+    /// extensionless made every download silently unplayable.
+    nonisolated static func fileURL(for trackId: String, extension ext: String) -> URL {
         directory.appendingPathComponent(trackId, isDirectory: false)
+            .appendingPathExtension(ext)
     }
 
-    nonisolated static func localURLIfPresent(for trackId: String) -> URL? {
-        let url = fileURL(for: trackId)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    /// The local copy, if there is one. Main-actor because it reads the in-memory
+    /// index; the bridge that calls it is main-actor too.
+    static func localURLIfPresent(for trackId: String) -> URL? {
+        shared.files[trackId]
+    }
+
+    /// Works out the container from what the server actually sent.
+    ///
+    /// Guessing from the request would be wrong — `/Audio/{id}/universal` decides
+    /// server-side whether to hand back the original file or a transcode.
+    nonisolated static func fileExtension(for response: URLResponse?) -> String {
+        if let suggested = response?.suggestedFilename {
+            let ext = (suggested as NSString).pathExtension
+            if !ext.isEmpty { return ext.lowercased() }
+        }
+        return switch response?.mimeType?.lowercased() {
+        case "audio/flac", "audio/x-flac": "flac"
+        case "audio/mpeg", "audio/mp3", "audio/x-mp3": "mp3"
+        case "audio/mp4", "audio/m4a", "audio/x-m4a": "m4a"
+        case "audio/aac", "audio/aacp", "audio/x-aac": "aac"
+        case "audio/wav", "audio/x-wav", "audio/wave": "wav"
+        case "audio/aiff", "audio/x-aiff": "aiff"
+        case "audio/ogg", "audio/opus": "ogg"
+        // m4a is the safest fallback: it is what the server transcodes to, and
+        // AVFoundation opens it without complaint.
+        default: "m4a"
+        }
     }
 
     func state(for trackId: String) -> State {
@@ -122,13 +155,15 @@ final class DownloadStore: NSObject {
     }
 
     func remove(_ trackId: String) {
-        try? FileManager.default.removeItem(at: Self.fileURL(for: trackId))
+        if let url = files[trackId] { try? FileManager.default.removeItem(at: url) }
+        files[trackId] = nil
         states[trackId] = .absent
     }
 
     func removeAll() {
         try? FileManager.default.removeItem(at: Self.directory)
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        files = [:]
         states = states.mapValues { _ in .absent }
     }
 
@@ -160,10 +195,22 @@ final class DownloadStore: NSObject {
             at: Self.directory,
             includingPropertiesForKeys: nil
         ) else { return }
+        var recovered = 0
         for url in contents {
-            states[url.lastPathComponent] = .downloaded
+            let trackId = url.deletingPathExtension().lastPathComponent
+            guard !url.pathExtension.isEmpty else {
+                // Left by an earlier build that saved without an extension. Those
+                // files cannot be opened by AVFoundation, so they are dead weight —
+                // delete them rather than leave the track looking downloaded.
+                try? FileManager.default.removeItem(at: url)
+                log.notice("Removed an extensionless download that could never have played")
+                continue
+            }
+            files[trackId] = url
+            states[trackId] = .downloaded
+            recovered += 1
         }
-        log.info("Found \(contents.count, privacy: .public) downloaded tracks on disk")
+        log.info("Found \(recovered, privacy: .public) downloaded tracks on disk")
     }
 
     private func adoptRunningTasks() async {
@@ -190,7 +237,12 @@ final class DownloadStore: NSObject {
             states[trackId] = cancelled ? .absent : .failed(error.localizedDescription)
             return
         }
-        states[trackId] = destination == nil ? .failed("The download didn't complete.") : .downloaded
+        guard let destination else {
+            states[trackId] = .failed("The download didn't complete.")
+            return
+        }
+        files[trackId] = destination
+        states[trackId] = .downloaded
     }
 
     fileprivate func progress(taskId: Int, fraction: Double) {
@@ -213,7 +265,8 @@ extension DownloadStore: URLSessionDownloadDelegate {
         var moved: URL?
         if let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode),
            let trackId = downloadTask.originalRequest?.url?.trackIdFromStreamURL {
-            let destination = DownloadStore.fileURL(for: trackId)
+            let ext = DownloadStore.fileExtension(for: response)
+            let destination = DownloadStore.fileURL(for: trackId, extension: ext)
             try? FileManager.default.removeItem(at: destination)
             do {
                 try FileManager.default.moveItem(at: location, to: destination)

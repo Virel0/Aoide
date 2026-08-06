@@ -66,6 +66,13 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Aoide needs local network access to reach your Jellyfin server at home.</string>
 
+	<!-- iOS 11+ resolves the Home Screen icon through this top-level key. actool
+	     writes a nested copy inside CFBundleIcons but not always this one, and
+	     without it the app installs with no icon at all — and an App Store upload
+	     is rejected with ITMS-90713. -->
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
