@@ -65,23 +65,23 @@ struct ShelfHeader<Destination: View>: View {
 
     var body: some View {
         NavigationLink(destination: destination) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                VStack(alignment: .leading, spacing: 1) {
-                    if let subtitle {
-                        Text(subtitle.uppercased())
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .tracking(0.6)
-                    }
+            VStack(alignment: .leading, spacing: 1) {
+                if let subtitle {
+                    Text(subtitle.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .tracking(0.6)
+                }
+                // The chevron belongs beside the title, not the eyebrow above it.
+                HStack(spacing: 4) {
                     Text(title)
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.primary)
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
-                Spacer(minLength: 0)
             }
             .contentShape(.rect)
         }

@@ -41,6 +41,8 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 24)
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }

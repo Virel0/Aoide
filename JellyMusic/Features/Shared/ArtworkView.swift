@@ -43,6 +43,9 @@ actor ArtworkCache {
 struct ArtworkView: View {
     let url: URL?
     var cornerRadius: CGFloat = 6
+    /// Covers are square, but a hero banner crops to a wider frame so it doesn't
+    /// swallow the whole first screen.
+    var aspectRatio: CGFloat = 1
 
     @State private var image: UIImage?
     @State private var didFail = false
@@ -50,7 +53,7 @@ struct ArtworkView: View {
     var body: some View {
         Rectangle()
             .fill(.fill.tertiary)
-            .aspectRatio(1, contentMode: .fit)
+            .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay {
                 if let image {
                     Image(uiImage: image)
@@ -62,6 +65,7 @@ struct ArtworkView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .clipped()
             .clipShape(.rect(cornerRadius: cornerRadius))
             .overlay {
                 // A hairline keeps pale covers from bleeding into a light background.

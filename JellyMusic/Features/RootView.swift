@@ -4,8 +4,16 @@ import SwiftUI
 
 struct RootView: View {
     @State private var session = AppSession.shared
+    @AppStorage("jellymusic.appearance") private var appearance = AppearanceMode.dark
 
     var body: some View {
+        content
+            .preferredColorScheme(appearance.colorScheme)
+            .tint(.accentColor)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch session.state {
         case .loading:
             ProgressView()

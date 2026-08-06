@@ -74,6 +74,9 @@ struct TrackListView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }

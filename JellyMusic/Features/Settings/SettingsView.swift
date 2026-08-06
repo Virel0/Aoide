@@ -8,12 +8,26 @@ struct SettingsView: View {
     @Environment(AppSession.self) private var session
 
     @State private var isConfirmingSignOut = false
+    @AppStorage("jellymusic.appearance") private var appearance = AppearanceMode.dark
 
     var body: some View {
         List {
             Section("Account") {
                 LabeledContent("Signed in as", value: store.accountSummary.username)
                 LabeledContent("Server", value: store.accountSummary.server)
+            }
+
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Dark by default — album artwork carries the page better against a dark ground.")
             }
 
             Section {

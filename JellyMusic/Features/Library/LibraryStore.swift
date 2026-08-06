@@ -298,6 +298,28 @@ final class LibraryStore {
         if next { playNext(tracks) } else { addToQueue(tracks) }
     }
 
+    /// Shuffle the whole library.
+    ///
+    /// Asks the server for a random page rather than fetching everything and
+    /// shuffling locally — on a large library that would be a very long wait for
+    /// what is meant to be an instant action.
+    func shuffleEverything(limit: Int = 300) async {
+        do {
+            let tracks = try await acrossLibraries { parentId in
+                try await self.client.songs(
+                    parentId: parentId,
+                    sort: .random,
+                    startIndex: 0,
+                    limit: limit
+                ).items
+            }
+            guard !tracks.isEmpty else { return }
+            play(tracks)
+        } catch {
+            log.error("Could not shuffle library: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Jellyfin's Instant Mix — a station seeded from any track, album or artist.
     /// The closest thing a personal library has to Apple Music's radio.
     func startStation(seededBy item: JellyfinItem) async {

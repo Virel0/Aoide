@@ -39,10 +39,16 @@ struct ArtworkPalette: Sendable, Hashable {
         guard let dominant = Self.dominantHue(in: image) else { return nil }
         let (hue, saturation, brightness) = dominant
 
-        // Clamp into a usable band. An unmodified sample is either so pale the page
-        // looks broken or so dark it swallows the artwork.
-        let usableSaturation = min(max(saturation, 0.18), 0.62)
-        let usableBrightness = min(max(brightness, 0.26), 0.52)
+        // A sleeve with no real colour in it — a black-and-gold cover where the gold
+        // is a thin line, say — produces a low-saturation sample. Washing the page in
+        // that gives grey mud, which looks like a rendering bug rather than a design.
+        // Better to show no tint at all.
+        guard saturation >= 0.16 else { return nil }
+
+        // Lift the sample rather than merely clamping it: a colour sampled at its
+        // natural saturation reads as washed out once spread across a whole header.
+        let usableSaturation = min(max(saturation * 1.35, 0.42), 0.78)
+        let usableBrightness = min(max(brightness, 0.30), 0.55)
 
         tint = Color(hue: hue, saturation: usableSaturation, brightness: usableBrightness)
         prefersLightForeground = usableBrightness < 0.62

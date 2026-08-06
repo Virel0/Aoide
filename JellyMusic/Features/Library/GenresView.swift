@@ -37,6 +37,8 @@ struct GenresListView: View {
                 .padding(.vertical, 12)
             }
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle("Genres")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -111,6 +113,8 @@ struct GenreDetailView: View {
                     .padding(.vertical, 12)
             }
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle(genre.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -180,6 +184,9 @@ struct PlaylistsView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle("Playlists")
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.loadPlaylistsIfNeeded() }

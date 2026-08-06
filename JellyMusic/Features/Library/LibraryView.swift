@@ -9,24 +9,29 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    categoryRow("Playlists", "music.note.list") { PlaylistsView() }
-                    categoryRow("Artists", "music.microphone") { ArtistsListView() }
-                    categoryRow("Albums", "square.stack") { AlbumsGridView() }
-                    categoryRow("Songs", "music.note") { SongsListView() }
-                    categoryRow("Genres", "guitars") { GenresListView() }
-                }
+            // A ScrollView rather than a List: the shelf below is a horizontal
+            // carousel, and a NavigationLink inside a List row draws a disclosure
+            // chevron on every album cell.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(spacing: 0) {
+                        categoryRow("Playlists", "music.note.list") { PlaylistsView() }
+                        categoryRow("Artists", "music.microphone") { ArtistsListView() }
+                        categoryRow("Albums", "square.stack") { AlbumsGridView() }
+                        categoryRow("Songs", "music.note") { SongsListView() }
+                        categoryRow("Genres", "guitars") { GenresListView() }
+                    }
+                    .pageMargin()
 
-                if let recent = store.recentlyAdded.value, !recent.isEmpty {
-                    Section("Recently Added") {
-                        AlbumGrid(albums: Array(recent.prefix(10)))
-                            .listRowInsets(EdgeInsets(top: 8, leading: Design.Spacing.margin, bottom: 8, trailing: Design.Spacing.margin))
-                            .listRowSeparator(.hidden)
+                    if let recent = store.recentlyAdded.value, !recent.isEmpty {
+                        AlbumShelf(title: "Recently Added", albums: recent)
+                            .padding(.top, 26)
                     }
                 }
+                .padding(.vertical, 8)
             }
-            .listStyle(.plain)
+            .miniPlayerInset()
+            .appBackground()
             .navigationTitle("Library")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -48,13 +53,27 @@ struct LibraryView: View {
         _ symbol: String,
         @ViewBuilder destination: @escaping () -> Destination
     ) -> some View {
-        NavigationLink(destination: destination) {
-            Label {
-                Text(title).font(.title3.weight(.medium))
-            } icon: {
-                Image(systemName: symbol).foregroundStyle(.tint)
+        VStack(spacing: 0) {
+            NavigationLink(destination: destination) {
+                HStack(spacing: 14) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 19))
+                        .foregroundStyle(.tint)
+                        .frame(width: 26)
+                    Text(title)
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 13)
+                .contentShape(.rect)
             }
-            .padding(.vertical, 3)
+            .buttonStyle(.plain)
+
+            Divider().padding(.leading, 40)
         }
     }
 }
@@ -113,6 +132,8 @@ struct AlbumsGridView: View {
                 ProgressView().padding(.top, 60)
             }
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle("Albums")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { SortMenu(sort: $sort) }
@@ -164,6 +185,8 @@ struct ArtistsListView: View {
                 ProgressView()
             }
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle("Artists")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -205,6 +228,8 @@ struct SongsListView: View {
                 ProgressView()
             }
         }
+        .miniPlayerInset()
+        .appBackground()
         .navigationTitle("Songs")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { SortMenu(sort: $sort) }

@@ -34,6 +34,8 @@ struct SearchView: View {
                     resultsList
                 }
             }
+            .miniPlayerInset()
+            .appBackground()
             .navigationTitle("Search")
         }
         .searchable(text: $query, prompt: "Artists, Songs, Albums")
@@ -158,6 +160,7 @@ struct SearchView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     private func resultRow(_ item: JellyfinItem, radius: CGFloat) -> some View {

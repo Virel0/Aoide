@@ -31,6 +31,8 @@ struct HomeView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
+            .miniPlayerInset()
+            .appBackground()
             .navigationTitle("Home")
             .refreshable { await store.refresh() }
             .task { await store.loadHomeIfNeeded() }
