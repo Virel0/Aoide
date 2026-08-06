@@ -189,6 +189,15 @@ public struct ItemsResponse: Codable, Sendable {
     public let totalRecordCount: Int
     public let startIndex: Int
 
+    /// For call sites that must return a response but have nothing to fetch.
+    public static let empty = ItemsResponse(items: [], totalRecordCount: 0, startIndex: 0)
+
+    public init(items: [JellyfinItem], totalRecordCount: Int, startIndex: Int) {
+        self.items = items
+        self.totalRecordCount = totalRecordCount
+        self.startIndex = startIndex
+    }
+
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         items = try c.decodeIfPresent([JellyfinItem].self, forKey: .items) ?? []

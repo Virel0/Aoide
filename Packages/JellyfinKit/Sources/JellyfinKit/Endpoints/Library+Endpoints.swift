@@ -1,15 +1,43 @@
 import Foundation
 
 /// Sort orders Jellyfin understands, named for how the UI describes them.
-public enum ItemSort: String, Sendable {
+public enum ItemSort: String, Sendable, CaseIterable, Identifiable {
     case name = "SortName"
     case dateAdded = "DateCreated"
     case datePlayed = "DatePlayed"
     case playCount = "PlayCount"
+    case artist = "AlbumArtist,SortName"
     case releaseDate = "PremiereDate,ProductionYear,SortName"
     case random = "Random"
     /// Disc, then track, then title — the only correct order for an album's contents.
     case albumTrackOrder = "ParentIndexNumber,IndexNumber,SortName"
+
+    public var id: Self { self }
+
+    /// The orderings worth offering in a sort menu. `albumTrackOrder` and the
+    /// playback-derived ones aren't user-facing choices.
+    public static var browsable: [ItemSort] { [.name, .artist, .dateAdded, .releaseDate, .random] }
+
+    public var displayName: String {
+        switch self {
+        case .name: "Title"
+        case .artist: "Artist"
+        case .dateAdded: "Recently Added"
+        case .datePlayed: "Recently Played"
+        case .playCount: "Most Played"
+        case .releaseDate: "Release Date"
+        case .random: "Shuffle Order"
+        case .albumTrackOrder: "Track Order"
+        }
+    }
+
+    /// Newest-first reads better than oldest-first for anything date-shaped.
+    public var naturalDirection: SortDirection {
+        switch self {
+        case .dateAdded, .datePlayed, .playCount, .releaseDate: .descending
+        default: .ascending
+        }
+    }
 }
 
 public enum SortDirection: String, Sendable {
@@ -66,6 +94,24 @@ extension JellyfinClient {
         if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
         if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try await get(path: "Artists/AlbumArtists", query: query)
+    }
+
+    /// Every song, paged. The list a large library most needs to not load at once.
+    public func songs(
+        parentId: String? = nil,
+        sort: ItemSort = .name,
+        direction: SortDirection = .ascending,
+        startIndex: Int = 0,
+        limit: Int? = nil
+    ) async throws -> ItemsResponse {
+        try await items(
+            includeTypes: ["Audio"],
+            parentId: parentId,
+            sort: sort,
+            direction: direction,
+            startIndex: startIndex,
+            limit: limit
+        )
     }
 
     /// An album's tracks, already in disc/track order.

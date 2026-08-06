@@ -1,5 +1,4 @@
 import JellyfinKit
-import PlaybackKit
 import SwiftUI
 
 /// The landing screen: a stack of shelves built from your own library.
@@ -10,7 +9,6 @@ import SwiftUI
 /// which is why a brand-new library still looks composed rather than broken.
 struct HomeView: View {
     @Environment(LibraryStore.self) private var store
-    @State private var engine = PlaybackEngine.shared
 
     var body: some View {
         NavigationStack {
@@ -18,10 +16,6 @@ struct HomeView: View {
                 LazyVStack(alignment: .leading, spacing: Design.Spacing.shelf) {
                     if let hero = heroAlbum {
                         HeroCard(album: hero.album, eyebrow: hero.reason)
-                    }
-
-                    if !continueListening.isEmpty {
-                        AlbumShelf(title: "Continue Listening", albums: continueListening)
                     }
 
                     shelf("Recently Added", store.recentlyAdded)
@@ -67,13 +61,6 @@ struct HomeView: View {
             // information.
             EmptyView()
         }
-    }
-
-    /// The queue as it stands, so picking up where you left off is the first thing
-    /// on the page rather than something to go hunting for.
-    private var continueListening: [JellyfinItem] {
-        guard engine.currentTrack != nil else { return [] }
-        return []
     }
 
     /// The one album given hero treatment, with the reason it earned the spot.

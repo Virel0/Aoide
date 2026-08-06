@@ -1,225 +1,293 @@
 import JellyfinKit
+import PlaybackKit
 import SwiftUI
 
-/// The Library tab: Apple Music's list of categories, then a grid of albums.
+/// The Library tab: Apple Music's list of categories, then recently added.
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(AppSession.self) private var session
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    NavigationLink {
-                        PlaylistsView()
-                    } label: {
-                        Label("Playlists", systemImage: "music.note.list")
-                    }
-                    NavigationLink {
-                        ArtistsView()
-                    } label: {
-                        Label("Artists", systemImage: "music.microphone")
-                    }
+                    categoryRow("Playlists", "music.note.list") { PlaylistsView() }
+                    categoryRow("Artists", "music.microphone") { ArtistsListView() }
+                    categoryRow("Albums", "square.stack") { AlbumsGridView() }
+                    categoryRow("Songs", "music.note") { SongsListView() }
+                    categoryRow("Genres", "guitars") { GenresListView() }
                 }
 
                 if let recent = store.recentlyAdded.value, !recent.isEmpty {
                     Section("Recently Added") {
-                        AlbumGrid(albums: recent)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    }
-                }
-
-                Section("Albums") {
-                    switch store.albums {
-                    case .idle, .loading:
-                        LoadingRow()
-                    case .failed(let message):
-                        ErrorRow(message: message) {
-                            Task { await store.refresh() }
-                        }
-                    case .loaded(let albums):
-                        if albums.isEmpty {
-                            Text("No albums in your library.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            AlbumGrid(albums: albums)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        }
+                        AlbumGrid(albums: Array(recent.prefix(10)))
+                            .listRowInsets(EdgeInsets(top: 8, leading: Design.Spacing.margin, bottom: 8, trailing: Design.Spacing.margin))
+                            .listRowSeparator(.hidden)
                     }
                 }
             }
             .listStyle(.plain)
             .navigationTitle("Library")
-            .refreshable { await store.refresh() }
-            .task {
-                await store.loadRecentlyAddedIfNeeded()
-                await store.loadAlbumsIfNeeded()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
             }
+            .refreshable { await store.refresh() }
+            .task { await store.loadRecentlyAddedIfNeeded() }
+        }
+    }
+
+    private func categoryRow<Destination: View>(
+        _ title: String,
+        _ symbol: String,
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination) {
+            Label {
+                Text(title).font(.title3.weight(.medium))
+            } icon: {
+                Image(systemName: symbol).foregroundStyle(.tint)
+            }
+            .padding(.vertical, 3)
         }
     }
 }
 
-/// Two columns of square covers, the way Apple Music lays out a library.
+/// Two columns of covers, used in Library and behind every "See All".
 struct AlbumGrid: View {
     let albums: [JellyfinItem]
+    var onAppearItem: ((JellyfinItem) -> Void)?
 
-    @Environment(LibraryStore.self) private var store
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 140), spacing: 16)
-    ]
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: Design.Spacing.card)]
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 20) {
+        LazyVGrid(columns: columns, spacing: 22) {
             ForEach(albums) { album in
                 NavigationLink {
                     AlbumDetailView(album: album)
                 } label: {
-                    AlbumCell(album: album)
+                    AlbumCard(album: album, width: nil)
                 }
                 .buttonStyle(.plain)
+                .albumContextMenu(album)
+                .onAppear { onAppearItem?(album) }
             }
         }
     }
 }
 
-struct AlbumCell: View {
-    let album: JellyfinItem
+// MARK: - Albums
 
+struct AlbumsGridView: View {
     @Environment(LibraryStore.self) private var store
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ArtworkView(url: store.artworkURL(for: album, width: 400))
-
-            Text(album.name)
-                .font(.subheadline)
-                .lineLimit(1)
-
-            if !album.subtitle.isEmpty {
-                Text(album.subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-    }
-}
-
-// MARK: - Playlists
-
-struct PlaylistsView: View {
-    @Environment(LibraryStore.self) private var store
+    @State private var paged: PagedItems?
+    @State private var sort: ItemSort = .name
 
     var body: some View {
-        List {
-            switch store.playlists {
-            case .idle, .loading:
-                LoadingRow()
-            case .failed(let message):
-                ErrorRow(message: message) {
-                    Task { await store.loadPlaylistsIfNeeded() }
-                }
-            case .loaded(let playlists):
-                if playlists.isEmpty {
-                    Text("No playlists yet.")
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            if let paged {
+                if paged.isEmpty {
+                    ContentUnavailableView("No Albums", systemImage: "square.stack")
+                        .padding(.top, 60)
+                } else if let message = paged.errorMessage {
+                    ErrorRow(message: message) { Task { await paged.reload() } }
                 } else {
-                    ForEach(playlists) { playlist in
-                        NavigationLink {
-                            TrackListView(
-                                title: playlist.name,
-                                artworkItem: playlist,
-                                source: .playlist(playlist.id)
-                            )
-                        } label: {
-                            HStack(spacing: 12) {
-                                ArtworkView(url: store.artworkURL(for: playlist, width: 160))
-                                    .frame(width: 52, height: 52)
-                                VStack(alignment: .leading) {
-                                    Text(playlist.name)
-                                    if !playlist.subtitle.isEmpty {
-                                        Text(playlist.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
+                    AlbumGrid(albums: paged.items) { album in
+                        Task { await paged.loadMoreIfNeeded(currentItem: album) }
+                    }
+                    .pageMargin()
+                    .padding(.vertical, 12)
+
+                    if paged.isLoadingMore {
+                        ProgressView().padding(.bottom, 24)
                     }
                 }
+            } else {
+                ProgressView().padding(.top, 60)
             }
         }
-        .navigationTitle("Playlists")
+        .navigationTitle("Albums")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.loadPlaylistsIfNeeded() }
+        .toolbar { SortMenu(sort: $sort) }
+        .task(id: sort) { await rebuild() }
+    }
+
+    private func rebuild() async {
+        let list = store.albumsPage(sort: sort)
+        paged = list
+        await list.loadFirstPageIfNeeded()
     }
 }
 
 // MARK: - Artists
 
-struct ArtistsView: View {
+struct ArtistsListView: View {
     @Environment(LibraryStore.self) private var store
+    @State private var paged: PagedItems?
 
     var body: some View {
-        List {
-            switch store.artists {
-            case .idle, .loading:
-                LoadingRow()
-            case .failed(let message):
-                ErrorRow(message: message) {
-                    Task { await store.loadArtistsIfNeeded() }
-                }
-            case .loaded(let artists):
-                ForEach(artists) { artist in
-                    NavigationLink {
-                        ArtistDetailView(artist: artist)
-                    } label: {
-                        HStack(spacing: 12) {
-                            ArtworkView(url: store.artworkURL(for: artist, width: 160), cornerRadius: 26)
-                                .frame(width: 52, height: 52)
-                            Text(artist.name)
+        Group {
+            if let paged {
+                if paged.isLoadingFirstPage {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let message = paged.errorMessage {
+                    ErrorRow(message: message) { Task { await paged.reload() } }
+                } else if paged.isEmpty {
+                    ContentUnavailableView("No Artists", systemImage: "music.microphone")
+                } else {
+                    AlphabetIndexedList(sections: AlphabetSections.group(paged.items)) { artist in
+                        NavigationLink {
+                            ArtistDetailView(artist: artist)
+                        } label: {
+                            HStack(spacing: 12) {
+                                ArtworkView(
+                                    url: store.artworkURL(for: artist, width: Design.ArtworkWidth.thumbnail),
+                                    cornerRadius: Design.Radius.round
+                                )
+                                .frame(width: Design.Size.listThumbnail, height: Design.Size.listThumbnail)
+                                Text(artist.name)
+                            }
+                        }
+                        .onAppear {
+                            Task { await paged.loadMoreIfNeeded(currentItem: artist) }
                         }
                     }
                 }
+            } else {
+                ProgressView()
             }
         }
         .navigationTitle("Artists")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.loadArtistsIfNeeded() }
+        .task {
+            let list = store.artistsPage()
+            paged = list
+            await list.loadFirstPageIfNeeded()
+        }
     }
 }
 
-struct ArtistDetailView: View {
-    let artist: JellyfinItem
+// MARK: - Songs
 
+struct SongsListView: View {
     @Environment(LibraryStore.self) private var store
-    @State private var albums: [JellyfinItem] = []
-    @State private var errorMessage: String?
+    @State private var paged: PagedItems?
+    @State private var sort: ItemSort = .name
 
     var body: some View {
-        ScrollView {
-            if let errorMessage {
-                ErrorRow(message: errorMessage) { Task { await load() } }
-                    .padding()
-            } else if albums.isEmpty {
-                ProgressView().padding(.top, 40)
+        Group {
+            if let paged {
+                if paged.isLoadingFirstPage {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let message = paged.errorMessage {
+                    ErrorRow(message: message) { Task { await paged.reload() } }
+                } else if paged.isEmpty {
+                    ContentUnavailableView("No Songs", systemImage: "music.note")
+                } else if sort == .name {
+                    AlphabetIndexedList(sections: AlphabetSections.group(paged.items)) { song in
+                        songRow(song, in: paged)
+                    }
+                } else {
+                    // Only an alphabetical sort has meaningful letter sections.
+                    List(paged.items) { song in
+                        songRow(song, in: paged)
+                    }
+                    .listStyle(.plain)
+                }
             } else {
-                AlbumGrid(albums: albums)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                ProgressView()
             }
         }
-        .navigationTitle(artist.name)
-        .navigationBarTitleDisplayMode(.large)
-        .task { await load() }
+        .navigationTitle("Songs")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SortMenu(sort: $sort) }
+        .task(id: sort) {
+            let list = store.songsPage(sort: sort)
+            paged = list
+            await list.loadFirstPageIfNeeded()
+        }
     }
 
-    private func load() async {
-        do {
-            errorMessage = nil
-            albums = try await store.albums(byArtist: artist.id)
-        } catch {
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+    private func songRow(_ song: JellyfinItem, in paged: PagedItems) -> some View {
+        SongRow(song: song)
+            .contentShape(.rect)
+            .onTapGesture {
+                // Play from here through the rest of what's loaded, which is what
+                // tapping a song in a long list is understood to mean.
+                if let index = paged.items.firstIndex(where: { $0.id == song.id }) {
+                    store.play(paged.items, startingAt: index)
+                }
+            }
+            .trackContextMenu(song)
+            .onAppear { Task { await paged.loadMoreIfNeeded(currentItem: song) } }
+    }
+}
+
+/// A song row carrying its own artwork — needed anywhere songs from different
+/// albums are mixed together.
+struct SongRow: View {
+    let song: JellyfinItem
+
+    @Environment(LibraryStore.self) private var store
+    @State private var engine = PlaybackEngine.shared
+
+    private var isCurrent: Bool { engine.currentTrack?.id == song.id }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ArtworkView(
+                url: store.artworkURL(for: song, width: Design.ArtworkWidth.thumbnail),
+                cornerRadius: Design.Radius.thumbnail
+            )
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(song.name)
+                    .lineLimit(1)
+                    .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                if !song.subtitle.isEmpty {
+                    Text(song.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if isCurrent {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.caption)
+                    .foregroundStyle(.tint)
+            }
+        }
+    }
+}
+
+// MARK: - Sorting
+
+struct SortMenu: ToolbarContent {
+    @Binding var sort: ItemSort
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Picker("Sort By", selection: $sort) {
+                    ForEach(ItemSort.browsable) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+            }
+            .accessibilityLabel("Sort")
         }
     }
 }

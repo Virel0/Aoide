@@ -230,6 +230,85 @@ final class LibraryStore {
         try await client.albums(byArtist: artistId)
     }
 
+    // MARK: - Paged lists
+
+    /// A fresh paged list is built per sort order rather than re-sorting in memory,
+    /// because only the first page is loaded and the rest of the ordering lives on
+    /// the server.
+    func albumsPage(sort: ItemSort) -> PagedItems {
+        PagedItems { [weak self] startIndex, limit in
+            guard let self else { return ItemsResponse.empty }
+            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
+                try await self.client.albums(
+                    parentId: parentId,
+                    sort: sort,
+                    direction: sort.naturalDirection,
+                    startIndex: start,
+                    limit: count
+                )
+            }
+        }
+    }
+
+    func artistsPage() -> PagedItems {
+        PagedItems { [weak self] startIndex, limit in
+            guard let self else { return ItemsResponse.empty }
+            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
+                try await self.client.albumArtists(parentId: parentId, startIndex: start, limit: count)
+            }
+        }
+    }
+
+    func songsPage(sort: ItemSort) -> PagedItems {
+        PagedItems { [weak self] startIndex, limit in
+            guard let self else { return ItemsResponse.empty }
+            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
+                try await self.client.songs(
+                    parentId: parentId,
+                    sort: sort,
+                    direction: sort.naturalDirection,
+                    startIndex: start,
+                    limit: count
+                )
+            }
+        }
+    }
+
+    /// Paging across several music libraries can't be merged correctly — two
+    /// independently-paged sorted lists don't interleave — so with more than one
+    /// library we page the first and accept it. In practice a music server has one.
+    private func acrossLibrariesPaged(
+        startIndex: Int,
+        limit: Int,
+        _ body: @escaping (String?, Int, Int) async throws -> ItemsResponse
+    ) async throws -> ItemsResponse {
+        let ids = await libraryScope()
+        return try await body(ids.first, startIndex, limit)
+    }
+
+    // MARK: - Playback shortcuts
+
+    func playAlbum(_ album: JellyfinItem, shuffled: Bool = false) async {
+        guard let tracks = try? await tracks(inAlbum: album.id) else { return }
+        play(tracks, shuffled: shuffled)
+    }
+
+    func queueAlbum(_ album: JellyfinItem, next: Bool) async {
+        guard let tracks = try? await tracks(inAlbum: album.id) else { return }
+        if next { playNext(tracks) } else { addToQueue(tracks) }
+    }
+
+    /// Jellyfin's Instant Mix — a station seeded from any track, album or artist.
+    /// The closest thing a personal library has to Apple Music's radio.
+    func startStation(seededBy item: JellyfinItem) async {
+        do {
+            let mix = try await client.instantMix(seededBy: item.id)
+            play(mix)
+        } catch {
+            log.error("Could not start station: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Flips the favourite flag on the server. Favourites are the one piece of
     /// album-level user data Jellyfin genuinely keeps, because the user sets it
     /// rather than it being derived from playback.
@@ -251,6 +330,23 @@ final class LibraryStore {
         try await acrossLibraries { parentId in
             try await self.client.search(term, parentId: parentId)
         }
+    }
+
+    func musicGenres() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.musicGenres(parentId: parentId)
+        }
+    }
+
+    func albums(inGenre genreId: String) async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.albums(inGenre: genreId, parentId: parentId)
+        }
+    }
+
+    /// The signed-in user and server, for Settings.
+    var accountSummary: (username: String, server: String) {
+        (client.credentials?.username ?? "—", client.serverURL.host() ?? client.serverURL.absoluteString)
     }
 
     func artworkURL(for item: JellyfinItem, width: Int) -> URL? {
