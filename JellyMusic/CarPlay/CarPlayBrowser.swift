@@ -31,14 +31,19 @@ final class CarPlayBrowser: NSObject {
     func makeRootTemplate() -> CPTemplate {
         guard AppSession.shared.client != nil else { return signedOutTemplate() }
 
-        // The car decides how many tabs it will show, and exceeding it throws
-        // rather than truncating. The granted entitlement can change this number,
-        // so it must be read at runtime rather than assumed.
+        // Only browsable templates may be tabs. `CPSearchTemplate` is not one —
+        // `validateTemplates:` throws an Objective-C exception that Swift cannot
+        // catch, so this has to be right rather than guarded. Search is reached
+        // from a bar button on the Library tab instead, which is the intended
+        // pattern anyway.
         var tabs: [CPTemplate] = [
             libraryTemplate(),
             recentlyPlayedTemplate(),
-            searchTemplate(),
         ]
+
+        // The car decides how many tabs it will show, and exceeding it throws
+        // rather than truncating. The granted entitlement can change this number,
+        // so it is read at runtime rather than assumed.
         let limit = CPTabBarTemplate.maximumTabCount
         if tabs.count > limit { tabs = Array(tabs.prefix(limit)) }
 
@@ -86,6 +91,15 @@ final class CarPlayBrowser: NSObject {
         let template = CPListTemplate(title: "Library", sections: [CPListSection(items: items)])
         template.tabTitle = "Library"
         template.tabImage = UIImage(systemName: "music.note.list")
+
+        // Search lives here rather than in a tab. The car disables the keyboard
+        // while moving on its own, so this is only usable parked — which is the
+        // behaviour we want and don't have to implement.
+        let search = CPBarButton(image: UIImage(systemName: "magnifyingglass") ?? UIImage()) { [weak self] _ in
+            guard let self else { return }
+            CarPlayNowPlaying.shared.push(self.searchTemplate())
+        }
+        template.trailingNavigationBarButtons = [search]
         return template
     }
 
@@ -110,8 +124,6 @@ final class CarPlayBrowser: NSObject {
     private func searchTemplate() -> CPSearchTemplate {
         let template = CPSearchTemplate()
         template.delegate = self
-        template.tabTitle = "Search"
-        template.tabImage = UIImage(systemName: "magnifyingglass")
         return template
     }
 
