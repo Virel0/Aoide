@@ -164,6 +164,7 @@ struct TrackListView: View {
             }
 
             actionRow
+            CollectionDownloadButton(tracks: tracks)
         }
         .padding(.horizontal)
         .padding(.top, 12)
@@ -185,50 +186,22 @@ struct TrackListView: View {
         .animation(.easeOut(duration: 0.45), value: palette)
     }
 
-    /// Shuffle left, Play centre, Favourite right — the iOS 26 Apple Music layout,
-    /// where Play is the filled capsule and the two flanking controls are circles.
     private var actionRow: some View {
-        HStack(spacing: 18) {
-            Button {
-                store.play(tracks, shuffled: true)
-            } label: {
-                Image(systemName: "shuffle")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.bordered)
-            .clipShape(.circle)
-            .accessibilityLabel("Shuffle")
-
-            Button {
-                store.play(tracks)
-            } label: {
-                Label("Play", systemImage: "play.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .clipShape(.capsule)
-
-            Button {
+        DetailActionRow(
+            isFavorite: isFavorite,
+            isEnabled: !tracks.isEmpty,
+            onLeading: { store.play(tracks, shuffled: true) },
+            onPlay: { store.play(tracks) },
+            onTrailing: {
                 // Drive from local intent and adopt what the server confirms.
                 // Deriving the new value from `artworkItem.userData` read a snapshot
                 // frozen when the list was fetched, so the glyph never moved and a
-                // second tap re-sent the same value — un-favouriting was impossible.
+                // second tap re-sent the same value.
                 let desired = !isFavorite
                 isFavorite = desired
                 Task { isFavorite = await store.toggleFavorite(artworkItem, to: desired) }
-            } label: {
-                Image(systemName: isFavorite ? "heart.fill" : "heart")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 44, height: 44)
             }
-            .buttonStyle(.bordered)
-            .clipShape(.circle)
-            .accessibilityLabel(isFavorite ? "Remove from Favourites" : "Add to Favourites")
-        }
-        .disabled(tracks.isEmpty)
+        )
         .padding(.top, 6)
     }
 
@@ -319,6 +292,8 @@ struct TrackRow: View {
             }
 
             Spacer(minLength: 8)
+
+            TrackDownloadBadge(trackId: track.id)
 
             if let duration = track.duration {
                 Text(duration.clockDescription)

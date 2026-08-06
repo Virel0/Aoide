@@ -72,7 +72,18 @@ enum JellyfinPlaybackBridge {
     /// through it so the predicate can't drift between them.
     private static func track(from item: JellyfinItem, client: JellyfinClient, quality: StreamQuality) -> Track? {
         guard item.type == .audio else { return nil }
-        guard let streamURL = try? client.streamURL(for: item.id, quality: quality) else { return nil }
+
+        // A downloaded copy wins over the network every time. This is the whole
+        // point of downloading: in a car with no signal the stream URL would simply
+        // fail, and the local file is also gapless where a transcode would not be.
+        let source: URL
+        if let local = DownloadStore.localURLIfPresent(for: item.id) {
+            source = local
+        } else if let streamURL = try? client.streamURL(for: item.id, quality: quality) {
+            source = streamURL
+        } else {
+            return nil
+        }
 
         return Track(
             id: item.id,
@@ -80,7 +91,7 @@ enum JellyfinPlaybackBridge {
             artist: item.albumArtist ?? item.artists.first ?? "Unknown Artist",
             album: item.album ?? "",
             duration: item.duration,
-            streamURL: streamURL,
+            streamURL: source,
             artworkURL: client.artworkURL(for: item, maxWidth: nowPlayingArtworkWidth),
             trackNumber: item.indexNumber
         )

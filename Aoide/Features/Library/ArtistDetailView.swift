@@ -72,41 +72,17 @@ struct ArtistDetailView: View {
                     .tracking(0.4)
             }
 
-            HStack(spacing: 18) {
-                Button {
-                    Task { await store.startStation(seededBy: artist) }
-                } label: {
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.bordered)
-                .clipShape(.circle)
-                .accessibilityLabel("Start Station")
-
-                Button {
-                    Task { await playEverything(shuffled: false) }
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .clipShape(.capsule)
-
-                Button {
-                    Task { await playEverything(shuffled: true) }
-                } label: {
-                    Image(systemName: "shuffle")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.bordered)
-                .clipShape(.circle)
-                .accessibilityLabel("Shuffle")
-            }
-            .disabled(albums.isEmpty)
+            DetailActionRow(
+                leadingIcon: "dot.radiowaves.left.and.right",
+                leadingLabel: "Start Station",
+                trailingIcon: "shuffle",
+                trailingLabel: "Shuffle",
+                trailingFills: false,
+                isEnabled: !albums.isEmpty,
+                onLeading: { Task { await store.startStation(seededBy: artist) } },
+                onPlay: { Task { await playEverything(shuffled: false) } },
+                onTrailing: { Task { await playEverything(shuffled: true) } }
+            )
             .pageMargin()
         }
         .padding(.top, 12)

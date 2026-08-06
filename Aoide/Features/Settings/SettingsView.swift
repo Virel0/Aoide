@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var isConfirmingSignOut = false
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
     @State private var siri = SiriAuthorization.shared
+    @State private var downloads = DownloadStore.shared
 
     var body: some View {
         List {
@@ -52,6 +53,21 @@ struct SettingsView: View {
                 Text("Lyrics")
             } footer: {
                 Text("Bluetooth headphones play audio slightly after the app thinks they do. Aoide corrects for this automatically, but you can nudge it if the words still run ahead or behind.")
+            }
+
+            Section {
+                LabeledContent("Downloaded", value: "\(downloads.downloadedCount) tracks")
+                LabeledContent("Storage used", value: ByteCountFormatter.string(fromByteCount: downloads.diskUsage(), countStyle: .file))
+                if downloads.downloadedCount > 0 {
+                    Button("Remove All Downloads", role: .destructive) {
+                        downloads.removeAll()
+                        DownloadIndex.shared.removeAll()
+                    }
+                }
+            } header: {
+                Text("Downloads")
+            } footer: {
+                Text("Downloads are always lossless, whatever the streaming quality — a file you keep shouldn't be worse than the source. They're excluded from iCloud backups, since your server already has them.")
             }
 
             Section {

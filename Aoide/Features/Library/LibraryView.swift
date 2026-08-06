@@ -20,6 +20,7 @@ struct LibraryView: View {
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
                         categoryRow("Genres", "guitars") { GenresListView() }
+                        categoryRow("Downloaded", "arrow.down.circle") { DownloadedView() }
                     }
                     .pageMargin()
 

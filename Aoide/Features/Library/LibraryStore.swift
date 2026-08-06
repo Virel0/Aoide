@@ -296,6 +296,17 @@ final class LibraryStore {
         return try await body(ids.first, startIndex, limit)
     }
 
+    // MARK: - Downloads
+
+    /// The store needs a client to build stream URLs, and the client lives here.
+    func download(_ items: [JellyfinItem]) {
+        // Written before the transfer starts, not after: offline, the server cannot
+        // be asked what a downloaded file contains, so the metadata must already be
+        // on disk or the Downloaded screen is a list of identifiers.
+        DownloadIndex.shared.record(items)
+        DownloadStore.shared.download(items, client: client)
+    }
+
     // MARK: - Playback shortcuts
 
     func playAlbum(_ album: JellyfinItem, shuffled: Bool = false) async {

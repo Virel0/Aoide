@@ -14,6 +14,19 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-AoideUIHarness") {
+            UIHarness()
+        } else {
+            signedInContent
+        }
+        #else
+        signedInContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var signedInContent: some View {
         switch session.state {
         case .loading:
             ProgressView()

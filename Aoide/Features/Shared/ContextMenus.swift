@@ -39,6 +39,18 @@ private struct TrackContextMenu: ViewModifier {
             Button("Start Station", systemImage: "dot.radiowaves.left.and.right") {
                 Task { await store.startStation(seededBy: track) }
             }
+
+            Divider()
+
+            if DownloadStore.shared.state(for: track.id).isPresent {
+                Button("Remove Download", systemImage: "trash") {
+                    DownloadStore.shared.remove(track.id)
+                }
+            } else {
+                Button("Download", systemImage: "arrow.down.circle") {
+                    store.download([track])
+                }
+            }
         }
     }
 }
@@ -76,6 +88,15 @@ private struct AlbumContextMenu: ViewModifier {
 
             Button("Start Station", systemImage: "dot.radiowaves.left.and.right") {
                 Task { await store.startStation(seededBy: album) }
+            }
+
+            Divider()
+
+            Button("Download", systemImage: "arrow.down.circle") {
+                Task {
+                    guard let tracks = try? await store.tracks(inAlbum: album.id) else { return }
+                    store.download(tracks)
+                }
             }
         }
     }

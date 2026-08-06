@@ -1,0 +1,266 @@
+import Foundation
+import JellyfinKit
+import PlaybackKit
+import os
+
+/// Owns offline copies of tracks.
+///
+/// Uses a **background** `URLSession`, which is the part that matters: a foreground
+/// download dies the moment the app is suspended, and downloading an album is
+/// exactly the thing someone starts and then locks their phone. The system keeps
+/// these running and relaunches the app to tell us they finished.
+///
+/// Files land in Application Support rather than Caches — the system may evict
+/// Caches under disk pressure, and silently losing music someone downloaded for a
+/// flight is worse than running out of space with a clear message.
+@MainActor
+@Observable
+final class DownloadStore: NSObject {
+    static let shared = DownloadStore()
+
+    enum State: Equatable {
+        case absent
+        case waiting
+        case downloading(fraction: Double)
+        case downloaded
+        case failed(String)
+
+        var isPresent: Bool { self == .downloaded }
+        var isBusy: Bool {
+            switch self {
+            case .waiting, .downloading: true
+            default: false
+            }
+        }
+    }
+
+    /// Keyed by Jellyfin item id.
+    private(set) var states: [String: State] = [:]
+
+    private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
+    @ObservationIgnored private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: "com.example.aoide.downloads")
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    /// Maps a live task back to the track it is fetching.
+    @ObservationIgnored private var trackForTask: [Int: String] = [:]
+
+    private override init() {
+        super.init()
+        rebuildStateFromDisk()
+        // Adopt anything the system was still running while we were terminated.
+        Task { await adoptRunningTasks() }
+    }
+
+    // MARK: - Locations
+
+    nonisolated private static let directory: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Downloads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        // Downloads are re-fetchable from the server, so they must not go into
+        // iCloud backups — that would balloon a backup with replaceable data.
+        var resource = URLResourceValues()
+        resource.isExcludedFromBackup = true
+        var mutable = base
+        try? mutable.setResourceValues(resource)
+        return base
+    }()
+
+    /// One file per track. The extension is deliberately absent: the server decides
+    /// the container, and guessing it wrong would stop AVFoundation opening the file.
+    nonisolated static func fileURL(for trackId: String) -> URL {
+        directory.appendingPathComponent(trackId, isDirectory: false)
+    }
+
+    nonisolated static func localURLIfPresent(for trackId: String) -> URL? {
+        let url = fileURL(for: trackId)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func state(for trackId: String) -> State {
+        states[trackId] ?? .absent
+    }
+
+    // MARK: - Starting and stopping
+
+    func download(_ items: [JellyfinItem], client: JellyfinClient) {
+        for item in items where item.type == .audio {
+            download(item, client: client)
+        }
+    }
+
+    func download(_ item: JellyfinItem, client: JellyfinClient) {
+        guard item.type == .audio else { return }
+        guard state(for: item.id) == .absent || isFailed(item.id) else { return }
+
+        // Always lossless for a download. A bitrate ceiling would make the server
+        // transcode, so the file kept forever would be worse than the source — and
+        // it would arrive with a gap between tracks that no later fix can remove.
+        guard let url = try? client.streamURL(for: item.id, quality: .lossless) else {
+            states[item.id] = .failed("Couldn't work out where to fetch this from.")
+            return
+        }
+
+        let task = session.downloadTask(with: url)
+        trackForTask[task.taskIdentifier] = item.id
+        states[item.id] = .waiting
+        task.resume()
+    }
+
+    func cancelDownload(_ trackId: String) {
+        Task {
+            let tasks = await session.allTasks
+            for task in tasks where trackForTask[task.taskIdentifier] == trackId {
+                task.cancel()
+            }
+            states[trackId] = .absent
+        }
+    }
+
+    func remove(_ trackId: String) {
+        try? FileManager.default.removeItem(at: Self.fileURL(for: trackId))
+        states[trackId] = .absent
+    }
+
+    func removeAll() {
+        try? FileManager.default.removeItem(at: Self.directory)
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        states = states.mapValues { _ in .absent }
+    }
+
+    // MARK: - Accounting
+
+    var downloadedCount: Int {
+        states.values.filter(\.isPresent).count
+    }
+
+    /// Bytes on disk, summed from the files themselves rather than tracked as we go
+    /// — the two drift apart the moment anything is deleted outside the app.
+    func diskUsage() -> Int64 {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: Self.directory,
+            includingPropertiesForKeys: [.fileSizeKey]
+        ) else { return 0 }
+        return contents.reduce(Int64(0)) { total, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return total + Int64(size)
+        }
+    }
+
+    // MARK: - Recovery
+
+    /// Disk is the source of truth on launch. An in-memory record would be a second
+    /// truth that goes stale the moment a download finishes while we're terminated.
+    private func rebuildStateFromDisk() {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: Self.directory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        for url in contents {
+            states[url.lastPathComponent] = .downloaded
+        }
+        log.info("Found \(contents.count, privacy: .public) downloaded tracks on disk")
+    }
+
+    private func adoptRunningTasks() async {
+        for task in await session.allTasks {
+            guard let url = task.originalRequest?.url else { continue }
+            // The track id is the path component before "/universal".
+            let parts = url.pathComponents
+            guard let index = parts.firstIndex(of: "Audio"), parts.count > index + 1 else { continue }
+            let trackId = parts[index + 1]
+            trackForTask[task.taskIdentifier] = trackId
+            if states[trackId] != .downloaded { states[trackId] = .waiting }
+        }
+    }
+
+    private func isFailed(_ trackId: String) -> Bool {
+        if case .failed = state(for: trackId) { return true }
+        return false
+    }
+
+    fileprivate func finish(taskId: Int, movedTo destination: URL?, error: (any Error)?) {
+        guard let trackId = trackForTask.removeValue(forKey: taskId) else { return }
+        if let error {
+            let cancelled = (error as? URLError)?.code == .cancelled
+            states[trackId] = cancelled ? .absent : .failed(error.localizedDescription)
+            return
+        }
+        states[trackId] = destination == nil ? .failed("The download didn't complete.") : .downloaded
+    }
+
+    fileprivate func progress(taskId: Int, fraction: Double) {
+        guard let trackId = trackForTask[taskId] else { return }
+        states[trackId] = .downloading(fraction: fraction)
+    }
+}
+
+// MARK: - URLSessionDownloadDelegate
+
+extension DownloadStore: URLSessionDownloadDelegate {
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        // The temporary file is deleted the moment this method returns, so it has to
+        // be moved here — synchronously, on this thread — rather than after a hop.
+        let taskId = downloadTask.taskIdentifier
+        var moved: URL?
+        if let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode),
+           let trackId = downloadTask.originalRequest?.url?.trackIdFromStreamURL {
+            let destination = DownloadStore.fileURL(for: trackId)
+            try? FileManager.default.removeItem(at: destination)
+            do {
+                try FileManager.default.moveItem(at: location, to: destination)
+                moved = destination
+            } catch {
+                moved = nil
+            }
+        }
+        let result = moved
+        Task { @MainActor in
+            DownloadStore.shared.finish(taskId: taskId, movedTo: result, error: nil)
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: (any Error)?
+    ) {
+        guard let error else { return }   // success is handled above
+        let taskId = task.taskIdentifier
+        Task { @MainActor in
+            DownloadStore.shared.finish(taskId: taskId, movedTo: nil, error: error)
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let taskId = downloadTask.taskIdentifier
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        Task { @MainActor in
+            DownloadStore.shared.progress(taskId: taskId, fraction: fraction)
+        }
+    }
+}
+
+private extension URL {
+    /// `/Audio/{itemId}/universal` — the id is the component after "Audio".
+    var trackIdFromStreamURL: String? {
+        let parts = pathComponents
+        guard let index = parts.firstIndex(of: "Audio"), parts.count > index + 1 else { return nil }
+        return parts[index + 1]
+    }
+}
