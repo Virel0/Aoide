@@ -123,14 +123,79 @@ extension JellyfinClient {
 
     // MARK: - Home screen shelves
 
+    /// Newly added music, grouped into albums by the server.
+    ///
+    /// `/Items/Latest` rather than sorting albums by `DateCreated`: an album record's
+    /// creation date doesn't move when new tracks are added to it, so a five-year-old
+    /// album you just completed would never resurface. This ranks by the tracks.
+    ///
+    /// `parentId` is not optional in practice — the music grouping branch is gated on
+    /// the resolved parent's collection type, and without one the server picks an
+    /// arbitrary top-level library and mixes media types across all of them.
     public func recentlyAdded(parentId: String? = nil, limit: Int = 20) async throws -> [JellyfinItem] {
-        try await items(
-            includeTypes: ["MusicAlbum"],
+        let userId = try requireUserId()
+        var query = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "includeItemTypes", value: "Audio"),
+            URLQueryItem(name: "groupItems", value: "true"),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "fields", value: Self.standardFields),
+        ]
+        if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
+
+        // This endpoint returns a bare array rather than the usual paged envelope.
+        return try await get([JellyfinItem].self, path: "Items/Latest", query: query)
+    }
+
+    /// Albums whose tracks you've played, longest ago first — the shelf a personal
+    /// library does better than a streaming service, because it knows what you own
+    /// rather than what's popular.
+    public func notPlayedRecently(parentId: String? = nil, limit: Int = 20) async throws -> [JellyfinItem] {
+        let tracks = try await items(
+            includeTypes: ["Audio"],
             parentId: parentId,
-            sort: .dateAdded,
-            direction: .descending,
-            limit: limit
+            sort: .datePlayed,
+            direction: .ascending,
+            filters: ["IsPlayed"],
+            limit: Self.rollupSampleSize
         ).items
+        // Oldest-first from the server, so the rollup's recency ranking is reversed.
+        return AlbumRollup.aggregate(tracks: tracks)
+            .filter { $0.lastPlayed != nil }
+            .sorted { ($0.lastPlayed ?? .distantFuture) < ($1.lastPlayed ?? .distantFuture) }
+            .prefix(limit)
+            .map(\.album)
+    }
+
+    // MARK: - Genres
+
+    public func musicGenres(parentId: String? = nil, limit: Int? = nil) async throws -> [JellyfinItem] {
+        let userId = try requireUserId()
+        var query = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sortBy", value: ItemSort.name.rawValue),
+            URLQueryItem(name: "sortOrder", value: SortDirection.ascending.rawValue),
+        ]
+        if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
+        let response: ItemsResponse = try await get(path: "MusicGenres", query: query)
+        return response.items
+    }
+
+    public func albums(inGenre genreId: String, parentId: String? = nil, limit: Int? = nil) async throws -> [JellyfinItem] {
+        let userId = try requireUserId()
+        var query = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "genreIds", value: genreId),
+            URLQueryItem(name: "includeItemTypes", value: "MusicAlbum"),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "sortBy", value: ItemSort.name.rawValue),
+            URLQueryItem(name: "fields", value: Self.standardFields),
+        ]
+        if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
+        let response: ItemsResponse = try await get(path: "Items", query: query)
+        return response.items
     }
 
     /// How many tracks to pull when rolling statistics up to albums. Generous,

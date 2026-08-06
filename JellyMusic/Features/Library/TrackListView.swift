@@ -25,8 +25,21 @@ struct TrackListView: View {
     @State private var tracks: [JellyfinItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var palette: ArtworkPalette?
+    @State private var isFavorite = false
 
     private var engine: PlaybackEngine { .shared }
+
+    /// Albums pressed to more than one disc need their track numbers explained —
+    /// otherwise numbering restarts at 1 partway down the page with no reason given.
+    /// A personal FLAC library is exactly the kind that holds box sets.
+    private var discs: [(number: Int, tracks: [JellyfinItem])] {
+        let numbers = Set(tracks.compactMap(\.parentIndexNumber))
+        guard numbers.count > 1 else { return [] }
+        return numbers.sorted().map { disc in
+            (disc, tracks.filter { $0.parentIndexNumber == disc })
+        }
+    }
 
     var body: some View {
         List {
@@ -42,24 +55,20 @@ struct TrackListView: View {
             } else if tracks.isEmpty {
                 Text("No songs here.")
                     .foregroundStyle(.secondary)
-            } else {
+            } else if discs.isEmpty {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(
-                        track: track,
-                        position: source.showsTrackNumbers ? track.indexNumber : index + 1,
-                        isCurrent: engine.currentTrack?.id == track.id
-                    )
-                    .contentShape(.rect)
-                    .onTapGesture {
-                        store.play(tracks, startingAt: index)
-                    }
-                    .contextMenu {
-                        Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                            store.playNext([track])
+                    row(for: track, at: index)
+                }
+            } else {
+                ForEach(discs, id: \.number) { disc in
+                    Section {
+                        ForEach(disc.tracks, id: \.id) { track in
+                            row(for: track, at: tracks.firstIndex { $0.id == track.id } ?? 0)
                         }
-                        Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                            store.addToQueue([track])
-                        }
+                    } header: {
+                        Text("Disc \(disc.number)")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -68,15 +77,55 @@ struct TrackListView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .task(id: artworkItem.id) {
+            isFavorite = artworkItem.userData?.isFavorite ?? false
+            guard let url = store.artworkURL(for: artworkItem, width: Design.ArtworkWidth.card) else { return }
+            palette = await ArtworkColorExtractor.shared.palette(for: url)
+        }
+    }
+
+    private func row(for track: JellyfinItem, at index: Int) -> some View {
+        TrackRow(
+            track: track,
+            position: source.showsTrackNumbers ? track.indexNumber : index + 1,
+            isCurrent: engine.currentTrack?.id == track.id,
+            // A various-artists compilation is unreadable without the artist on
+            // each row, even though an ordinary album doesn't want it.
+            showsArtist: !source.showsTrackNumbers || isCompilation
+        )
+        .contentShape(.rect)
+        .onTapGesture {
+            store.play(tracks, startingAt: index)
+        }
+        .contextMenu {
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                store.playNext([track])
+            }
+            Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                store.addToQueue([track])
+            }
+            Button("Favourite", systemImage: "heart") {
+                Task { await store.toggleFavorite(track) }
+            }
+        }
+    }
+
+    /// More than a couple of distinct credited artists means this is a compilation
+    /// rather than one artist's record.
+    private var isCompilation: Bool {
+        Set(tracks.compactMap { $0.albumArtist ?? $0.artists.first }).count > 2
     }
 
     private var header: some View {
-        VStack(spacing: 12) {
-            ArtworkView(url: store.artworkURL(for: artworkItem, width: 800), cornerRadius: 8)
-                .frame(maxWidth: 280)
-                .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+        VStack(spacing: 14) {
+            ArtworkView(
+                url: store.artworkURL(for: artworkItem, width: Design.ArtworkWidth.hero),
+                cornerRadius: Design.Radius.hero
+            )
+            .frame(maxWidth: 260)
+            .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Text(title)
                     .font(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
@@ -89,35 +138,75 @@ struct TrackListView: View {
                 }
 
                 if let detail = detailLine {
-                    Text(detail)
-                        .font(.caption)
+                    Text(detail.uppercased())
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+                        .tracking(0.4)
+                        .padding(.top, 3)
                 }
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    store.play(tracks)
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                Button {
-                    store.play(tracks, shuffled: true)
-                } label: {
-                    Label("Shuffle", systemImage: "shuffle")
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(tracks.isEmpty)
-            .padding(.top, 4)
+            actionRow
         }
         .padding(.horizontal)
-        .padding(.vertical, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 18)
         .frame(maxWidth: .infinity)
+        // The artwork wash. Fades out down the page so the track list sits on the
+        // ordinary background and stays readable.
+        .background {
+            if let tint = palette?.tint {
+                LinearGradient(
+                    colors: [tint.opacity(0.55), tint.opacity(0.16), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .top)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.45), value: palette)
+    }
+
+    /// Shuffle left, Play centre, Favourite right — the iOS 26 Apple Music layout,
+    /// where Play is the filled capsule and the two flanking controls are circles.
+    private var actionRow: some View {
+        HStack(spacing: 18) {
+            Button {
+                store.play(tracks, shuffled: true)
+            } label: {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(.circle)
+            .accessibilityLabel("Shuffle")
+
+            Button {
+                store.play(tracks)
+            } label: {
+                Label("Play", systemImage: "play.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(.capsule)
+
+            Button {
+                Task { await store.toggleFavorite(artworkItem) }
+            } label: {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(.circle)
+            .accessibilityLabel(isFavorite ? "Remove from Favourites" : "Add to Favourites")
+        }
+        .disabled(tracks.isEmpty)
+        .padding(.top, 6)
     }
 
     private var nonEmptySubtitle: String? {

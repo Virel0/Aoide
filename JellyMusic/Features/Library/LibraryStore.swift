@@ -39,6 +39,13 @@ final class LibraryStore {
     private(set) var playlists: Loadable<[JellyfinItem]> = .idle
     private(set) var recentlyAdded: Loadable<[JellyfinItem]> = .idle
 
+    // Home shelves. Each is independent so one failing server query leaves the
+    // rest of the page intact rather than blanking it.
+    private(set) var recentlyPlayed: Loadable<[JellyfinItem]> = .idle
+    private(set) var mostPlayed: Loadable<[JellyfinItem]> = .idle
+    private(set) var favorites: Loadable<[JellyfinItem]> = .idle
+    private(set) var rediscover: Loadable<[JellyfinItem]> = .idle
+
     /// Album tracks, keyed by album id, so reopening an album is instant.
     private var trackCache: [String: [JellyfinItem]] = [:]
 
@@ -134,6 +141,62 @@ final class LibraryStore {
         }
     }
 
+    /// Loads the Home shelves concurrently.
+    ///
+    /// Each shelf owns its own state, so a query that fails or comes back empty
+    /// hides that one row instead of taking the page down with it — which matters
+    /// on a personal library where several of these are legitimately empty until
+    /// there's listening history.
+    func loadHomeIfNeeded() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadRecentlyAddedIfNeeded() }
+            group.addTask { await self.loadRecentlyPlayedIfNeeded() }
+            group.addTask { await self.loadMostPlayedIfNeeded() }
+            group.addTask { await self.loadFavoritesIfNeeded() }
+            group.addTask { await self.loadRediscoverIfNeeded() }
+        }
+    }
+
+    func loadRecentlyPlayedIfNeeded() async {
+        guard case .idle = recentlyPlayed else { return }
+        recentlyPlayed = .loading
+        recentlyPlayed = await load {
+            try await self.acrossLibraries { parentId in
+                try await self.client.recentlyPlayedAlbums(parentId: parentId, limit: 20)
+            }
+        }
+    }
+
+    func loadMostPlayedIfNeeded() async {
+        guard case .idle = mostPlayed else { return }
+        mostPlayed = .loading
+        mostPlayed = await load {
+            try await self.acrossLibraries { parentId in
+                try await self.client.mostPlayedAlbums(parentId: parentId, limit: 20)
+            }
+        }
+    }
+
+    func loadFavoritesIfNeeded() async {
+        guard case .idle = favorites else { return }
+        favorites = .loading
+        favorites = await load {
+            try await self.acrossLibraries { parentId in
+                try await self.client.favoriteAlbums(parentId: parentId, limit: 20)
+            }
+        }
+    }
+
+    func loadRediscoverIfNeeded() async {
+        guard case .idle = rediscover else { return }
+        rediscover = .loading
+        rediscover = await load {
+            try await self.acrossLibraries { parentId in
+                try await self.client.notPlayedRecently(parentId: parentId, limit: 20)
+            }
+        }
+    }
+
     /// Pull to refresh — drops every cache and reloads what's on screen.
     func refresh() async {
         trackCache.removeAll()
@@ -141,7 +204,11 @@ final class LibraryStore {
         artists = .idle
         playlists = .idle
         recentlyAdded = .idle
-        await loadRecentlyAddedIfNeeded()
+        recentlyPlayed = .idle
+        mostPlayed = .idle
+        favorites = .idle
+        rediscover = .idle
+        await loadHomeIfNeeded()
         await loadAlbumsIfNeeded()
     }
 
@@ -161,6 +228,23 @@ final class LibraryStore {
 
     func albums(byArtist artistId: String) async throws -> [JellyfinItem] {
         try await client.albums(byArtist: artistId)
+    }
+
+    /// Flips the favourite flag on the server. Favourites are the one piece of
+    /// album-level user data Jellyfin genuinely keeps, because the user sets it
+    /// rather than it being derived from playback.
+    @discardableResult
+    func toggleFavorite(_ item: JellyfinItem) async -> Bool {
+        let newValue = !(item.userData?.isFavorite ?? false)
+        do {
+            _ = try await client.setFavorite(newValue, itemId: item.id)
+            // The shelf is now stale; let it reload rather than patching it.
+            favorites = .idle
+            return newValue
+        } catch {
+            log.error("Could not set favourite: \(error.localizedDescription, privacy: .public)")
+            return !newValue
+        }
     }
 
     func search(_ term: String) async throws -> [JellyfinItem] {

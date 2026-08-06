@@ -37,7 +37,13 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        // Three tabs, not Apple Music's five. New and Radio exist because Apple has
+        // a catalogue and an editorial staff; against a personal library they would
+        // be two permanently empty screens.
         TabView {
+            Tab("Home", systemImage: "house") {
+                HomeView()
+            }
             Tab("Library", systemImage: "music.note.list") {
                 LibraryView()
             }
