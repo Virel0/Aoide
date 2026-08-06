@@ -144,7 +144,10 @@ struct PlaylistsView: View {
                 LoadingRow()
             case .failed(let message):
                 ErrorRow(message: message) {
-                    Task { await store.loadPlaylistsIfNeeded() }
+                    // Not `loadPlaylistsIfNeeded` — its `.idle` guard makes it a
+                    // no-op from a failed state, which is exactly when the button
+                    // is on screen.
+                    Task { await store.reloadPlaylists() }
                 }
             case .loaded(let playlists):
                 if playlists.isEmpty {

@@ -75,10 +75,12 @@ final class LibraryStore {
             log.info("Scoped to \(ids.count, privacy: .public) music librar\(ids.count == 1 ? "y" : "ies", privacy: .public)")
             return ids
         } catch {
-            // Falling back to unscoped is worse but still functional — better than
-            // an empty library because one request failed.
-            log.error("Could not resolve music libraries, querying unscoped: \(error.localizedDescription, privacy: .public)")
-            musicLibraryIds = []
+            // Deliberately NOT caching the failure. Assigning `[]` here looks
+            // harmless but is the same non-nil sentinel a successful empty result
+            // produces, so the fast path above would return it forever — silently
+            // un-scoping every query for the rest of the session and letting
+            // audiobook chapters back into Songs and Search.
+            log.error("Could not resolve music libraries, querying unscoped once: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }
@@ -123,6 +125,13 @@ final class LibraryStore {
                 try await self.client.albumArtists(parentId: parentId).items
             }
         }
+    }
+
+    /// Forces a retry from a `.failed` state, which `loadPlaylistsIfNeeded` will
+    /// not do — its `.idle` guard is what made the Try Again button a no-op.
+    func reloadPlaylists() async {
+        playlists = .idle
+        await loadPlaylistsIfNeeded()
     }
 
     func loadPlaylistsIfNeeded() async {
@@ -200,6 +209,7 @@ final class LibraryStore {
     /// Pull to refresh — drops every cache and reloads what's on screen.
     func refresh() async {
         trackCache.removeAll()
+        musicLibraryIds = nil
         albums = .idle
         artists = .idle
         playlists = .idle
@@ -334,17 +344,24 @@ final class LibraryStore {
     /// Flips the favourite flag on the server. Favourites are the one piece of
     /// album-level user data Jellyfin genuinely keeps, because the user sets it
     /// rather than it being derived from playback.
+    /// `desired` is the intent, not a derivation. Deriving it from `item.userData`
+    /// read a snapshot captured when the list was fetched, so a second tap sent the
+    /// same value again and un-favouriting was impossible.
     @discardableResult
-    func toggleFavorite(_ item: JellyfinItem) async -> Bool {
-        let newValue = !(item.userData?.isFavorite ?? false)
+    func toggleFavorite(
+        _ item: JellyfinItem,
+        to desired: Bool? = nil
+    ) async -> Bool {
+        let target = desired ?? !(item.userData?.isFavorite ?? false)
         do {
-            _ = try await client.setFavorite(newValue, itemId: item.id)
+            let updated = try await client.setFavorite(target, itemId: item.id)
             // The shelf is now stale; let it reload rather than patching it.
             favorites = .idle
-            return newValue
+            return updated.isFavorite
         } catch {
             log.error("Could not set favourite: \(error.localizedDescription, privacy: .public)")
-            return !newValue
+            // Report the unchanged value so the glyph snaps back rather than lying.
+            return !target
         }
     }
 
@@ -379,12 +396,15 @@ final class LibraryStore {
 
     /// Turns Jellyfin items into tracks and hands them to the engine.
     func play(_ items: [JellyfinItem], startingAt index: Int = 0, shuffled: Bool = false) {
-        let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
-        guard !tracks.isEmpty else { return }
-        // The index refers to `items`; if anything was filtered out (a non-audio
-        // entry in a playlist) the positions would no longer line up.
-        let adjusted = min(index, tracks.count - 1)
-        PlaybackEngine.shared.play(tracks, startingAt: adjusted, shuffled: shuffled)
+        // `index` addresses `items`, but the bridge drops anything that isn't
+        // playable — a Jellyfin playlist can hold non-audio entries. Clamping the
+        // old index was not enough: one dropped row above the tap made every
+        // subsequent tap start the wrong song. The bridge now reports which source
+        // rows survived so the position can be translated exactly.
+        let mapped = JellyfinPlaybackBridge.playableTracks(from: items, client: client)
+        guard !mapped.tracks.isEmpty else { return }
+        let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
+        PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
     }
 
     func playNext(_ items: [JellyfinItem]) {
@@ -400,7 +420,17 @@ final class LibraryStore {
     private func load<Value>(_ body: @escaping () async throws -> Value) async -> Loadable<Value> {
         do {
             return .loaded(try await body())
+        } catch is CancellationError {
+            // Back to idle, not failed. SwiftUI cancels `.task` on every disappear,
+            // so caching this as an error left whole screens permanently dead after
+            // an ordinary tab switch during launch.
+            return .idle
         } catch {
+            if Task.isCancelled { return .idle }
+            if case JellyfinError.unauthorized = error {
+                AppSession.shared.invalidateSession()
+                return .idle
+            }
             let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
             log.error("Library load failed: \(message, privacy: .public)")
             return .failed(message)

@@ -189,8 +189,12 @@ struct SearchView: View {
             let found = try await store.search(term)
             guard mine == generation else { return }
             results = found
+        } catch is CancellationError {
+            // Every keystroke cancels the previous request; that is the design, not
+            // a failure to report.
+            return
         } catch {
-            guard mine == generation else { return }
+            guard !Task.isCancelled, mine == generation else { return }
             errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
         }
         isSearching = false

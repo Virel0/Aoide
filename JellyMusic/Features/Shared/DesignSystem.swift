@@ -25,6 +25,8 @@ enum Design {
         static let compactCard: CGFloat = 130
         static let listThumbnail: CGFloat = 52
         static let miniPlayerArtwork: CGFloat = 32
+        /// Vertical room a scrolling page must leave for the mini player.
+        static let miniPlayerClearance: CGFloat = 54
     }
 
     enum Spacing {

@@ -210,10 +210,22 @@ public final class PlaybackEngine {
 
     public func resume() {
         guard queue.current != nil else { return }
-        if player.currentItem == nil {
+
+        // Rebuild whenever what's loaded is unusable, not only when it's missing.
+        // AVQueuePlayer does not advance past a failed item, so without this a
+        // retry called `play()` on a dead item and the UI claimed to be playing
+        // with silence coming out — permanently.
+        let loadedItemIsDead = player.currentItem?.status == .failed
+        var stateIsFailed = false
+        if case .failed = state { stateIsFailed = true }
+
+        if player.currentItem == nil || loadedItemIsDead || stateIsFailed {
+            // The server never saw a Stopped for the track that died.
+            stopReportingCurrent()
             beginCurrentTrack(autoplay: true)
             return
         }
+
         player.play()
         state = .playing
         updateNowPlayingInfo()
@@ -252,13 +264,21 @@ public final class PlaybackEngine {
         // back to the one that just finished.
         let advanced = reconcileWithPlayer()
 
-        if !advanced {
-            if elapsed > restartThreshold {
-                seek(to: .zero)
-                return
-            }
-            stopReportingCurrent()
+        if !advanced, elapsed > restartThreshold {
+            seek(to: .zero)
+            return
         }
+
+        // Report the outgoing track BEFORE the queue moves — `stopReportingCurrent`
+        // reads `queue.currentTrack`, so afterwards it would attribute the stop to
+        // the track being moved to. But only report at all if we actually leave:
+        // at the head of the queue `skipToPrevious` returns `.ended` and the track
+        // carries on playing, and closing its server session then leaves the rest
+        // of the play unrecorded.
+        var probe = queue
+        let willMove = probe.skipToPrevious() != .ended
+
+        if !advanced, willMove { stopReportingCurrent() }
 
         switch queue.skipToPrevious() {
         case .moved, .repeatCurrent:
@@ -318,6 +338,12 @@ public final class PlaybackEngine {
             return
         }
 
+        // Every caller here is a deliberate user action or a fresh load, never the
+        // automatic boundary — so a track being asked for by name earns another try
+        // even if it failed earlier. Auto-advance past a dead track still works,
+        // because there the failed entry sits behind the head and stays filtered.
+        if let id = queue.current?.id { failedEntries.remove(id) }
+
         elapsed = .zero
         duration = track.duration
         lastReportedSecond = -1
@@ -360,10 +386,16 @@ public final class PlaybackEngine {
             return queue.renderWindow(count: lookahead + 1)
         }
         // Ask for extra slots so filtering a dead track still fills the window.
+        //
+        // The head is never filtered, even if it previously failed. Dropping it
+        // would leave the player loading a *different* track than the queue says is
+        // current — Now Playing, the mini player and the server report would all
+        // name one song while another played.
         return queue.renderWindow(count: lookahead + 1 + failedEntries.count)
-            .filter { !failedEntries.contains($0.entryId) }
+            .enumerated()
+            .filter { $0.offset == 0 || !failedEntries.contains($0.element.entryId) }
             .prefix(lookahead + 1)
-            .map { $0 }
+            .map(\.element)
     }
 
     /// The only function permitted to mutate the player's item list.

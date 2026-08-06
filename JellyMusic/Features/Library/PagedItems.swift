@@ -77,7 +77,18 @@ final class PagedItems {
 
             // A server that reports a total it then won't serve would loop forever.
             if response.items.isEmpty { total = items.count }
+        } catch is CancellationError {
+            // Navigating away cancels the page. Recording that as an error left a
+            // permanent "cancelled" message on the screen when you came back,
+            // because `loadFirstPageIfNeeded` refuses to retry once errorMessage is
+            // set.
+            return
         } catch {
+            if Task.isCancelled { return }
+            if case JellyfinError.unauthorized = error {
+                AppSession.shared.invalidateSession()
+                return
+            }
             let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
             log.error("Page load failed at \(startIndex, privacy: .public): \(message, privacy: .public)")
             // Only surface the error if there's nothing on screen; failing to extend

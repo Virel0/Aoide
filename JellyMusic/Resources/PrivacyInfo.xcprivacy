@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- JellyMusic talks only to the user's own Jellyfin server. It has no
+	     analytics, no third-party SDKs, and collects nothing. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- UserDefaults is on Apple's required-reason list. Since May 2024 an
+			     upload that touches one without declaring it is rejected with
+			     ITMS-91053. We store the server address, the signed-in username,
+			     the install's device id, appearance and lyric-timing preferences,
+			     and recent searches — all read only by this app, which is what
+			     CA92.1 covers. If an App Group or extension is ever added and
+			     UserDefaults(suiteName:) starts being used, this needs supplementing. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

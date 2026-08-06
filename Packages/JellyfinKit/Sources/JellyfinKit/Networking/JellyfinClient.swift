@@ -142,6 +142,12 @@ public struct JellyfinClient: Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError {
+            // A cancelled request is not a failure — SwiftUI cancels `.task` every
+            // time a view disappears, so this fires constantly during ordinary
+            // navigation. Surfacing it as `.transport("cancelled")` let callers
+            // cache it as a permanent error and left whole screens dead for the
+            // rest of the session.
+            if error.code == .cancelled { throw CancellationError() }
             throw JellyfinError.transport(error.localizedDescription)
         }
 

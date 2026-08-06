@@ -132,6 +132,33 @@ final class AppSession {
         state = .signedIn(user)
     }
 
+    /// The stored token is no longer accepted — the password changed, or the device
+    /// was removed from Jellyfin's dashboard, which is how a shared TestFlight build
+    /// gets de-authorised.
+    ///
+    /// Without this the app sat on a signed-in shell showing "Your username or
+    /// password wasn't accepted" on every screen, with no route back to the login
+    /// form. Idempotent because several requests 401 at once.
+    func invalidateSession() {
+        guard case .signedIn = state else { return }
+        Self.log.error("Access token rejected; signing out.")
+
+        // Disconnect first, exactly as signOut does: otherwise the engine keeps a
+        // queue of 401ing URLs and a reporter posting to a session that no longer
+        // exists, with the mini player gone and no way to stop it.
+        JellyfinPlaybackBridge.disconnect()
+        clearStoredCredentials()
+        client = nil
+        state = .signedOut
+    }
+
+    private func clearStoredCredentials() {
+        KeychainStore.remove(forKey: Keys.token)
+        UserDefaults.standard.removeObject(forKey: Keys.serverURL)
+        UserDefaults.standard.removeObject(forKey: Keys.userId)
+        UserDefaults.standard.removeObject(forKey: Keys.username)
+    }
+
     func signOut() async {
         // Stop the music and drop the reporter before the token goes away, so the
         // server doesn't keep showing a session that no longer exists.
@@ -141,11 +168,7 @@ final class AppSession {
         // in a signed-in state they're trying to leave.
         try? await client?.signOut()
 
-        KeychainStore.remove(forKey: Keys.token)
-        UserDefaults.standard.removeObject(forKey: Keys.serverURL)
-        UserDefaults.standard.removeObject(forKey: Keys.userId)
-        UserDefaults.standard.removeObject(forKey: Keys.username)
-
+        clearStoredCredentials()
         client = nil
         state = .signedOut
     }

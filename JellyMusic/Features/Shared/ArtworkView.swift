@@ -16,6 +16,11 @@ actor ArtworkCache {
 
     private init() {
         cache.countLimit = 300
+        // A count limit alone is not a memory limit: requested widths span 160 to
+        // 1000, so 300 hero covers is several hundred megabytes of decoded backing
+        // store. NSCache does evict under pressure, but only best-effort and late —
+        // on a phone already holding an AVQueuePlayer buffer that is a jetsam.
+        cache.totalCostLimit = 64 * 1024 * 1024
     }
 
     func image(for url: URL) async -> UIImage? {
@@ -33,7 +38,10 @@ actor ArtworkCache {
 
         let image = await task.value
         inFlight[url] = nil
-        if let image { cache.setObject(image, forKey: url as NSURL) }
+        if let image {
+            let bytes = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+            cache.setObject(image, forKey: url as NSURL, cost: bytes)
+        }
         return image
     }
 }
@@ -67,6 +75,7 @@ struct ArtworkView: View {
             }
             .clipped()
             .clipShape(.rect(cornerRadius: cornerRadius))
+            .accessibilityHidden(true)
             .overlay {
                 // A hairline keeps pale covers from bleeding into a light background.
                 RoundedRectangle(cornerRadius: cornerRadius)

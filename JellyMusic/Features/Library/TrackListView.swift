@@ -33,12 +33,23 @@ struct TrackListView: View {
     /// Albums pressed to more than one disc need their track numbers explained —
     /// otherwise numbering restarts at 1 partway down the page with no reason given.
     /// A personal FLAC library is exactly the kind that holds box sets.
-    private var discs: [(number: Int, tracks: [JellyfinItem])] {
+    private var discs: [(number: Int?, tracks: [JellyfinItem])] {
+        // Disc headers are meaningless on a playlist, and grouping one by the disc
+        // numbers its tracks happen to carry would scatter it into nonsense.
+        guard source.showsTrackNumbers else { return [] }
+
         let numbers = Set(tracks.compactMap(\.parentIndexNumber))
         guard numbers.count > 1 else { return [] }
-        return numbers.sorted().map { disc in
+
+        var sections: [(number: Int?, tracks: [JellyfinItem])] = numbers.sorted().map { disc in
             (disc, tracks.filter { $0.parentIndexNumber == disc })
         }
+        // A track with no disc tag matched no section and rendered nowhere —
+        // silently missing from the page. A personal library with hand-tagged rips
+        // hits this constantly.
+        let untagged = tracks.filter { $0.parentIndexNumber == nil }
+        if !untagged.isEmpty { sections.append((nil, untagged)) }
+        return sections
     }
 
     var body: some View {
@@ -66,7 +77,7 @@ struct TrackListView: View {
                             row(for: track, at: tracks.firstIndex { $0.id == track.id } ?? 0)
                         }
                     } header: {
-                        Text("Disc \(disc.number)")
+                        Text(disc.number.map { "Disc \($0)" } ?? "Other")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -100,6 +111,9 @@ struct TrackListView: View {
         .onTapGesture {
             store.play(tracks, startingAt: index)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { store.play(tracks, startingAt: index) }
         .contextMenu {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
                 store.playNext([track])
@@ -198,7 +212,13 @@ struct TrackListView: View {
             .clipShape(.capsule)
 
             Button {
-                Task { await store.toggleFavorite(artworkItem) }
+                // Drive from local intent and adopt what the server confirms.
+                // Deriving the new value from `artworkItem.userData` read a snapshot
+                // frozen when the list was fetched, so the glyph never moved and a
+                // second tap re-sent the same value — un-favouriting was impossible.
+                let desired = !isFavorite
+                isFavorite = desired
+                Task { isFavorite = await store.toggleFavorite(artworkItem, to: desired) }
             } label: {
                 Image(systemName: isFavorite ? "heart.fill" : "heart")
                     .font(.system(size: 17, weight: .semibold))

@@ -112,7 +112,11 @@ struct AlbumsGridView: View {
     var body: some View {
         ScrollView {
             if let paged {
-                if paged.isEmpty {
+                // First, deliberately: `reload()` clears items and the error before
+                // raising the flag, so any other order flashes "No Albums" on retry.
+                if paged.isLoadingFirstPage {
+                    ProgressView().padding(.top, 60)
+                } else if paged.isEmpty {
                     ContentUnavailableView("No Albums", systemImage: "square.stack")
                         .padding(.top, 60)
                 } else if let message = paged.errorMessage {
@@ -240,16 +244,20 @@ struct SongsListView: View {
         }
     }
 
+    /// Play from here through the rest of what's loaded, which is what tapping a
+    /// song in a long list is understood to mean.
+    private func play(_ song: JellyfinItem, in paged: PagedItems) {
+        guard let index = paged.items.firstIndex(where: { $0.id == song.id }) else { return }
+        store.play(paged.items, startingAt: index)
+    }
+
     private func songRow(_ song: JellyfinItem, in paged: PagedItems) -> some View {
         SongRow(song: song)
             .contentShape(.rect)
-            .onTapGesture {
-                // Play from here through the rest of what's loaded, which is what
-                // tapping a song in a long list is understood to mean.
-                if let index = paged.items.firstIndex(where: { $0.id == song.id }) {
-                    store.play(paged.items, startingAt: index)
-                }
-            }
+            .onTapGesture { play(song, in: paged) }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { play(song, in: paged) }
             .trackContextMenu(song)
             .onAppear { Task { await paged.loadMoreIfNeeded(currentItem: song) } }
     }

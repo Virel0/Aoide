@@ -40,24 +40,50 @@ enum JellyfinPlaybackBridge {
 
     // MARK: - Mapping
 
+    /// Converts Jellyfin items into playable tracks, and reports which source rows
+    /// survived.
+    ///
+    /// The indices matter: a caller that says "start at row 4" is addressing the
+    /// list the user tapped, and dropping an unplayable row above it shifts every
+    /// position below. Returning both together keeps the filter predicate in one
+    /// place rather than duplicated at each call site where it could drift.
+    static func playableTracks(
+        from items: [JellyfinItem],
+        client: JellyfinClient,
+        quality: StreamQuality = .lossless
+    ) -> (tracks: [Track], sourceIndices: [Int]) {
+        var tracks: [Track] = []
+        var indices: [Int] = []
+        for (index, item) in items.enumerated() {
+            guard let track = track(from: item, client: client, quality: quality) else { continue }
+            tracks.append(track)
+            indices.append(index)
+        }
+        return (tracks, indices)
+    }
+
     /// Converts Jellyfin items into playable tracks, dropping anything that isn't
     /// audio or that we can't build a stream URL for.
     static func tracks(from items: [JellyfinItem], client: JellyfinClient, quality: StreamQuality = .lossless) -> [Track] {
-        items.compactMap { item in
-            guard item.type == .audio else { return nil }
-            guard let streamURL = try? client.streamURL(for: item.id, quality: quality) else { return nil }
+        playableTracks(from: items, client: client, quality: quality).tracks
+    }
 
-            return Track(
-                id: item.id,
-                title: item.name,
-                artist: item.albumArtist ?? item.artists.first ?? "Unknown Artist",
-                album: item.album ?? "",
-                duration: item.duration,
-                streamURL: streamURL,
-                artworkURL: client.artworkURL(for: item, maxWidth: nowPlayingArtworkWidth),
-                trackNumber: item.indexNumber
-            )
-        }
+    /// The single definition of "can this be played". Both public entry points go
+    /// through it so the predicate can't drift between them.
+    private static func track(from item: JellyfinItem, client: JellyfinClient, quality: StreamQuality) -> Track? {
+        guard item.type == .audio else { return nil }
+        guard let streamURL = try? client.streamURL(for: item.id, quality: quality) else { return nil }
+
+        return Track(
+            id: item.id,
+            title: item.name,
+            artist: item.albumArtist ?? item.artists.first ?? "Unknown Artist",
+            album: item.album ?? "",
+            duration: item.duration,
+            streamURL: streamURL,
+            artworkURL: client.artworkURL(for: item, maxWidth: nowPlayingArtworkWidth),
+            trackNumber: item.indexNumber
+        )
     }
 }
 

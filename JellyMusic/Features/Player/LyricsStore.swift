@@ -55,16 +55,39 @@ final class LyricsStore {
         return true
     }
 
+    /// Tracked separately from `entries` on purpose. Clearing the entry on cancel
+    /// while using it as the in-flight marker races into a permanent spinner: task A
+    /// sets `.loading`, is cancelled; task B sees non-nil and bails; A then clears
+    /// it and nobody retries.
+    private var inFlight: Set<String> = []
+
     func load(trackId: String) async {
-        guard entries[trackId] == nil else { return }
+        guard !inFlight.contains(trackId) else { return }
+        // A previous failure is worth retrying; a confirmed answer is not.
+        switch entries[trackId] {
+        case .loaded, .absent: return
+        default: break
+        }
+
+        inFlight.insert(trackId)
         entries[trackId] = .loading
+        defer { inFlight.remove(trackId) }
+
         do {
             if let lyrics = try await client.lyrics(forItem: trackId) {
                 entries[trackId] = .loaded(lyrics)
             } else {
                 entries[trackId] = .absent
             }
+        } catch is CancellationError {
+            // Dismissing Now Playing before the fetch lands must not cache a
+            // permanent failure for that track.
+            entries[trackId] = nil
         } catch {
+            if Task.isCancelled {
+                entries[trackId] = nil
+                return
+            }
             let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
             log.error("Lyrics load failed: \(message, privacy: .public)")
             entries[trackId] = .failed(message)

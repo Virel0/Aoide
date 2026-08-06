@@ -24,7 +24,9 @@ struct HomeView: View {
                     shelf("Favourites", store.favorites)
                     shelf("Rediscover", store.rediscover, subtitle: "Not played in a while")
 
-                    if isEmpty {
+                    if anyShelfFailed {
+                        unreachableState
+                    } else if isEmpty {
                         emptyState
                     }
                 }
@@ -76,15 +78,36 @@ struct HomeView: View {
         return store.albums.value?.first.map { ($0, "From your library") }
     }
 
-    private var isEmpty: Bool {
+    private var shelfStates: [LibraryStore.Loadable<[JellyfinItem]>] {
         [store.recentlyAdded, store.recentlyPlayed, store.mostPlayed, store.favorites, store.rediscover]
-            .allSatisfy { state in
-                switch state {
-                case .loaded(let items): items.isEmpty
-                case .failed: true
-                default: false
-                }
+    }
+
+    private var anyShelfFailed: Bool {
+        shelfStates.contains { if case .failed = $0 { return true } else { return false } }
+    }
+
+    /// Genuinely empty — every shelf loaded and had nothing. Failure is excluded
+    /// deliberately: folding it in here told someone whose server was down that
+    /// they had no music, and pointed them at an equally broken Library tab.
+    private var isEmpty: Bool {
+        shelfStates.allSatisfy { state in
+            if case .loaded(let items) = state { return items.isEmpty }
+            return false
+        }
+    }
+
+    private var unreachableState: some View {
+        ContentUnavailableView {
+            Label("Can't Reach Your Server", systemImage: "wifi.exclamationmark")
+        } description: {
+            Text("JellyMusic couldn't load your library. Check that your server is running and you're on the right network.")
+        } actions: {
+            Button("Try Again") {
+                Task { await store.refresh() }
             }
+            .buttonStyle(.bordered)
+        }
+        .padding(.top, 60)
     }
 
     private var emptyState: some View {

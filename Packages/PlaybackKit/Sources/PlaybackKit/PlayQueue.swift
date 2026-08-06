@@ -230,8 +230,17 @@ public struct PlayQueue: Sendable {
             return
         }
         entries.insert(contentsOf: newEntries, at: position + 1)
-        // Keep the saved order in sync, or un-shuffling would drop these.
-        unshuffledEntries?.append(contentsOf: newEntries)
+        // Mirror the *placement*, not just the membership. Appending here meant
+        // that turning shuffle off flung freshly queued songs to the end of a
+        // restored order — out of Up Next entirely, hours away.
+        if let saved = unshuffledEntries {
+            let anchor = current.map { c in saved.firstIndex { $0.id == c.id } } ?? nil
+            if let anchor {
+                unshuffledEntries?.insert(contentsOf: newEntries, at: anchor + 1)
+            } else {
+                unshuffledEntries?.append(contentsOf: newEntries)
+            }
+        }
     }
 
     /// "Play Last" — append to the end.

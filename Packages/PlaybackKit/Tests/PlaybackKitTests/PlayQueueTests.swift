@@ -226,6 +226,30 @@ struct EditingTests {
         #expect(queue.titles.contains("z"))
     }
 
+    /// Play Next inserted into the live order but only appended to the saved one,
+    /// so turning shuffle off flung freshly queued songs to the end — out of Up
+    /// Next entirely, potentially hours away.
+    @Test("play-next keeps its place when shuffle is turned off")
+    func playNextSurvivesUnshuffle() {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a", "b", "c", "d", "e"), startingAt: 0, shuffled: true)
+        queue.playNext(makeTracks("x"))
+        #expect(queue.upNext.first?.track.title == "x")
+
+        queue.setShuffled(false)
+        let position = try! #require(queue.titles.firstIndex(of: "x"))
+        let current = try! #require(queue.position)
+        #expect(position == current + 1, "should still be the very next thing to play")
+    }
+
+    @Test("play-next still appends when there is no saved order to place it in")
+    func playNextUnshuffled() {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a", "b"))
+        queue.playNext(makeTracks("x"))
+        #expect(queue.titles == ["a", "x", "b"])
+    }
+
     @Test("removing an earlier track keeps the same song playing")
     func removeBeforeCurrent() {
         var queue = PlayQueue()

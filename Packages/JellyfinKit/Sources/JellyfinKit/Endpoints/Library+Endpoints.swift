@@ -16,7 +16,12 @@ public enum ItemSort: String, Sendable, CaseIterable, Identifiable {
 
     /// The orderings worth offering in a sort menu. `albumTrackOrder` and the
     /// playback-derived ones aren't user-facing choices.
-    public static var browsable: [ItemSort] { [.name, .artist, .dateAdded, .releaseDate, .random] }
+    ///
+    /// `.random` is deliberately absent: Jellyfin's Random is unseeded, so every
+    /// page request reshuffles the whole library and page two is rows 201-400 of a
+    /// different permutation — you'd scroll past albums twice and never see others.
+    /// It stays in the enum for `shuffleEverything`, which asks for one unpaged page.
+    public static var browsable: [ItemSort] { [.name, .artist, .dateAdded, .releaseDate] }
 
     public var displayName: String {
         switch self {
@@ -82,7 +87,12 @@ extension JellyfinClient {
         )
     }
 
-    public func albumArtists(parentId: String? = nil, startIndex: Int = 0, limit: Int? = nil) async throws -> ItemsResponse {
+    public func albumArtists(
+        parentId: String? = nil,
+        searchTerm: String? = nil,
+        startIndex: Int = 0,
+        limit: Int? = nil
+    ) async throws -> ItemsResponse {
         let userId = try requireUserId()
         var query = [
             URLQueryItem(name: "userId", value: userId),
@@ -92,6 +102,7 @@ extension JellyfinClient {
             URLQueryItem(name: "fields", value: Self.standardFields),
         ]
         if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
+        if let searchTerm { query.append(URLQueryItem(name: "searchTerm", value: searchTerm)) }
         if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try await get(path: "Artists/AlbumArtists", query: query)
     }
@@ -190,7 +201,12 @@ extension JellyfinClient {
         if let parentId { query.append(URLQueryItem(name: "parentId", value: parentId)) }
 
         // This endpoint returns a bare array rather than the usual paged envelope.
+        //
+        // The filter is load-bearing, not redundant with `groupItems`: when a track
+        // has no MusicAlbum parent the server emits the Audio item itself. Those
+        // would render as albums in a shelf and open an album page with no tracks.
         return try await get([JellyfinItem].self, path: "Items/Latest", query: query)
+            .filter { $0.type == .musicAlbum }
     }
 
     /// Albums whose tracks you've played, longest ago first — the shelf a personal
@@ -314,17 +330,32 @@ extension JellyfinClient {
 
     /// Scope this to a music library wherever possible. Unscoped, `includeItemTypes=Audio`
     /// also matches audiobook chapters, which Jellyfin stores as `Audio` items too.
+    ///
+    /// Artists come from a second request rather than from `includeItemTypes`.
+    /// `/Items` structurally cannot return them: artists are stored as
+    /// item-by-name rows with a null `TopParentId`, and passing a `parentId`
+    /// populates the `TopParentIds` filter they can never satisfy — so asking for
+    /// `MusicArtist` here silently returns nothing, forever.
+    ///
+    /// `/Artists/AlbumArtists` rather than `/Artists`, so that someone featured on
+    /// a single track doesn't appear and then open an empty page — the artist page
+    /// loads by `albumArtistIds`.
     public func search(_ term: String, parentId: String? = nil, limit: Int = 40) async throws -> [JellyfinItem] {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        return try await items(
-            includeTypes: ["Audio", "MusicAlbum", "MusicArtist", "Playlist"],
+
+        async let others = items(
+            includeTypes: ["Audio", "MusicAlbum", "Playlist"],
             parentId: parentId,
             searchTerm: trimmed,
             sort: .name,
             direction: .ascending,
             limit: limit
         ).items
+        async let artists = albumArtists(parentId: parentId, searchTerm: trimmed, limit: limit).items
+
+        var seen = Set<String>()
+        return try await (artists + others).filter { seen.insert($0.id).inserted }
     }
 
     // MARK: - Radio

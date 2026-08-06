@@ -1,4 +1,3 @@
-import PlaybackKit
 import SwiftUI
 
 /// Light, dark, or follow the system.
@@ -42,13 +41,13 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 /// last row of every list sits permanently behind it and reads as "the page won't
 /// scroll any further".
 struct MiniPlayerInset: ViewModifier {
-    @State private var engine = PlaybackEngine.shared
-
     func body(content: Content) -> some View {
+        // Unconditional, because the accessory slot is. Before anything has played
+        // it shows "Shuffle your library" rather than nothing, so gating the inset
+        // on a current track left the last row of every page buried on first launch
+        // — which is precisely the state a new user starts in.
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if engine.currentTrack != nil {
-                Color.clear.frame(height: 54)
-            }
+            Color.clear.frame(height: Design.Size.miniPlayerClearance)
         }
     }
 }
