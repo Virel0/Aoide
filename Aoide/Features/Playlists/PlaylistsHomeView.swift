@@ -28,6 +28,7 @@ struct PlaylistsHomeView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(LocalPlaylistStore.self) private var playlists
     @State private var indexer = SongIndexer.shared
+    @State private var sync = SyncCoordinator.shared
 
     @State private var draftName = ""
     @State private var isCreatingPlaylist = false
@@ -76,6 +77,13 @@ struct PlaylistsHomeView: View {
         .refreshable {
             await playlists.reload()
             if folder == nil { await library.reloadPlaylists() }
+        }
+        // A sync that landed another device's playlists wrote them straight into the
+        // database, which this screen read once in `.task` and has held as an array
+        // ever since. `.task` does not run again when the app comes back from the
+        // background, and that is precisely when a sync brings changes in.
+        .onChange(of: sync.appliedRevision) { _, _ in
+            Task { await playlists.reload() }
         }
         .alert("New Playlist", isPresented: $isCreatingPlaylist) {
             TextField("Name", text: $draftName)

@@ -34,4 +34,25 @@ enum CurationDatabase {
             log.error("Couldn't open the curation store: \(error.localizedDescription, privacy: .public)")
         }
     }
+
+    /// Hands the store to a Jellyfin account, erasing it first if it belonged to
+    /// somebody else.
+    ///
+    /// Called before the session is announced as signed in, so nothing has read a row
+    /// or queued an op against the wrong account's data. The erasure itself, and why
+    /// it happens on the way in rather than on sign-out, is in
+    /// `CurationStore.adoptAccount`.
+    @MainActor
+    static func adopt(accountId: String) {
+        guard let store = shared else { return }
+        do {
+            guard try store.adoptAccount(accountId) else { return }
+            // The sync status is the account's too — "last synced 5 minutes ago" would
+            // be describing a library this account has never seen.
+            SyncCoordinator.shared.forgetAccountStatus()
+            log.notice("Curation store belonged to another account; erased it.")
+        } catch {
+            log.error("Couldn't claim the curation store: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 }

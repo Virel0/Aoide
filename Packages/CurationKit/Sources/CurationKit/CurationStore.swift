@@ -51,6 +51,11 @@ public final class CurationStore: Sendable {
         try dbQueue.write(body)
     }
 
+    /// The queue itself. Internal, and only for the one thing a closure over
+    /// `Database` cannot express: GRDB's own change observation, which has to be
+    /// handed a reader so it can watch commits rather than answer one question.
+    var databaseQueue: DatabaseQueue { dbQueue }
+
     // MARK: - Recording changes
 
     /// Saves a syncable row and its op in one transaction.

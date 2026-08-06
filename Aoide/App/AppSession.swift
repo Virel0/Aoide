@@ -102,7 +102,11 @@ final class AppSession {
         let restored = JellyfinClient(serverURL: serverURL, device: Self.deviceProfile)
             .authenticated(as: credentials)
         client = restored
+        // Before anything can read a row or queue an op, so a store left behind by a
+        // different account is gone rather than being pushed into this one's log.
+        CurationDatabase.adopt(accountId: userId)
         JellyfinPlaybackBridge.connect(client: restored)
+        SyncCoordinator.shared.connect(client: restored)
         state = .signedIn(JellyfinUser(id: userId, name: username, serverId: nil))
     }
 
@@ -128,7 +132,9 @@ final class AppSession {
 
         let authenticated = anonymous.authenticated(as: credentials)
         client = authenticated
+        CurationDatabase.adopt(accountId: credentials.userId)
         JellyfinPlaybackBridge.connect(client: authenticated)
+        SyncCoordinator.shared.connect(client: authenticated)
         state = .signedIn(user)
     }
 
@@ -147,6 +153,7 @@ final class AppSession {
         // queue of 401ing URLs and a reporter posting to a session that no longer
         // exists, with the mini player gone and no way to stop it.
         JellyfinPlaybackBridge.disconnect()
+        SyncCoordinator.shared.disconnect()
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil
@@ -171,6 +178,13 @@ final class AppSession {
         // Stop the music and drop the reporter before the token goes away, so the
         // server doesn't keep showing a session that no longer exists.
         JellyfinPlaybackBridge.disconnect()
+
+        // Not "sync one last time first". Signing out must never block on the
+        // network, and it does not need to: unpushed ops stay in the queue, and
+        // signing back in as the same person sends them. Only signing in as somebody
+        // *else* discards them, which is the one case where they are no longer this
+        // device's business.
+        SyncCoordinator.shared.disconnect()
 
         // Tell the server if we can, but never let a network failure trap someone
         // in a signed-in state they're trying to leave.

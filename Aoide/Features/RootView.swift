@@ -6,11 +6,22 @@ import SwiftUI
 struct RootView: View {
     @State private var session = AppSession.shared
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         content
             .preferredColorScheme(appearance.colorScheme)
             .tint(.accentColor)
+            // Coming back is the moment everything the other devices did while this
+            // one was asleep is still unknown here. Read from the scene rather than
+            // an `NSNotification` observer: this is main-actor by construction, with
+            // no observer to keep alive and no closure that has to be safe to form
+            // off the main actor. The coordinator throttles, so a launch that also
+            // fires `.active` is one sync, not two.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                SyncCoordinator.shared.syncSoon(.foreground)
+            }
     }
 
     @ViewBuilder

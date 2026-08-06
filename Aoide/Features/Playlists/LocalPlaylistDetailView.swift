@@ -18,6 +18,7 @@ struct LocalPlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var indexer = SongIndexer.shared
     @State private var engine = PlaybackEngine.shared
+    @State private var sync = SyncCoordinator.shared
 
     @State private var contents = PlaylistContents()
     /// The row this screen believes it is showing. Held apart from `playlist` so a rename
@@ -90,6 +91,12 @@ struct LocalPlaylistDetailView: View {
             if case .finished = state, current.isSmart { Task { await load() } }
         }
         .refreshable { await load() }
+        // Another device's edits to this very playlist have just been written under it.
+        // Nothing observes those tables, and this screen can be open across a
+        // background-and-return, so it would keep drawing rows that are no longer there.
+        .onChange(of: sync.appliedRevision) { _, _ in
+            Task { await load() }
+        }
         .sheet(isPresented: $isEditingDetails) {
             PlaylistDetailsSheet(playlist: current) { name, notes in
                 await playlists.rename(current, to: name)

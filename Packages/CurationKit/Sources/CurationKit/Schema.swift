@@ -134,6 +134,31 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v2") { db in
+            // Where ops go when they can never succeed — refused by the server,
+            // invalid before they left, or inbound and unapplicable by this build.
+            // They are *moved* out of `op` rather than flagged in it, because the
+            // outbound queue is ordered and a dead row at its head blocks everything
+            // behind it forever.
+            //
+            // The payload comes along. For an outbound op it is what makes the
+            // failure diagnosable from the device it happened on; for an inbound one
+            // it is the only copy, since the pull cursor has already moved past it
+            // and the server will not offer it again. A future build that learns to
+            // understand an entity this one had never heard of can replay it from
+            // here.
+            try db.create(table: "quarantinedOp") { t in
+                t.primaryKey("opId", .text)
+                t.column("entity", .text).notNull()
+                t.column("entityId", .text).notNull()
+                t.column("direction", .text).notNull()
+                t.column("reason", .text).notNull()
+                t.column("payload", .text).notNull()
+                t.column("quarantinedAt", .integer).notNull()
+            }
+            try db.create(index: "idx_quarantine_time", on: "quarantinedOp", columns: ["quarantinedAt"])
+        }
+
         return migrator
     }
 }

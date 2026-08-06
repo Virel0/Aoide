@@ -19,6 +19,8 @@ struct SettingsView: View {
                 LabeledContent("Server", value: store.accountSummary.server)
             }
 
+            SyncSection()
+
             Section {
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppearanceMode.allCases) { mode in
