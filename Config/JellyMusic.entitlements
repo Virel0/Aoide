@@ -17,5 +17,12 @@
 	-->
 	<key>com.apple.developer.carplay-audio</key>
 	<true/>
+
+	<!--
+	  Siri. Unlike CarPlay this one is self-service: tick "SiriKit" on the App ID
+	  in Certificates, Identifiers & Profiles and automatic signing picks it up.
+	-->
+	<key>com.apple.developer.siri</key>
+	<true/>
 </dict>
 </plist>

@@ -1,3 +1,4 @@
+import Intents
 import SwiftUI
 
 @main
@@ -24,4 +25,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         return true
     }
+
+    /// Media intents are handled in-process rather than by an extension: an
+    /// extension could resolve "play Boreas" but not start it, because the queue
+    /// and the player live in this process.
+    func application(
+        _ application: UIApplication,
+        handlerFor intent: INIntent
+    ) -> Any? {
+        guard intent is INPlayMediaIntent else { return nil }
+        return Self.mediaIntentHandler
+    }
+
+    /// Held for the process lifetime — the system keeps only a weak reference to
+    /// whatever `handlerFor` returns.
+    private static let mediaIntentHandler = MediaIntentHandler()
 }

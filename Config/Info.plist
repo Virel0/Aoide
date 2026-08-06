@@ -49,6 +49,16 @@
 		<true/>
 	</dict>
 
+	<!-- Declares which intents this app services. Without INPlayMediaIntent here,
+	     Siri never routes a spoken music request to us. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INPlayMediaIntent</string>
+	</array>
+
+	<key>NSSiriUsageDescription</key>
+	<string>JellyMusic uses Siri so you can ask for music from your library without touching your phone.</string>
+
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>JellyMusic needs local network access to reach your Jellyfin server at home.</string>
 
