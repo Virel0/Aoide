@@ -108,6 +108,15 @@ struct NowPlayingView: View {
                 }
             )
             .disabled(total <= 0)
+            // `scrubPosition` overrides the engine's position while it is set, so
+            // anything that leaves it set strands the scrubber: it stops following
+            // playback and keeps reporting the spot the finger left, even after the
+            // song changes. SwiftUI does not guarantee the `false` edit callback —
+            // a drag interrupted by the sheet, or by this Slider being rebuilt
+            // mid-gesture, simply never delivers it. A new track is unambiguous
+            // proof the drag is over, so clear it there rather than trusting the
+            // callback to be the only way out.
+            .onChange(of: engine.currentTrack?.id) { scrubPosition = nil }
 
             HStack {
                 Text(Duration.seconds(current).clockDescription)

@@ -310,9 +310,25 @@ public final class PlaybackEngine {
         beginCurrentTrack(autoplay: true)
     }
 
+    /// How far off the requested position the player may land.
+    ///
+    /// Zero forces a sample-accurate seek: the player must fetch and decode from
+    /// the sync point *preceding* the target before anything resumes. Over a
+    /// network stream that stalls for as long as it takes, and
+    /// `addPeriodicTimeObserver` does not fire while it does — so the scrubber
+    /// freezes at wherever it was and the audio goes quiet, which reads as the app
+    /// hanging. A quarter-second is inaudible when a finger just dragged across a
+    /// four-minute song, and it lets the player land on a sync point it already
+    /// holds.
+    private static let seekTolerance = CMTime(seconds: 0.25, preferredTimescale: 600)
+
     public func seek(to position: Duration) {
         let clamped = max(.zero, min(position, duration ?? position))
-        player.seek(to: clamped.cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(
+            to: clamped.cmTime,
+            toleranceBefore: Self.seekTolerance,
+            toleranceAfter: Self.seekTolerance
+        )
         elapsed = clamped
         updateNowPlayingInfo()
         report { await $0.playbackDidProgress($1, position: $2, isPaused: !self.state.isPlaying) }
