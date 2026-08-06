@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The same as JellyMusic.entitlements, minus CarPlay.
+
+	  Apple grants com.apple.developer.carplay-audio per App ID on request, and
+	  until it lands a device build cannot be signed with it — Xcode fails with
+	  "provisioning profile doesn't include the com.apple.developer.carplay-audio
+	  entitlement". That blocks running on a phone at all, including the parts of
+	  the app that have nothing to do with driving.
+
+	  Build with JM_ENTITLEMENTS_VARIANT=-Development to use this instead. Every
+	  feature works except the car screen. Drop the setting once CarPlay is
+	  granted; nothing else differs between the two files.
+	-->
+	<key>com.apple.developer.siri</key>
+	<true/>
+</dict>
+</plist>
