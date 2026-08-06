@@ -46,6 +46,8 @@ struct RootView: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-AoideUIHarness") {
             UIHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("-AoidePlaybackProbe") {
+            PlaybackProbeView()
         } else if ProcessInfo.processInfo.arguments.contains("-AoideTabPreview"),
                   let url = try? JellyfinClient.normalizeServerURL("preview.invalid") {
             // The tab bar itself, without a login. Every screen inside will fail to

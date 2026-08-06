@@ -90,13 +90,20 @@ actor CurationRecorder: PlaybackReporter {
     func playbackDidProgress(_ track: Track, position: Duration, isPaused: Bool) async {
         guard let snapshot = await Snapshot.take(for: track) else { return }
 
-        if openPlay?.trackId == track.id {
+        // Mutated through a local copy and written back, rather than in place. Swift
+        // enforces exclusive access to a property for the whole of an assignment, so
+        // `openPlay?.msPlayed = max(openPlay?.msPlayed ?? 0, …)` reads `openPlay` while
+        // its own modify access is still open and traps with "Simultaneous accesses …
+        // modification requires exclusive access". Deterministic, not a race: it fired
+        // on the first progress report of every track, so every song crashed.
+        if var play = openPlay, play.trackId == track.id {
             // A high-water mark, not the latest reading: seeking backwards must not undo
             // what was already listened to.
-            openPlay?.msPlayed = max(openPlay?.msPlayed ?? 0, position.milliseconds)
+            play.msPlayed = max(play.msPlayed, position.milliseconds)
             // The asset's real duration only becomes known once it decodes, which is
             // after the play was opened. Adopt it whenever it turns up.
-            if let durationMs = snapshot.durationMs { openPlay?.durationMs = durationMs }
+            if let durationMs = snapshot.durationMs { play.durationMs = durationMs }
+            openPlay = play
         }
 
         save(snapshot.queue, to: snapshot.store)
