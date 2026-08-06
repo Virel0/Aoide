@@ -103,6 +103,7 @@ struct MainTabView: View {
             }
         }
         .task { await openToDownloadsIfOffline() }
+        .task { CurationDatabase.open() }
         .task { await SpotlightIndexer.shared.indexIfNeeded(client: client) }
         .task {
             // Joining needs no button: when someone else on the call starts a

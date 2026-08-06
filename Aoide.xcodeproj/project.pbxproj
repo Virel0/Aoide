@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		100000000000000000000014 /* JellyfinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000012 /* JellyfinKit */; };
 		100000000000000000000015 /* PlaybackKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000013 /* PlaybackKit */; };
+		1000000000000000000000C1 /* CurationKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1000000000000000000000C2 /* CurationKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 			files = (
 				100000000000000000000014 /* JellyfinKit in Frameworks */,
 				100000000000000000000015 /* PlaybackKit in Frameworks */,
+				1000000000000000000000C1 /* CurationKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +88,7 @@
 			packageProductDependencies = (
 				100000000000000000000012 /* JellyfinKit */,
 				100000000000000000000013 /* PlaybackKit */,
+				1000000000000000000000C2 /* CurationKit */,
 			);
 			productName = Aoide;
 			productReference = 100000000000000000000005 /* Aoide.app */;
@@ -118,6 +121,7 @@
 			packageReferences = (
 				100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/JellyfinKit" */,
 				100000000000000000000011 /* XCLocalSwiftPackageReference "Packages/PlaybackKit" */,
+				1000000000000000000000C3 /* XCLocalSwiftPackageReference "Packages/CurationKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 100000000000000000000003 /* Products */;
@@ -297,6 +301,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/PlaybackKit;
 		};
+		1000000000000000000000C3 /* XCLocalSwiftPackageReference "Packages/CurationKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CurationKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -307,6 +315,10 @@
 		100000000000000000000013 /* PlaybackKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PlaybackKit;
+		};
+		1000000000000000000000C2 /* CurationKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CurationKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,0 +1,139 @@
+import Foundation
+import GRDB
+
+/// The database's shape, versioned.
+///
+/// Migrations are registered once and never edited afterwards — an edited migration
+/// runs only on devices that hadn't already applied it, so the schema silently
+/// diverges between a phone that upgraded and one that installed fresh. Changes go
+/// in a new migration, always.
+enum Schema {
+    static var migrator: DatabaseMigrator {
+        var migrator = DatabaseMigrator()
+
+        #if DEBUG
+        // A schema change during development wipes and rebuilds rather than
+        // demanding a migration for a shape nobody has shipped yet.
+        migrator.eraseDatabaseOnSchemaChange = true
+        #endif
+
+        migrator.registerMigration("v1") { db in
+            // Local cache of what Jellyfin knows, so a playlist can render its rows
+            // offline. Deliberately not synced: every device rebuilds it from its
+            // own connection to the same server, and shipping it would dominate the
+            // sync payload for no gain.
+            try db.create(table: "track") { t in
+                t.primaryKey("jellyfinId", .text)
+                t.column("contentKey", .text).notNull().indexed()
+                t.column("musicbrainzId", .text).indexed()
+                t.column("title", .text).notNull()
+                t.column("artist", .text).notNull()
+                t.column("album", .text).notNull()
+                t.column("albumArtist", .text)
+                t.column("durationMs", .integer)
+                t.column("year", .integer)
+                t.column("genres", .text).notNull().defaults(to: "[]")
+                t.column("lastSeenAt", .integer).notNull()
+            }
+
+            try db.create(table: "folder") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("parentId", .text).indexed()
+                t.column("sortIndex", .text).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+            }
+
+            try db.create(table: "playlist") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("notes", .text)
+                t.column("folderId", .text).indexed()
+                t.column("isSmart", .boolean).notNull().defaults(to: false)
+                t.column("smartRules", .text)
+                t.column("sortIndex", .text).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+            }
+
+            try db.create(table: "playlistItem") { t in
+                t.primaryKey("id", .text)
+                t.column("playlistId", .text).notNull()
+                t.column("jellyfinId", .text).notNull()
+                // Stored beside the id because Jellyfin ids are derived per-file: a
+                // library rescan after files move mints new ones, and without this
+                // every entry would dangle with no way back.
+                t.column("contentKey", .text).notNull()
+                t.column("position", .text).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+            }
+            try db.create(index: "idx_item_playlist", on: "playlistItem", columns: ["playlistId", "position"])
+
+            try db.create(table: "like") { t in
+                t.primaryKey("id", .text)
+                t.column("jellyfinId", .text).notNull().unique()
+                t.column("contentKey", .text).notNull()
+                t.column("liked", .boolean).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+            }
+
+            // Append-only. Never updated after insert, which is what makes it the
+            // easiest thing here to sync: there is no such thing as a conflicting
+            // append. It is also the only honest source of play counts — Jellyfin
+            // increments its own at playback *start*, so a four-second skip counts
+            // there exactly as much as a full listen.
+            try db.create(table: "playEvent") { t in
+                t.primaryKey("id", .text)
+                t.column("jellyfinId", .text).notNull().indexed()
+                t.column("contentKey", .text).notNull()
+                t.column("startedAt", .integer).notNull().indexed()
+                t.column("endedAt", .integer)
+                t.column("msPlayed", .integer).notNull()
+                t.column("completed", .boolean).notNull().defaults(to: false)
+                t.column("skipped", .boolean).notNull().defaults(to: false)
+                t.column("source", .text)
+                t.column("originDevice", .text).notNull()
+            }
+
+            // One row per device, so "resume on another device" reads the most
+            // recent row belonging to somebody else.
+            try db.create(table: "queueState") { t in
+                t.primaryKey("deviceId", .text)
+                t.column("deviceName", .text).notNull()
+                t.column("trackIds", .text).notNull()
+                t.column("position", .integer).notNull()
+                t.column("elapsedMs", .integer).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("originDevice", .text).notNull()
+            }
+
+            // The outbound log. Written in the same transaction as the row it
+            // describes — a row that changed without an op is a change that
+            // silently never syncs.
+            try db.create(table: "op") { t in
+                t.primaryKey("opId", .text)
+                t.column("entity", .text).notNull()
+                t.column("entityId", .text).notNull()
+                t.column("operation", .text).notNull()
+                t.column("payload", .text).notNull()
+                t.column("createdAt", .integer).notNull()
+                t.column("synced", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(index: "idx_op_pending", on: "op", columns: ["synced", "createdAt"])
+
+            try db.create(table: "syncState") { t in
+                t.primaryKey("key", .text)
+                t.column("value", .text).notNull()
+            }
+        }
+
+        return migrator
+    }
+}
