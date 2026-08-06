@@ -131,9 +131,19 @@ public final class PlaybackEngine {
 
     private var timeObserver: Any?
     private var currentItemObservation: NSKeyValueObservation?
+    private var rateObservation: NSKeyValueObservation?
 
     /// Throttles progress reports to the server to roughly one every 10s.
     private var lastReportedSecond: Int = -1
+
+    /// What the user asked for, as distinct from what the player has managed yet.
+    ///
+    /// `AVPlayer.rate` is still 0 for a moment after `play()`, so deriving state
+    /// from it when an item becomes ready latched `.paused` while audio was
+    /// actually playing — and nothing corrected it afterwards, because the
+    /// recovery paths only promote from `.buffering`. The car showed a play
+    /// triangle and a frozen clock over music that was running.
+    private var intendsToPlay = false
 
     /// Pressing previous within this window goes to the previous track; after it,
     /// previous restarts the current one. Matches Apple Music.
@@ -146,6 +156,7 @@ public final class PlaybackEngine {
         player.actionAtItemEnd = .advance
         player.automaticallyWaitsToMinimizeStalling = true
         observeCurrentItem()
+        observeRate()
         observePlayerTime()
         configureRemoteCommands()
         observeAudioSessionEvents()
@@ -226,6 +237,7 @@ public final class PlaybackEngine {
             return
         }
 
+        intendsToPlay = true
         player.play()
         state = .playing
         updateNowPlayingInfo()
@@ -233,6 +245,7 @@ public final class PlaybackEngine {
     }
 
     public func pause() {
+        intendsToPlay = false
         player.pause()
         state = .paused
         updateNowPlayingInfo()
@@ -347,6 +360,7 @@ public final class PlaybackEngine {
         elapsed = .zero
         duration = track.duration
         lastReportedSecond = -1
+        intendsToPlay = autoplay
         state = autoplay ? .buffering : .paused
 
         // Rebuild rather than advanceToNextItem(): measured, advanceToNextItem
@@ -531,6 +545,32 @@ public final class PlaybackEngine {
         }
     }
 
+    /// The car and the lock screen do not poll us — they extrapolate the position
+    /// from the last value we reported multiplied by the playback rate. Report a
+    /// rate of zero and their clock simply stops, which is what left CarPlay frozen
+    /// at 0:00 over a track that was audibly playing.
+    ///
+    /// `AVPlayer.rate` is the only honest source for that, and it settles some time
+    /// after `play()` — so it has to be observed rather than sampled.
+    private func observeRate() {
+        rateObservation = player.observe(\.rate, options: [.new]) { [weak self] player, _ in
+            let rate = player.rate
+            Task { @MainActor [weak self] in
+                self?.handleRateChanged(rate)
+            }
+        }
+    }
+
+    private func handleRateChanged(_ rate: Float) {
+        // Reconcile: audio moving means playing, whatever we previously believed.
+        if rate > 0, state != .playing {
+            state = .playing
+        } else if rate == 0, state == .playing, !intendsToPlay {
+            state = .paused
+        }
+        updateNowPlayingInfo()
+    }
+
     private func handleCurrentItemChanged(_ key: ObjectIdentifier?) {
         guard let key, let entryId = entryForItem[key] else {
             // The queue drained on its own. Report the last track's stop before
@@ -628,7 +668,17 @@ public final class PlaybackEngine {
             if let assetDuration { assetDurations[key] = assetDuration }
             guard isCurrent else { return }
             if let assetDuration { duration = assetDuration }
-            if state == .buffering { state = player.rate > 0 ? .playing : .paused }
+
+            // Ask again. `play()` is called the instant the items are inserted,
+            // which on a cold connection is before anything can decode — and
+            // AVQueuePlayer does not retry on our behalf once the item finally
+            // becomes ready. Without this, tapping a track from a list left the
+            // car sitting at 0:00 with a play glyph until someone pressed play.
+            if intendsToPlay, player.rate == 0 {
+                player.play()
+            }
+
+            if state == .buffering { state = intendsToPlay ? .playing : .paused }
             updateNowPlayingInfo()
 
         case .failed:
@@ -664,7 +714,7 @@ public final class PlaybackEngine {
         guard state != .idle else { return }
         guard player.currentItem.map({ ObjectIdentifier($0) == key }) ?? false else { return }
         if likelyToKeepUp, state == .buffering {
-            state = player.rate > 0 ? .playing : .paused
+            state = intendsToPlay ? .playing : .paused
         }
     }
 
@@ -686,7 +736,11 @@ public final class PlaybackEngine {
         guard let seconds = time.validDuration else { return }
         elapsed = seconds
 
-        if state == .buffering, player.rate > 0 { state = .playing }
+
+        // No per-tick push of the position: with an honest rate reported, the
+        // system extrapolates between our updates on its own, and rewriting the
+        // whole dictionary twice a second is waste. Seeks and track changes
+        // already refresh it explicitly.
 
         let whole = Int(time.seconds)
         if whole % 10 == 0, whole != lastReportedSecond {
@@ -727,7 +781,12 @@ public final class PlaybackEngine {
             MPMediaItemPropertyArtist: track.artist,
             MPMediaItemPropertyAlbumTitle: track.album,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed.seconds,
-            MPNowPlayingInfoPropertyPlaybackRate: state.isPlaying ? 1.0 : 0.0,
+            // From the player, not our derived state. The car draws its play/pause
+            // glyph from this, and anything computed from intent can disagree with
+            // whether audio is actually moving — which showed as a play triangle
+            // over a running track.
+            MPNowPlayingInfoPropertyPlaybackRate: Double(player.rate),
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyIsLiveStream: false,
         ]
@@ -754,6 +813,7 @@ public final class PlaybackEngine {
     private func loadArtworkIfNeeded(for track: Track) {
         guard lastArtworkTrackId != track.id else { return }
         guard let url = track.artworkURL, let artworkLoader else {
+            log.notice("No now-playing artwork: url=\(track.artworkURL != nil, privacy: .public) loader=\(self.artworkLoader != nil, privacy: .public)")
             lastArtworkTrackId = track.id
             return
         }
