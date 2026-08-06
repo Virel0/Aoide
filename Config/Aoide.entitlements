@@ -3,17 +3,12 @@
 <plist version="1.0">
 <dict>
 	<!--
-	  CarPlay audio.
+	  CarPlay audio. Granted by Apple against this App ID on 2026-08-06 and ticked
+	  on the identifier; the profile and signature both carry it.
 
-	  IMPORTANT: this entitlement is not self-service. Apple must grant it against
-	  this exact App ID, on request at https://developer.apple.com/contact/carplay/
-	  (app type: Audio). Until that grant lands, signing a *device* build with this
-	  key will fail with "provisioning profile doesn't include the
-	  com.apple.developer.carplay-audio entitlement".
-
-	  Simulator builds ignore it, so the CarPlay Simulator works while you wait.
-	  If you need a device build before the grant arrives, comment this key out —
-	  everything except the car screen still runs.
+	  Not self-service, so it does not travel: a new App ID, or a different team,
+	  needs its own request at https://developer.apple.com/contact/carplay/ (app
+	  type: Audio) and weeks of latency. Simulator builds ignore it entirely.
 	-->
 	<key>com.apple.developer.carplay-audio</key>
 	<true/>
