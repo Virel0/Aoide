@@ -57,7 +57,12 @@ struct SettingsView: View {
 
             Section {
                 LabeledContent("Downloaded", value: "\(downloads.downloadedCount) tracks")
-                LabeledContent("Storage used", value: ByteCountFormatter.string(fromByteCount: downloads.diskUsage(), countStyle: .file))
+                // Covers and lyrics are stored alongside the audio, so they count
+                // towards what removing everything gives back.
+                LabeledContent("Storage used", value: ByteCountFormatter.string(
+                    fromByteCount: downloads.diskUsage() + OfflineAssets.shared.diskUsage(),
+                    countStyle: .file
+                ))
                 if downloads.downloadedCount > 0 {
                     Button("Remove All Downloads", role: .destructive) {
                         downloads.removeAll()

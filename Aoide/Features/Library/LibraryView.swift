@@ -3,12 +3,21 @@ import PlaybackKit
 import SwiftUI
 
 /// The Library tab: Apple Music's list of categories, then recently added.
+/// Destinations this tab can be sent to from outside itself.
+enum LibraryRoute: Hashable {
+    case downloaded
+}
+
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
     @Environment(AppSession.self) private var session
 
+    /// Owned by `MainTabView` so an offline launch can push Downloaded before this
+    /// view has ever appeared.
+    @Binding var path: NavigationPath
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             // A ScrollView rather than a List: the shelf below is a horizontal
             // carousel, and a NavigationLink inside a List row draws a disclosure
             // chevron on every album cell.
@@ -20,7 +29,9 @@ struct LibraryView: View {
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
                         categoryRow("Genres", "guitars") { GenresListView() }
-                        categoryRow("Downloaded", "arrow.down.circle") { DownloadedView() }
+                        // Value-based, unlike its siblings, so that it can also be
+                        // reached programmatically on an offline launch.
+                        categoryRow("Downloaded", "arrow.down.circle", value: LibraryRoute.downloaded)
                     }
                     .pageMargin()
 
@@ -46,6 +57,11 @@ struct LibraryView: View {
             }
             .refreshable { await store.refresh() }
             .task { await store.loadRecentlyAddedIfNeeded() }
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case .downloaded: DownloadedView()
+                }
+            }
         }
     }
 
@@ -54,28 +70,40 @@ struct LibraryView: View {
         _ symbol: String,
         @ViewBuilder destination: @escaping () -> Destination
     ) -> some View {
-        VStack(spacing: 0) {
-            NavigationLink(destination: destination) {
-                HStack(spacing: 14) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 19))
-                        .foregroundStyle(.tint)
-                        .frame(width: 26)
-                    Text(title)
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 13)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
+        row {
+            NavigationLink(destination: destination) { categoryLabel(title, symbol) }
+        }
+    }
 
+    private func categoryRow(_ title: String, _ symbol: String, value: some Hashable) -> some View {
+        row {
+            NavigationLink(value: value) { categoryLabel(title, symbol) }
+        }
+    }
+
+    private func row(@ViewBuilder link: () -> some View) -> some View {
+        VStack(spacing: 0) {
+            link().buttonStyle(.plain)
             Divider().padding(.leading, 40)
         }
+    }
+
+    private func categoryLabel(_ title: String, _ symbol: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 19))
+                .foregroundStyle(.tint)
+                .frame(width: 26)
+            Text(title)
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.primary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 13)
+        .contentShape(.rect)
     }
 }
 

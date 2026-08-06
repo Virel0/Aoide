@@ -19,6 +19,27 @@ struct DownloadedView: View {
         index.tracks.filter { downloads.state(for: $0.id).isPresent }
     }
 
+    /// Grouped by album, in track order within each.
+    ///
+    /// The index sorts by title, which for a downloads screen is the wrong axis: you
+    /// download albums, so a flat A–Z list interleaves them and none of them reads as
+    /// the thing you actually saved.
+    private var albums: [(name: String, tracks: [JellyfinItem])] {
+        Dictionary(grouping: tracks) { $0.album ?? "Unknown Album" }
+            .map { name, group in
+                (name, group.sorted {
+                    // Disc, then track — a two-disc album otherwise starts over
+                    // halfway down.
+                    ($0.parentIndexNumber ?? 0, $0.indexNumber ?? 0)
+                        < ($1.parentIndexNumber ?? 0, $1.indexNumber ?? 0)
+                })
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The order tapping a row plays in: the whole screen, album by album.
+    private var playbackOrder: [JellyfinItem] { albums.flatMap(\.tracks) }
+
     var body: some View {
         Group {
             if tracks.isEmpty {
@@ -29,19 +50,25 @@ struct DownloadedView: View {
                 }
             } else {
                 List {
-                    Section {
-                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                            SongRow(song: track)
-                                .contentShape(.rect)
-                                .onTapGesture { store.play(tracks, startingAt: index) }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityAddTraits(.isButton)
-                                .swipeActions {
-                                    Button("Remove", role: .destructive) {
-                                        downloads.remove(track.id)
+                    ForEach(albums, id: \.name) { album in
+                        Section(album.name) {
+                            ForEach(album.tracks) { track in
+                                SongRow(song: track)
+                                    .contentShape(.rect)
+                                    .onTapGesture { play(track) }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityAddTraits(.isButton)
+                                    .swipeActions {
+                                        Button("Remove", role: .destructive) {
+                                            downloads.remove(track.id)
+                                        }
                                     }
-                                }
+                            }
                         }
+                    }
+
+                    Section {
+                        EmptyView()
                     } footer: {
                         Text("\(tracks.count) track\(tracks.count == 1 ? "" : "s") · \(formattedSize)")
                     }
@@ -72,8 +99,17 @@ struct DownloadedView: View {
         }
     }
 
+    private func play(_ track: JellyfinItem) {
+        let queue = playbackOrder
+        guard let start = queue.firstIndex(where: { $0.id == track.id }) else { return }
+        store.play(queue, startingAt: start)
+    }
+
+    /// Audio plus the covers and lyrics stored beside it, so the number matches what
+    /// "Remove All" would actually reclaim.
     private var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: downloads.diskUsage(), countStyle: .file)
+        let bytes = downloads.diskUsage() + OfflineAssets.shared.diskUsage()
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

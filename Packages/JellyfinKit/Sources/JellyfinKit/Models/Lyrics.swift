@@ -72,7 +72,7 @@ extension Duration {
 }
 
 /// One timed word within a line. Only present for enhanced-LRC sources.
-public struct LyricWord: Hashable, Sendable, Identifiable {
+public struct LyricWord: Hashable, Sendable, Codable, Identifiable {
     public let id: Int
     public let text: String
     public let start: Duration
@@ -80,7 +80,7 @@ public struct LyricWord: Hashable, Sendable, Identifiable {
     public let sweepEnd: Duration
 }
 
-public struct LyricLine: Hashable, Sendable, Identifiable {
+public struct LyricLine: Hashable, Sendable, Codable, Identifiable {
     public let id: Int
     public let text: String
     /// `nil` when the source carried no timings — the line can still be displayed,
@@ -90,7 +90,7 @@ public struct LyricLine: Hashable, Sendable, Identifiable {
     public let words: [LyricWord]
 }
 
-public struct LyricsTrack: Hashable, Sendable {
+public struct LyricsTrack: Hashable, Sendable, Codable {
     public let lines: [LyricLine]
 
     /// Whether the lines can be followed along with the music. A plain `.lrc` is
@@ -134,6 +134,13 @@ public struct LyricsTrack: Hashable, Sendable {
         return found
     }
 }
+
+// MARK: - Offline storage
+
+/// The domain model is `Codable` so a downloaded track's lyrics can be written to
+/// disk and read back verbatim. It is deliberately the same type the UI renders
+/// rather than a parallel storage struct: two shapes for one concept drift, and the
+/// bug that follows is lyrics that are subtly wrong only when offline.
 
 // MARK: - Resolution
 

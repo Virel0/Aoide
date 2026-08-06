@@ -293,3 +293,66 @@ extension DeviceProfile {
         version: "1.0"
     )
 }
+
+// MARK: - Offline lyrics storage
+
+@Suite("Lyrics round trip")
+struct LyricsCodableTests {
+    private func decoded(_ json: String) throws -> LyricsTrack {
+        LyricsTrack(try JSONDecoder.jellyfin.decode(LyricsDocument.self, from: Data(json.utf8)))
+    }
+
+    /// Downloaded lyrics are written as the domain model and read back later. If the
+    /// two directions ever disagree, an offline track shows lyrics that are subtly
+    /// wrong — and only offline, where it's hardest to notice.
+    @Test("a synced track survives being written to disk and read back")
+    func syncedRoundTrip() throws {
+        let track = try decoded("""
+        {"Lyrics":[
+          {"Text":"First line","Start":10000000},
+          {"Text":"Second line","Start":45000000}
+        ]}
+        """)
+
+        let restored = try JSONDecoder().decode(
+            LyricsTrack.self, from: JSONEncoder().encode(track)
+        )
+
+        #expect(restored == track)
+        #expect(restored.isSynced)
+        #expect(restored.lines[1].start == .seconds(4.5))
+        // The binary search must still find the right line after a round trip.
+        #expect(restored.index(at: .seconds(4.6)) == 1)
+    }
+
+    @Test("an untimed track keeps its nil starts rather than collapsing them to zero")
+    func untimedRoundTrip() throws {
+        let track = try decoded(#"{"Lyrics":[{"Text":"No timing here"}]}"#)
+
+        let restored = try JSONDecoder().decode(
+            LyricsTrack.self, from: JSONEncoder().encode(track)
+        )
+
+        #expect(restored == track)
+        #expect(!restored.isSynced)
+        #expect(restored.lines[0].start == nil)
+    }
+
+    @Test("per-word timings survive, so an enhanced-LRC download isn't silently downgraded")
+    func wordTimingRoundTrip() throws {
+        let track = try decoded("""
+        {"Lyrics":[{"Text":"Hey now","Start":0,"Cues":[
+          {"Position":0,"EndPosition":4,"Start":0},
+          {"Position":4,"EndPosition":7,"Start":5000000}
+        ]}]}
+        """)
+
+        let restored = try JSONDecoder().decode(
+            LyricsTrack.self, from: JSONEncoder().encode(track)
+        )
+
+        #expect(restored == track)
+        #expect(restored.hasWordTiming)
+        #expect(restored.lines[0].words.map(\.text) == ["Hey", "now"])
+    }
+}

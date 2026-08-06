@@ -142,6 +142,12 @@ final class DownloadStore: NSObject {
         trackForTask[task.taskIdentifier] = item.id
         states[item.id] = .waiting
         task.resume()
+
+        // Cover and lyrics ride along with the audio. They are fetched on a plain
+        // session rather than the background one: both are small enough to finish
+        // inside a foreground window, and a background transfer per cover would
+        // queue behind the multi-megabyte audio it exists to decorate.
+        Task { await OfflineAssets.shared.cache([item], client: client) }
     }
 
     func cancelDownload(_ trackId: String) {
@@ -158,6 +164,7 @@ final class DownloadStore: NSObject {
         if let url = files[trackId] { try? FileManager.default.removeItem(at: url) }
         files[trackId] = nil
         states[trackId] = .absent
+        OfflineAssets.shared.remove(trackId: trackId)
     }
 
     func removeAll() {
@@ -165,6 +172,7 @@ final class DownloadStore: NSObject {
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
         files = [:]
         states = states.mapValues { _ in .absent }
+        OfflineAssets.shared.removeAll()
     }
 
     // MARK: - Accounting

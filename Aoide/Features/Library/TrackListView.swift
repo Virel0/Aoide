@@ -22,6 +22,7 @@ struct TrackListView: View {
     var subtitle: String?
 
     @Environment(LibraryStore.self) private var store
+    @State private var downloads = DownloadStore.shared
     @State private var tracks: [JellyfinItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -114,6 +115,16 @@ struct TrackListView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { store.play(tracks, startingAt: index) }
+        // Combining the row's children collapses the download control into the row,
+        // so VoiceOver can no longer reach it by touch. Naming it as a row action
+        // puts it back — without this the control is sighted-only.
+        .accessibilityAction(named: downloads.state(for: track.id).isPresent ? "Remove Download" : "Download") {
+            if downloads.state(for: track.id).isPresent {
+                downloads.remove(track.id)
+            } else {
+                store.download([track])
+            }
+        }
         .contextMenu {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
                 store.playNext([track])
@@ -123,6 +134,21 @@ struct TrackListView: View {
             }
             Button("Favourite", systemImage: "heart") {
                 Task { await store.toggleFavorite(track) }
+            }
+
+            Divider()
+
+            // This menu was missing a download entry entirely, which is why single
+            // songs looked undownloadable: the only per-track affordance lived on a
+            // different menu used by other screens.
+            if downloads.state(for: track.id).isPresent {
+                Button("Remove Download", systemImage: "trash", role: .destructive) {
+                    downloads.remove(track.id)
+                }
+            } else {
+                Button("Download", systemImage: "arrow.down.circle") {
+                    store.download([track])
+                }
             }
         }
     }
@@ -293,7 +319,7 @@ struct TrackRow: View {
 
             Spacer(minLength: 8)
 
-            TrackDownloadBadge(trackId: track.id)
+            TrackDownloadBadge(trackId: track.id, track: track)
 
             if let duration = track.duration {
                 Text(duration.clockDescription)

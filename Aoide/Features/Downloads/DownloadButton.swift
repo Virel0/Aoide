@@ -59,36 +59,72 @@ struct CollectionDownloadButton: View {
     }
 }
 
-/// The per-track indicator in a list. Deliberately not a button — a whole row is
-/// already a play target, and a second tap target inside it is a mis-tap waiting to
-/// happen while driving.
+/// Per-song download control at the trailing edge of a track row.
+///
+/// This started as status-only, which made single-song downloads reachable purely
+/// by long-pressing a row — a gesture nobody discovers. It is now a real control in
+/// the states where acting is safe: start a download, or cancel one in flight.
+///
+/// Tapping a *finished* download deliberately does nothing. It sits inches from the
+/// row that starts playback, and silently deleting a file on a mis-tap is a far
+/// worse outcome than making removal take a long-press, where the menu says
+/// "Remove Download" in words.
 struct TrackDownloadBadge: View {
     let trackId: String
+    let track: JellyfinItem
+
     @State private var downloads = DownloadStore.shared
+    /// Optional so the debug harness can render this without a signed-in store.
+    /// The non-optional form traps on a missing value rather than yielding nil.
+    @Environment(LibraryStore.self) private var store: LibraryStore?
 
     var body: some View {
-        switch downloads.state(for: trackId) {
-        case .downloaded:
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Downloaded")
-        case .downloading(let fraction):
-            ProgressView(value: fraction)
-                .progressViewStyle(.circular)
-                .controlSize(.mini)
-                .accessibilityLabel("Downloading")
-        case .waiting:
-            ProgressView()
-                .controlSize(.mini)
-                .accessibilityLabel("Waiting to download")
-        case .failed:
-            Image(systemName: "exclamationmark.circle")
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Download failed")
-        case .absent:
-            EmptyView()
+        Group {
+            switch downloads.state(for: trackId) {
+            case .absent:
+                button("Download \(track.name)") { store?.download([track]) } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.body)
+                        // Quaternary because this repeats on every row of a long
+                        // album and has to stay quieter than the song titles.
+                        .foregroundStyle(.quaternary)
+                }
+            case .downloading(let fraction):
+                button("Cancel download of \(track.name)") { downloads.cancelDownload(trackId) } label: {
+                    ProgressView(value: fraction)
+                        .progressViewStyle(.circular)
+                        .controlSize(.mini)
+                }
+            case .waiting:
+                button("Cancel download of \(track.name)") { downloads.cancelDownload(trackId) } label: {
+                    ProgressView().controlSize(.mini)
+                }
+            case .failed:
+                button("Retry download of \(track.name)") { store?.download([track]) } label: {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.body)
+                        .foregroundStyle(.orange)
+                }
+            case .downloaded:
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Downloaded")
+            }
         }
+        // A fixed frame so titles and durations don't shift sideways as a row moves
+        // between states, and so the tap target clears the row beneath it.
+        .frame(width: 32, height: 32)
+    }
+
+    private func button(
+        _ label: String,
+        action: @escaping () -> Void,
+        @ViewBuilder label content: () -> some View
+    ) -> some View {
+        Button(action: action, label: content)
+            .buttonStyle(.plain)
+            .contentShape(.rect)
+            .accessibilityLabel(label)
     }
 }

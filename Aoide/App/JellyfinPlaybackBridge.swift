@@ -12,7 +12,6 @@ import os
 enum JellyfinPlaybackBridge {
     /// Artwork size for the lock screen and CarPlay. Both render around 600pt on the
     /// largest displays; asking for more just wastes bandwidth on a car connection.
-    private static let nowPlayingArtworkWidth = 600
 
     /// Connects the shared engine to the signed-in client. Safe to call again after
     /// a sign-in change — it replaces the previous wiring.
@@ -92,7 +91,7 @@ enum JellyfinPlaybackBridge {
             album: item.album ?? "",
             duration: item.duration,
             streamURL: source,
-            artworkURL: client.artworkURL(for: item, maxWidth: nowPlayingArtworkWidth),
+            artworkURL: client.artworkURL(for: item, maxWidth: Design.ArtworkWidth.player),
             trackNumber: item.indexNumber
         )
     }

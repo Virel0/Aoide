@@ -73,6 +73,13 @@ final class LyricsStore {
         entries[trackId] = .loading
         defer { inFlight.remove(trackId) }
 
+        // A downloaded track keeps its lyrics beside its audio. Reading them first
+        // means the sheet works on a plane, and saves a request when it doesn't.
+        if let stored = OfflineAssets.lyrics(for: trackId) {
+            entries[trackId] = stored.isEmpty ? .absent : .loaded(stored)
+            return
+        }
+
         do {
             if let lyrics = try await client.lyrics(forItem: trackId) {
                 entries[trackId] = .loaded(lyrics)

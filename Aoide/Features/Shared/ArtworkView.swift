@@ -28,6 +28,12 @@ actor ArtworkCache {
         if let existing = inFlight[url] { return await existing.value }
 
         let task = Task<UIImage?, Never> {
+            // A downloaded track's cover is on disk under this exact URL. Checking
+            // first is what makes a download look like a download with the radio
+            // off, and it costs one stat on the miss path.
+            if let data = OfflineAssets.artworkData(for: url), let image = UIImage(data: data) {
+                return image
+            }
             guard let (data, response) = try? await URLSession.shared.data(from: url),
                   (response as? HTTPURLResponse)?.statusCode == 200,
                   let image = UIImage(data: data)
