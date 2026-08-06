@@ -206,11 +206,43 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
     }
 }
 
+// MARK: - INSearchForMediaIntentHandling
+
+/// "Search for X on Aoide" / "find X on Aoide".
+///
+/// Siri picks between this and `INPlayMediaIntent` on phrasing alone, and an app
+/// that declares only one of them gets told it cannot do the other. On a music app
+/// both mean the same thing in practice — the person wants to hear it — so this
+/// resolves identically and starts playback rather than handing back a list nobody
+/// can read while driving.
+extension MediaIntentHandler: @preconcurrency INSearchForMediaIntentHandling {
+    func handle(intent: INSearchForMediaIntent) async -> INSearchForMediaIntentResponse {
+        guard let client = await MainActor.run(body: { AppSession.shared.client }) else {
+            return INSearchForMediaIntentResponse(code: .failureRequiringAppLaunch, userActivity: nil)
+        }
+
+        let request = MediaRequest(search: intent.mediaSearch)
+        let items = await findTracks(for: request, client: client)
+
+        guard !items.isEmpty else {
+            log.notice("Siri searched for something not in the library: \(request.spokenDescription, privacy: .public)")
+            return INSearchForMediaIntentResponse(code: .failure, userActivity: nil)
+        }
+
+        await MainActor.run {
+            let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+            guard !tracks.isEmpty else { return }
+            PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+        }
+        return INSearchForMediaIntentResponse(code: .success, userActivity: nil)
+    }
+}
+
 // MARK: - What Siri heard
 
 /// A normalised view of `INMediaSearch`, so the resolution logic isn't reading
 /// Objective-C optionals and `NSNumber` booleans directly.
-private struct MediaRequest {
+struct MediaRequest {
     let mediaName: String?
     let artistName: String?
     let albumName: String?
@@ -221,14 +253,21 @@ private struct MediaRequest {
     let wantsAnything: Bool
 
     init(intent: INPlayMediaIntent) {
-        let search = intent.mediaSearch
+        self.init(search: intent.mediaSearch, shuffled: intent.playShuffled == true, repeatMode: intent.playbackRepeatMode)
+    }
+
+    init(search: INMediaSearch?) {
+        self.init(search: search, shuffled: false, repeatMode: .unknown)
+    }
+
+    private init(search: INMediaSearch?, shuffled: Bool, repeatMode rawRepeat: INPlaybackRepeatMode) {
         mediaName = search?.mediaName?.trimmedNonEmpty
         artistName = search?.artistName?.trimmedNonEmpty
         albumName = search?.albumName?.trimmedNonEmpty
         genreNames = search?.genreNames?.compactMap(\.trimmedNonEmpty) ?? []
-        shuffled = intent.playShuffled == true
+        self.shuffled = shuffled
 
-        repeatMode = switch intent.playbackRepeatMode {
+        repeatMode = switch rawRepeat {
         case .all: .all
         case .one: .one
         case .none: RepeatMode.off

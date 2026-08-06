@@ -26,6 +26,9 @@ struct RootView: View {
                 MainTabView(client: client)
                     .id(client.credentials?.userId)
                     .environment(session)
+                    // Asked here rather than at launch: on the login screen it would
+                    // be requesting permission for something not yet usable.
+                    .task { SiriAuthorization.shared.requestIfNeeded() }
             } else {
                 ProgressView()
             }

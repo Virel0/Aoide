@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         handlerFor intent: INIntent
     ) -> Any? {
-        guard intent is INPlayMediaIntent else { return nil }
+        guard intent is INPlayMediaIntent || intent is INSearchForMediaIntent else { return nil }
         return Self.mediaIntentHandler
     }
 

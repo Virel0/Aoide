@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     @State private var isConfirmingSignOut = false
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
+    @State private var siri = SiriAuthorization.shared
 
     var body: some View {
         List {
@@ -28,6 +29,21 @@ struct SettingsView: View {
                 Text("Appearance")
             } footer: {
                 Text("Dark by default — album artwork carries the page better against a dark ground.")
+            }
+
+            Section {
+                LabeledContent("Siri", value: siri.summary)
+                if siri.status == .denied {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                }
+            } header: {
+                Text("Voice")
+            } footer: {
+                Text("With Siri on, you can ask for music without touching your phone — \u{201C}play Boreas\u{201D}, \u{201C}shuffle my library\u{201D}.")
             }
 
             Section {
@@ -56,6 +72,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .task { siri.refresh() }
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             "Sign out of Aoide?",
