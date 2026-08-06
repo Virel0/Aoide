@@ -57,10 +57,10 @@
 	</array>
 
 	<key>NSSiriUsageDescription</key>
-	<string>JellyMusic uses Siri so you can ask for music from your library without touching your phone.</string>
+	<string>Aoide uses Siri so you can ask for music from your library without touching your phone.</string>
 
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>JellyMusic needs local network access to reach your Jellyfin server at home.</string>
+	<string>Aoide needs local network access to reach your Jellyfin server at home.</string>
 
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

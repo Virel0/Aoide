@@ -123,7 +123,7 @@ struct AuthHeaderTests {
     @Test("escapes quotes in a user-chosen device name, which would otherwise corrupt every request")
     func escapesQuotes() {
         let profile = DeviceProfile(
-            client: "JellyMusic",
+            client: "Aoide",
             device: #"Alex's "Best" iPhone"#,
             deviceId: "abc",
             version: "1.0"
@@ -287,7 +287,7 @@ struct StreamURLTests {
 
 extension DeviceProfile {
     static let test = DeviceProfile(
-        client: "JellyMusic",
+        client: "Aoide",
         device: "Test",
         deviceId: "test-device",
         version: "1.0"

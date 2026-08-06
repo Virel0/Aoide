@@ -93,7 +93,7 @@ public final class PlaybackEngine {
 
     // MARK: - Private
 
-    private let log = Logger(subsystem: "com.example.jellymusic", category: "playback")
+    private let log = Logger(subsystem: "com.example.aoide", category: "playback")
     private let player = AVQueuePlayer()
 
     /// How many tracks to keep decoded behind the current one. Two is enough for a
