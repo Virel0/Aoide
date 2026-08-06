@@ -37,6 +37,20 @@ struct UIHarness: View {
                         }
                     }
                 }
+                sample("Player secondary row — AirPlay beside SF Symbols") {
+                    HStack {
+                        Image(systemName: "shuffle")
+                        Spacer()
+                        RoutePickerButton().frame(width: 28, height: 28)
+                        Spacer()
+                        Image(systemName: "list.bullet")
+                        Spacer()
+                        Image(systemName: "repeat")
+                    }
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 40)
+                }
                 sample("Disabled — empty playlist") {
                     DetailActionRow(isEnabled: false, onLeading: {}, onPlay: {}, onTrailing: {})
                 }

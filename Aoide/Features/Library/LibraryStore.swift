@@ -399,6 +399,11 @@ final class LibraryStore {
         (client.credentials?.username ?? "—", client.serverURL.host() ?? client.serverURL.absoluteString)
     }
 
+    /// Songs matching a structured query, as built by smart search.
+    func songs(matching query: MusicQuery) async throws -> [JellyfinItem] {
+        try await client.songs(matching: query)
+    }
+
     func artworkURL(for item: JellyfinItem, width: Int) -> URL? {
         client.artworkURL(for: item, maxWidth: width)
     }

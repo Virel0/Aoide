@@ -61,6 +61,7 @@ struct MainTabView: View {
 
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
+    @State private var smartSearch: SmartSearch
     @State private var isShowingNowPlaying = false
     @State private var engine = PlaybackEngine.shared
     @State private var selectedTab: TabID = .home
@@ -68,6 +69,7 @@ struct MainTabView: View {
     init(client: JellyfinClient) {
         _store = State(initialValue: LibraryStore(client: client))
         _lyrics = State(initialValue: LyricsStore(client: client))
+        _smartSearch = State(initialValue: SmartSearch(client: client))
     }
 
     var body: some View {
@@ -115,6 +117,7 @@ struct MainTabView: View {
         // sheet modifier itself — sees them.
         .environment(store)
         .environment(lyrics)
+        .environment(smartSearch)
     }
 
     /// Opens straight to Downloaded when there's no connection and something is

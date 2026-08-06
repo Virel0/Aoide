@@ -53,7 +53,7 @@ public enum SortDirection: String, Sendable {
 extension JellyfinClient {
     /// Fields absent from Jellyfin's default response that the UI needs. Requesting
     /// them per-call rather than globally keeps large library pages small.
-    private static let standardFields = "Genres,AlbumArtist,Artists,ParentId,ChildCount,PrimaryImageAspectRatio"
+    static let standardFields = "Genres,AlbumArtist,Artists,ParentId,ChildCount,PrimaryImageAspectRatio"
 
     // MARK: - Libraries
 

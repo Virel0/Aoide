@@ -172,6 +172,15 @@ struct NowPlayingView: View {
                 Spacer()
             }
 
+            // Sized explicitly: AVRoutePickerView is a UIKit view with its own
+            // intrinsic size, and left alone it lays out taller than the SF Symbols
+            // beside it and pushes the whole row off centre.
+            RoutePickerButton()
+                .frame(width: 28, height: 28)
+                .accessibilityLabel("AirPlay")
+
+            Spacer()
+
             Button {
                 isShowingQueue = true
             } label: {

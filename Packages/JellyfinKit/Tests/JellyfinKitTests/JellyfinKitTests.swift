@@ -356,3 +356,90 @@ struct LyricsCodableTests {
         #expect(restored.lines[0].words.map(\.text) == ["Hey", "now"])
     }
 }
+
+// MARK: - Structured queries
+
+@Suite("Music query")
+struct MusicQueryTests {
+    private var signedIn: JellyfinClient {
+        get throws {
+            let serverURL = try JellyfinClient.normalizeServerURL("http://host:8096")
+            return JellyfinClient(
+                serverURL: serverURL,
+                device: .test,
+                credentials: JellyfinCredentials(
+                    serverURL: serverURL, userId: "user1", username: "alex", accessToken: "tok"
+                )
+            )
+        }
+    }
+
+    private func query(_ q: MusicQuery) throws -> [String: String] {
+        let items = try signedIn.queryItems(for: q, includeTypes: ["Audio"], parentId: nil)
+        return Dictionary(
+            items.compactMap { item in item.value.map { (item.name, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    @Test("a decade becomes the list of years Jellyfin filters on")
+    func decade() {
+        #expect(MusicQuery.years(from: 1990, to: 1999).count == 10)
+        #expect(MusicQuery.years(from: 1990, to: 1999).first == 1990)
+        #expect(MusicQuery.years(from: 1990, to: 1999).last == 1999)
+    }
+
+    @Test("a single year works from either end")
+    func singleYear() {
+        #expect(MusicQuery.years(from: 1994, to: 1994) == [1994])
+    }
+
+    /// A span this wide isn't a date filter, and truncating it would silently answer
+    /// a narrower question than the one asked.
+    @Test("an absurd span is dropped rather than truncated")
+    func absurdSpan() {
+        #expect(MusicQuery.years(from: 1900, to: 2025).isEmpty)
+    }
+
+    @Test("nonsense from the model is rejected", arguments: [
+        (nil, nil), (2000, 1990), (0, 5), (99999, nil),
+    ] as [(Int?, Int?)])
+    func rejectsNonsense(_ from: Int?, _ to: Int?) {
+        #expect(MusicQuery.years(from: from, to: to).isEmpty)
+    }
+
+    /// Comma-separating these would split "Folk, World, & Country" into three
+    /// genres that match nothing.
+    @Test("genres are pipe-delimited")
+    func genresArePiped() throws {
+        let built = try query(MusicQuery(genres: ["Jazz", "Folk, World, & Country"]))
+        #expect(built["genres"] == "Jazz|Folk, World, & Country")
+    }
+
+    @Test("an unconstrained query is recognised as empty, not as everything")
+    func emptyMeansEmpty() {
+        #expect(MusicQuery().isEmpty)
+        #expect(!MusicQuery(genres: ["Jazz"]).isEmpty)
+        #expect(!MusicQuery(favoritesOnly: true).isEmpty)
+        #expect(!MusicQuery(searchTerm: "abc").isEmpty)
+    }
+
+    @Test("favourites become a filter, and are absent when not asked for")
+    func favourites() throws {
+        #expect(try query(MusicQuery(favoritesOnly: true))["filters"] == "IsFavorite")
+        #expect(try query(MusicQuery(genres: ["Jazz"]))["filters"] == nil)
+    }
+
+    @Test("sort and direction reach the server")
+    func sorting() throws {
+        let built = try query(MusicQuery(genres: ["Jazz"], sort: .playCount, direction: .descending))
+        #expect(built["sortBy"] == "PlayCount")
+        #expect(built["sortOrder"] == "Descending")
+    }
+
+    @Test("the summary names what was understood")
+    func summary() {
+        let q = MusicQuery(genres: ["Rock"], years: Array(1990...1999), sort: .playCount)
+        #expect(q.summary == "Rock · 1990–1999 · most played")
+    }
+}

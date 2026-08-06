@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(SmartSearch.self) private var smart
 
     @State private var query = ""
     @State private var results: [JellyfinItem] = []
@@ -12,6 +13,13 @@ struct SearchView: View {
     /// Incremented per keystroke so a slow earlier request can tell it has been
     /// superseded and discard its results rather than overwriting newer ones.
     @State private var generation = 0
+
+    /// Results from interpreting the phrase, kept apart from the name-matched ones.
+    /// Merging them would hide which is which, and these are a guess where the
+    /// others are exact.
+    @State private var smartResults: [JellyfinItem] = []
+    @State private var smartQuery: MusicQuery?
+    @State private var isInterpreting = false
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespaces) }
     private var songs: [JellyfinItem] { results.filter { $0.type == .audio } }
@@ -28,7 +36,7 @@ struct SearchView: View {
                     ErrorRow(message: errorMessage) { Task { await search(trimmed) } }
                 } else if isSearching && results.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if results.isEmpty {
+                } else if results.isEmpty && smartResults.isEmpty && !isInterpreting {
                     ContentUnavailableView.search(text: trimmed)
                 } else {
                     resultsList
@@ -46,7 +54,10 @@ struct SearchView: View {
         .task(id: query) {
             guard !trimmed.isEmpty else {
                 results = []
+                smartResults = []
+                smartQuery = nil
                 isSearching = false
+                isInterpreting = false
                 errorMessage = nil
                 return
             }
@@ -55,6 +66,7 @@ struct SearchView: View {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             await search(trimmed)
+            await interpret(trimmed)
         }
     }
 
@@ -101,6 +113,36 @@ struct SearchView: View {
 
     private var resultsList: some View {
         List {
+            if isInterpreting {
+                Section {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Working out what you mean…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if !smartResults.isEmpty, let smartQuery {
+                Section {
+                    ForEach(Array(smartResults.enumerated()), id: \.element.id) { index, song in
+                        SongRow(song: song)
+                            .contentShape(.rect)
+                            .onTapGesture {
+                                recents = RecentSearches.add(trimmed)
+                                store.play(smartResults, startingAt: index)
+                            }
+                            .trackContextMenu(song)
+                    }
+                } header: {
+                    // The interpretation is shown, not hidden: it is the only way to
+                    // tell a bad parse from a thin library, and it tells you what to
+                    // rephrase.
+                    Label(smartQuery.summary, systemImage: "sparkles")
+                        .font(.footnote)
+                        .textCase(nil)
+                }
+            }
+
             if !artists.isEmpty {
                 Section("Artists") {
                     ForEach(artists) { artist in
@@ -177,6 +219,36 @@ struct SearchView: View {
                 }
             }
         }
+    }
+
+    /// Runs the phrase through Apple Intelligence, then asks the server.
+    ///
+    /// Deliberately after the plain search rather than alongside it: this takes a
+    /// second or so on device, and the exact matches should never wait behind a
+    /// guess. Skipped entirely for short queries and on devices without Apple
+    /// Intelligence, where the plain search is the whole feature.
+    private func interpret(_ term: String) async {
+        guard SmartSearch.looksLikeAPhrase(term), smart.readiness == .ready else {
+            smartResults = []
+            smartQuery = nil
+            return
+        }
+
+        let mine = generation
+        isInterpreting = true
+        defer { if mine == generation { isInterpreting = false } }
+
+        guard let parsed = await smart.interpret(term), mine == generation else {
+            if mine == generation {
+                smartResults = []
+                smartQuery = nil
+            }
+            return
+        }
+
+        guard let found = try? await store.songs(matching: parsed), mine == generation else { return }
+        smartQuery = parsed
+        smartResults = found
     }
 
     private func search(_ term: String) async {
