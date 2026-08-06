@@ -1,4 +1,5 @@
 import CarPlay
+import CurationKit
 import JellyfinKit
 import PlaybackKit
 import UIKit
@@ -240,7 +241,12 @@ final class CarPlayBrowser: NSObject {
         let mapped = JellyfinPlaybackBridge.playableTracks(from: items, client: client)
         guard !mapped.tracks.isEmpty else { return }
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
-        PlaybackEngine.shared.play(mapped.tracks, startingAt: start)
+        // `.carplay` covers everything reached through the car's own browse list,
+        // whatever kind of list it was. The phone knows it was an album; the car knows
+        // the listener was driving, and that is the more interesting fact about it.
+        PlaybackContext.attributing(.carplay) {
+            PlaybackEngine.shared.play(mapped.tracks, startingAt: start)
+        }
         CarPlayNowPlaying.shared.present()
     }
 

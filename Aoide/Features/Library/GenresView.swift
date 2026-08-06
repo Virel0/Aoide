@@ -132,66 +132,7 @@ struct GenreDetailView: View {
     }
 }
 
-// MARK: - Playlists
-
-struct PlaylistsView: View {
-    @Environment(LibraryStore.self) private var store
-
-    var body: some View {
-        List {
-            switch store.playlists {
-            case .idle, .loading:
-                LoadingRow()
-            case .failed(let message):
-                ErrorRow(message: message) {
-                    // Not `loadPlaylistsIfNeeded` — its `.idle` guard makes it a
-                    // no-op from a failed state, which is exactly when the button
-                    // is on screen.
-                    Task { await store.reloadPlaylists() }
-                }
-            case .loaded(let playlists):
-                if playlists.isEmpty {
-                    ContentUnavailableView(
-                        "No Playlists",
-                        systemImage: "music.note.list",
-                        description: Text("Playlists you create on your Jellyfin server show up here.")
-                    )
-                    .listRowSeparator(.hidden)
-                } else {
-                    ForEach(playlists) { playlist in
-                        NavigationLink {
-                            TrackListView(
-                                title: playlist.name,
-                                artworkItem: playlist,
-                                source: .playlist(playlist.id)
-                            )
-                        } label: {
-                            HStack(spacing: 12) {
-                                ArtworkView(
-                                    url: store.artworkURL(for: playlist, width: Design.ArtworkWidth.thumbnail),
-                                    cornerRadius: Design.Radius.thumbnail
-                                )
-                                .frame(width: Design.Size.listThumbnail, height: Design.Size.listThumbnail)
-                                VStack(alignment: .leading) {
-                                    Text(playlist.name)
-                                    if !playlist.subtitle.isEmpty {
-                                        Text(playlist.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .miniPlayerInset()
-        .appBackground()
-        .navigationTitle("Playlists")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await store.loadPlaylistsIfNeeded() }
-    }
-}
+// The Jellyfin playlist list used to live here as `PlaylistsView`. It moved into
+// `PlaylistsHomeView` as the "On Your Server" section when local playlists arrived —
+// same rows, same loading and retry behaviour, now sitting beside the playlists this
+// device makes rather than on a screen of its own.

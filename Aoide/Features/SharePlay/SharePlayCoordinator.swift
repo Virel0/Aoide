@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CurationKit
 import Foundation
 import GroupActivities
 import JellyfinKit
@@ -193,6 +194,11 @@ final class SharePlayCoordinator {
 
         isApplyingRemoteQueue = true
         defer { isApplyingRemoteQueue = false }
-        PlaybackEngine.shared.play(playable, startingAt: start)
+        // Left `.unknown` on purpose: somebody else chose this, and the schema has no
+        // word for "a friend put it on". Wrapped anyway so the queue this replaces
+        // stops being attributed to whatever the listener was playing before.
+        PlaybackContext.attributing(.unknown) {
+            PlaybackEngine.shared.play(playable, startingAt: start)
+        }
     }
 }

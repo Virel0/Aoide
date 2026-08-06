@@ -148,7 +148,13 @@ public final class CurationStore: Sendable {
         }
     }
 
-    private static func json(_ value: some Encodable) throws -> String {
+    /// The encoding for every op payload in this package.
+    ///
+    /// Internal rather than private because the tables that cannot go through `record`
+    /// — `playEvent` amendments and `queueState` — build their own ops and must encode
+    /// them identically. Three private copies of "remember `.sortedKeys`" is three
+    /// places for one of them to forget.
+    static func json(_ value: some Encodable) throws -> String {
         let encoder = JSONEncoder()
         // Stable key order: payloads are compared and logged, and a dictionary's
         // iteration order would make identical rows look different.

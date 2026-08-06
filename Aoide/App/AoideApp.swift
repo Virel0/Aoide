@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         MainActor.assumeIsolated {
             AudioSessionController.activate()
+            // Before the session restores, because restoring wires up the playback
+            // reporters and CarPlay can start a track before the phone UI has ever
+            // appeared. Opened from a view's `.task` instead, a whole drive's listening
+            // would go unrecorded.
+            CurationDatabase.open()
             AppSession.shared.restore()
         }
         return true

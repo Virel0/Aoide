@@ -15,8 +15,11 @@ enum CurationDatabase {
     // main actor at launch instead.
     @MainActor private(set) static var shared: CurationStore?
 
+    /// Idempotent: called at launch, before anything can play. Reopening would hand out
+    /// a second connection to the same file behind the recorder's back.
     @MainActor
     static func open() {
+        guard shared == nil else { return }
         do {
             let directory = FileManager.default
                 .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

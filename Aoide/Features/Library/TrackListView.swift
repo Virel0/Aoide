@@ -1,3 +1,4 @@
+import CurationKit
 import JellyfinKit
 import PlaybackKit
 import SwiftUI
@@ -14,6 +15,14 @@ struct TrackListView: View {
             if case .album = self { return true }
             return false
         }
+
+        /// How the local history files a play started from this page.
+        var playSource: PlaySource {
+            switch self {
+            case .album: .album
+            case .playlist: .playlist
+            }
+        }
     }
 
     let title: String
@@ -22,7 +31,9 @@ struct TrackListView: View {
     var subtitle: String?
 
     @Environment(LibraryStore.self) private var store
+    @Environment(LocalPlaylistStore.self) private var playlists
     @State private var downloads = DownloadStore.shared
+    @State private var adding: TrackSelection?
     @State private var tracks: [JellyfinItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -91,6 +102,15 @@ struct TrackListView: View {
         .appBackground()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        // One sheet for the whole page rather than one per row: a context menu is gone
+        // before its action runs, so the presentation has to live on something that is
+        // still on screen. Both stores are handed in explicitly — a sheet is an
+        // environment boundary, and a missing `@Environment` observable is a crash.
+        .sheet(item: $adding) { selection in
+            AddToPlaylistSheet(selection: selection)
+                .environment(store)
+                .environment(playlists)
+        }
         .task { await load() }
         .task(id: artworkItem.id) {
             isFavorite = artworkItem.userData?.isFavorite ?? false
@@ -110,11 +130,11 @@ struct TrackListView: View {
         )
         .contentShape(.rect)
         .onTapGesture {
-            store.play(tracks, startingAt: index)
+            store.play(tracks, startingAt: index, from: source.playSource)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { store.play(tracks, startingAt: index) }
+        .accessibilityAction { store.play(tracks, startingAt: index, from: source.playSource) }
         // Combining the row's children collapses the download control into the row,
         // so VoiceOver can no longer reach it by touch. Naming it as a row action
         // puts it back — without this the control is sighted-only.
@@ -127,13 +147,16 @@ struct TrackListView: View {
         }
         .contextMenu {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                store.playNext([track])
+                store.playNext([track], from: source.playSource)
             }
             Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                store.addToQueue([track])
+                store.addToQueue([track], from: source.playSource)
             }
             Button("Favourite", systemImage: "heart") {
                 Task { await store.toggleFavorite(track) }
+            }
+            Button("Add to Playlist…", systemImage: "text.badge.plus") {
+                adding = TrackSelection([track])
             }
 
             Divider()
@@ -216,8 +239,10 @@ struct TrackListView: View {
         DetailActionRow(
             isFavorite: isFavorite,
             isEnabled: !tracks.isEmpty,
-            onLeading: { store.play(tracks, shuffled: true) },
-            onPlay: { store.play(tracks) },
+            // Shuffle is still the album (or the playlist): it says how these tracks
+            // are being played, not where they came from.
+            onLeading: { store.play(tracks, shuffled: true, from: source.playSource) },
+            onPlay: { store.play(tracks, from: source.playSource) },
             onTrailing: {
                 // Drive from local intent and adopt what the server confirms.
                 // Deriving the new value from `artworkItem.userData` read a snapshot

@@ -19,7 +19,10 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(spacing: 0) {
-                        categoryRow("Playlists", "music.note.list") { PlaylistsView() }
+                        // One row, two kinds behind it — the ones made here and the ones
+                        // on the server. See `PlaylistsHomeView` for why they share a
+                        // destination rather than getting a Library row each.
+                        categoryRow("Playlists", "music.note.list") { PlaylistsHomeView() }
                         categoryRow("Artists", "music.microphone") { ArtistsListView() }
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
@@ -261,6 +264,10 @@ struct SongsListView: View {
 
     /// Play from here through the rest of what's loaded, which is what tapping a
     /// song in a long list is understood to mean.
+    ///
+    /// The play source stays `.unknown`: every song in the library is in this list, so
+    /// it says nothing about what the listener chose. Calling it `.album` because the
+    /// songs happen to have albums would fill a recap with albums nobody opened.
     private func play(_ song: JellyfinItem, in paged: PagedItems) {
         guard let index = paged.items.firstIndex(where: { $0.id == song.id }) else { return }
         store.play(paged.items, startingAt: index)

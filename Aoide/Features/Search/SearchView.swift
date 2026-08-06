@@ -1,3 +1,4 @@
+import CurationKit
 import JellyfinKit
 import SwiftUI
 
@@ -129,9 +130,9 @@ struct SearchView: View {
                             .contentShape(.rect)
                             .onTapGesture {
                                 recents = RecentSearches.add(trimmed)
-                                store.play(smartResults, startingAt: index)
+                                store.play(smartResults, startingAt: index, from: .search)
                             }
-                            .trackContextMenu(song)
+                            .trackContextMenu(song, from: .search)
                     }
                 } header: {
                     // The interpretation is shown, not hidden: it is the only way to
@@ -194,9 +195,9 @@ struct SearchView: View {
                             .contentShape(.rect)
                             .onTapGesture {
                                 recents = RecentSearches.add(trimmed)
-                                store.play(songs, startingAt: index)
+                                store.play(songs, startingAt: index, from: .search)
                             }
-                            .trackContextMenu(song)
+                            .trackContextMenu(song, from: .search)
                     }
                 }
             }

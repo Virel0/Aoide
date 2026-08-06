@@ -1,3 +1,4 @@
+import CurationKit
 import Foundation
 import Intents
 import JellyfinKit
@@ -81,7 +82,11 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
         await MainActor.run {
             let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
             guard !tracks.isEmpty else { return }
-            PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+            // `.siri` even when the request arrived through the car's voice button:
+            // what was asked for was spoken, and that is what the source records.
+            PlaybackContext.attributing(.siri) {
+                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+            }
             if let mode = request.repeatMode {
                 PlaybackEngine.shared.repeatMode = mode
             }
@@ -232,7 +237,9 @@ extension MediaIntentHandler: @preconcurrency INSearchForMediaIntentHandling {
         await MainActor.run {
             let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
             guard !tracks.isEmpty else { return }
-            PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+            PlaybackContext.attributing(.siri) {
+                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+            }
         }
         return INSearchForMediaIntentResponse(code: .success, userActivity: nil)
     }

@@ -100,6 +100,8 @@ struct DownloadedView: View {
         }
     }
 
+    /// The play source stays `.unknown` — "downloaded" is a property of the file, not
+    /// somewhere the listener browsed, and there is no word for it in the history.
     private func play(_ track: JellyfinItem) {
         let queue = playbackOrder
         guard let start = queue.firstIndex(where: { $0.id == track.id }) else { return }

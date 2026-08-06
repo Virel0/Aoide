@@ -178,6 +178,43 @@ extension JellyfinClient {
         )
     }
 
+    /// Several items by id, returned in the order they were asked for.
+    ///
+    /// One request per chunk rather than one per id, because the caller is a locally
+    /// stored playlist: it holds ids and nothing else, and resolving a 200-track
+    /// playlist a track at a time is 200 round trips on a home connection before the
+    /// first row can be drawn.
+    ///
+    /// The server answers in its own order and silently omits ids it no longer knows —
+    /// a file deleted or moved since the playlist was made. Both are handled here so
+    /// callers never have to: the result is re-sorted into the requested order, and a
+    /// missing id is simply absent, which is what tells the caller the entry has
+    /// dangled.
+    public func items(ids: [String]) async throws -> [JellyfinItem] {
+        guard !ids.isEmpty else { return [] }
+        let userId = try requireUserId()
+
+        var found: [String: JellyfinItem] = [:]
+        // Chunked because these go into a query string: a few hundred 32-character
+        // GUIDs comfortably exceeds what proxies in front of Jellyfin will forward,
+        // and the failure is a 414 rather than a short answer.
+        for chunk in stride(from: 0, to: ids.count, by: Self.maxIdsPerRequest) {
+            let slice = Array(ids[chunk..<min(chunk + Self.maxIdsPerRequest, ids.count)])
+            let response: ItemsResponse = try await get(
+                path: "Items",
+                query: [
+                    URLQueryItem(name: "userId", value: userId),
+                    URLQueryItem(name: "ids", value: slice.joined(separator: ",")),
+                    URLQueryItem(name: "fields", value: Self.standardFields),
+                ]
+            )
+            for item in response.items { found[item.id] = item }
+        }
+        return ids.compactMap { found[$0] }
+    }
+
+    private static let maxIdsPerRequest = 100
+
     // MARK: - Home screen shelves
 
     /// Newly added music, grouped into albums by the server.

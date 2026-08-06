@@ -109,6 +109,11 @@ struct ArtistDetailView: View {
     }
 
     /// Plays the artist's whole catalogue in release order.
+    ///
+    /// The play source stays `.unknown` for both buttons. An artist is the one place in
+    /// the app that plays from something the history has no word for — it is neither an
+    /// album nor a playlist, and calling the shuffle button `.shuffle` while the play
+    /// button was `.unknown` would split one page's listening across two meanings.
     private func playEverything(shuffled: Bool) async {
         var everything: [JellyfinItem] = []
         for album in albums {

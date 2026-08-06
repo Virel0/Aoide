@@ -1,3 +1,4 @@
+import CurationKit
 import Foundation
 import JellyfinKit
 import PlaybackKit
@@ -284,6 +285,29 @@ final class LibraryStore {
         }
     }
 
+    /// The music libraries, for callers that have to walk them one at a time.
+    ///
+    /// Exposed only for the song index, which is the one pass that genuinely must cover
+    /// every library: `acrossLibrariesPaged` below pages the first and accepts it, which
+    /// is right for a browsable list and would silently index only part of the music on
+    /// a server with two.
+    func musicLibraryScope() async -> [String] {
+        await libraryScope()
+    }
+
+    /// One page of songs from one library, for the index. Sorted by name only so the
+    /// paging is stable from the first page to the last — `.random` would return a
+    /// different permutation per request and index some tracks twice and others never.
+    func songsBatch(parentId: String?, startIndex: Int, limit: Int) async throws -> ItemsResponse {
+        try await client.songs(
+            parentId: parentId,
+            sort: .name,
+            direction: .ascending,
+            startIndex: startIndex,
+            limit: limit
+        )
+    }
+
     /// Paging across several music libraries can't be merged correctly — two
     /// independently-paged sorted lists don't interleave — so with more than one
     /// library we page the first and accept it. In practice a music server has one.
@@ -311,12 +335,15 @@ final class LibraryStore {
 
     func playAlbum(_ album: JellyfinItem, shuffled: Bool = false) async {
         guard let tracks = try? await tracks(inAlbum: album.id) else { return }
-        play(tracks, shuffled: shuffled)
+        // `.album` whether or not it was shuffled. Shuffle is how the album is being
+        // played, not where it came from, and `.shuffle` is reserved for a queue the
+        // app assembled with no collection behind it at all.
+        play(tracks, shuffled: shuffled, from: .album)
     }
 
     func queueAlbum(_ album: JellyfinItem, next: Bool) async {
         guard let tracks = try? await tracks(inAlbum: album.id) else { return }
-        if next { playNext(tracks) } else { addToQueue(tracks) }
+        if next { playNext(tracks, from: .album) } else { addToQueue(tracks, from: .album) }
     }
 
     /// Shuffle the whole library.
@@ -335,7 +362,9 @@ final class LibraryStore {
                 ).items
             }
             guard !tracks.isEmpty else { return }
-            play(tracks)
+            // The one true `.shuffle`: a queue with no album, playlist or search behind
+            // it, assembled because the listener asked for anything at all.
+            play(tracks, from: .shuffle)
         } catch {
             log.error("Could not shuffle library: \(error.localizedDescription, privacy: .public)")
         }
@@ -346,6 +375,9 @@ final class LibraryStore {
     func startStation(seededBy item: JellyfinItem) async {
         do {
             let mix = try await client.instantMix(seededBy: item.id)
+            // Left `.unknown`: a station is none of the sources the schema has a word
+            // for, and filing it under the nearest one would put songs nobody chose
+            // into the recap's "you played this album a lot".
             play(mix)
         } catch {
             log.error("Could not start station: \(error.localizedDescription, privacy: .public)")
@@ -416,7 +448,16 @@ final class LibraryStore {
     // MARK: - Playback
 
     /// Turns Jellyfin items into tracks and hands them to the engine.
-    func play(_ items: [JellyfinItem], startingAt index: Int = 0, shuffled: Bool = false) {
+    ///
+    /// `source` names where the listener started this from, and is written onto every
+    /// play event the queue produces. It defaults to `.unknown` rather than to a
+    /// plausible value: a recap built on a guess is wrong in a way nobody can spot.
+    func play(
+        _ items: [JellyfinItem],
+        startingAt index: Int = 0,
+        shuffled: Bool = false,
+        from source: PlaySource = .unknown
+    ) {
         // `index` addresses `items`, but the bridge drops anything that isn't
         // playable — a Jellyfin playlist can hold non-audio entries. Clamping the
         // old index was not enough: one dropped row above the tap made every
@@ -425,15 +466,23 @@ final class LibraryStore {
         let mapped = JellyfinPlaybackBridge.playableTracks(from: items, client: client)
         guard !mapped.tracks.isEmpty else { return }
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
-        PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
+        PlaybackContext.attributing(source) {
+            PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
+        }
     }
 
-    func playNext(_ items: [JellyfinItem]) {
-        PlaybackEngine.shared.playNext(JellyfinPlaybackBridge.tracks(from: items, client: client))
+    func playNext(_ items: [JellyfinItem], from source: PlaySource = .unknown) {
+        let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+        PlaybackContext.attributing(source) {
+            PlaybackEngine.shared.playNext(tracks)
+        }
     }
 
-    func addToQueue(_ items: [JellyfinItem]) {
-        PlaybackEngine.shared.addToQueue(JellyfinPlaybackBridge.tracks(from: items, client: client))
+    func addToQueue(_ items: [JellyfinItem], from source: PlaySource = .unknown) {
+        let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+        PlaybackContext.attributing(source) {
+            PlaybackEngine.shared.addToQueue(tracks)
+        }
     }
 
     // MARK: - Helpers

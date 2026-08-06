@@ -1,3 +1,4 @@
+import CurationKit
 import JellyfinKit
 import SwiftUI
 
@@ -5,8 +6,12 @@ import SwiftUI
 /// the consistency is most of why the app feels navigable. These two modifiers keep
 /// ours identical everywhere rather than each screen inventing its own set.
 extension View {
-    func trackContextMenu(_ track: JellyfinItem) -> some View {
-        modifier(TrackContextMenu(track: track))
+    /// `source` is where the row being pressed came from, for the play history. It
+    /// defaults to `.unknown` because most of the screens using this genuinely have no
+    /// answer — a song in the Songs list came from nowhere in particular — and guessing
+    /// one would put a fiction in the recap.
+    func trackContextMenu(_ track: JellyfinItem, from source: PlaySource = .unknown) -> some View {
+        modifier(TrackContextMenu(track: track, source: source))
     }
 
     func albumContextMenu(_ album: JellyfinItem) -> some View {
@@ -16,15 +21,24 @@ extension View {
 
 private struct TrackContextMenu: ViewModifier {
     let track: JellyfinItem
+    let source: PlaySource
     @Environment(LibraryStore.self) private var store
+    @Environment(LocalPlaylistStore.self) private var playlists
+    @State private var adding: TrackSelection?
 
     func body(content: Content) -> some View {
         content.contextMenu {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                store.playNext([track])
+                store.playNext([track], from: source)
             }
             Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                store.addToQueue([track])
+                store.addToQueue([track], from: source)
+            }
+
+            Divider()
+
+            Button("Add to Playlist…", systemImage: "text.badge.plus") {
+                adding = TrackSelection([track])
             }
 
             Divider()
@@ -52,12 +66,23 @@ private struct TrackContextMenu: ViewModifier {
                 }
             }
         }
+        // Attached to the row, not written inside the menu: a context menu is dismissed
+        // before its action runs, so it has no view of its own to present from. Both
+        // stores are injected explicitly rather than inherited — a sheet is an
+        // environment boundary, and a missing `@Environment` observable is a crash.
+        .sheet(item: $adding) { selection in
+            AddToPlaylistSheet(selection: selection)
+                .environment(store)
+                .environment(playlists)
+        }
     }
 }
 
 private struct AlbumContextMenu: ViewModifier {
     let album: JellyfinItem
     @Environment(LibraryStore.self) private var store
+    @Environment(LocalPlaylistStore.self) private var playlists
+    @State private var adding: TrackSelection?
 
     func body(content: Content) -> some View {
         content.contextMenu {
@@ -75,6 +100,18 @@ private struct AlbumContextMenu: ViewModifier {
             }
             Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
                 Task { await store.queueAlbum(album, next: false) }
+            }
+
+            Divider()
+
+            Button("Add to Playlist…", systemImage: "text.badge.plus") {
+                // The album's tracks are fetched before the sheet opens rather than
+                // inside it: an empty picker that fills in a moment later is a picker
+                // somebody taps through before it means anything.
+                Task {
+                    guard let tracks = try? await store.tracks(inAlbum: album.id), !tracks.isEmpty else { return }
+                    adding = TrackSelection(tracks)
+                }
             }
 
             Divider()
@@ -98,6 +135,11 @@ private struct AlbumContextMenu: ViewModifier {
                     store.download(tracks)
                 }
             }
+        }
+        .sheet(item: $adding) { selection in
+            AddToPlaylistSheet(selection: selection)
+                .environment(store)
+                .environment(playlists)
         }
     }
 }

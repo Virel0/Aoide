@@ -64,6 +64,7 @@ struct MainTabView: View {
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
     @State private var smartSearch: SmartSearch
+    @State private var playlists: LocalPlaylistStore
     @State private var isShowingNowPlaying = false
     @State private var engine = PlaybackEngine.shared
     @State private var selectedTab: TabID = .home
@@ -76,6 +77,7 @@ struct MainTabView: View {
         _store = State(initialValue: LibraryStore(client: client))
         _lyrics = State(initialValue: LyricsStore(client: client))
         _smartSearch = State(initialValue: SmartSearch(client: client))
+        _playlists = State(initialValue: LocalPlaylistStore(client: client))
     }
 
     var body: some View {
@@ -103,7 +105,6 @@ struct MainTabView: View {
             }
         }
         .task { await openToDownloadsIfOffline() }
-        .task { CurationDatabase.open() }
         .task { await SpotlightIndexer.shared.indexIfNeeded(client: client) }
         .task {
             // Joining needs no button: when someone else on the call starts a
@@ -133,12 +134,14 @@ struct MainTabView: View {
             NowPlayingView()
                 .environment(store)
                 .environment(lyrics)
+                .environment(playlists)
         }
         // Applied last so everything beneath — the tabs, the accessory, and the
         // sheet modifier itself — sees them.
         .environment(store)
         .environment(lyrics)
         .environment(smartSearch)
+        .environment(playlists)
     }
 
     /// Opens straight to Downloaded when there's no connection and something is
