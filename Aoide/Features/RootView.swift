@@ -17,6 +17,13 @@ struct RootView: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-AoideUIHarness") {
             UIHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("-AoideTabPreview"),
+                  let url = try? JellyfinClient.normalizeServerURL("preview.invalid") {
+            // The tab bar itself, without a login. Every screen inside will fail to
+            // load — that's fine and beside the point: this exists to check the bar's
+            // own layout, which is otherwise unreachable without signing in.
+            MainTabView(client: JellyfinClient(serverURL: url, device: AppSession.deviceProfile))
+                .environment(AppSession.shared)
         } else {
             signedInContent
         }
@@ -50,16 +57,13 @@ struct RootView: View {
 }
 
 struct MainTabView: View {
-    private enum TabID: Hashable { case home, library, search }
+    private enum TabID: Hashable { case home, library, downloads, search }
 
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
     @State private var isShowingNowPlaying = false
     @State private var engine = PlaybackEngine.shared
     @State private var selectedTab: TabID = .home
-    /// Held here rather than inside `LibraryView` so an offline launch can push
-    /// Downloaded onto a tab that hasn't been shown yet.
-    @State private var libraryPath = NavigationPath()
 
     init(client: JellyfinClient) {
         _store = State(initialValue: LibraryStore(client: client))
@@ -67,15 +71,24 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // Three tabs, not Apple Music's five. New and Radio exist because Apple has
+        // Four tabs, not Apple Music's five. New and Radio exist because Apple has
         // a catalogue and an editorial staff; against a personal library they would
-        // be two permanently empty screens.
+        // be two permanently empty screens. Downloads earns its place instead —
+        // it's the one screen that still works with no signal, which is no use
+        // buried a tap inside a Library list that can't load.
         TabView(selection: $selectedTab) {
             Tab("Home", systemImage: "house", value: TabID.home) {
                 HomeView()
             }
             Tab("Library", systemImage: "music.note.list", value: TabID.library) {
-                LibraryView(path: $libraryPath)
+                LibraryView()
+            }
+            // `arrow.down.circle` is the download glyph everywhere else in the app,
+            // but a tab bar substitutes the filled variant and it renders as a
+            // solid white disc next to two outline neighbours. This one has no
+            // fill to substitute.
+            Tab("Downloads", systemImage: "arrow.down.to.line", value: TabID.downloads) {
+                NavigationStack { DownloadedView() }
             }
             Tab("Search", systemImage: "magnifyingglass", value: TabID.search, role: .search) {
                 SearchView()
@@ -114,7 +127,6 @@ struct MainTabView: View {
         await Reachability.shared.settled()
         guard Reachability.shared.isOnline == false else { return }
         guard DownloadStore.shared.downloadedCount > 0 else { return }
-        selectedTab = .library
-        libraryPath.append(LibraryRoute.downloaded)
+        selectedTab = .downloads
     }
 }

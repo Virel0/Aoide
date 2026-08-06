@@ -3,21 +3,12 @@ import PlaybackKit
 import SwiftUI
 
 /// The Library tab: Apple Music's list of categories, then recently added.
-/// Destinations this tab can be sent to from outside itself.
-enum LibraryRoute: Hashable {
-    case downloaded
-}
-
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
     @Environment(AppSession.self) private var session
 
-    /// Owned by `MainTabView` so an offline launch can push Downloaded before this
-    /// view has ever appeared.
-    @Binding var path: NavigationPath
-
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             // A ScrollView rather than a List: the shelf below is a horizontal
             // carousel, and a NavigationLink inside a List row draws a disclosure
             // chevron on every album cell.
@@ -29,9 +20,6 @@ struct LibraryView: View {
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
                         categoryRow("Genres", "guitars") { GenresListView() }
-                        // Value-based, unlike its siblings, so that it can also be
-                        // reached programmatically on an offline launch.
-                        categoryRow("Downloaded", "arrow.down.circle", value: LibraryRoute.downloaded)
                     }
                     .pageMargin()
 
@@ -57,11 +45,6 @@ struct LibraryView: View {
             }
             .refreshable { await store.refresh() }
             .task { await store.loadRecentlyAddedIfNeeded() }
-            .navigationDestination(for: LibraryRoute.self) { route in
-                switch route {
-                case .downloaded: DownloadedView()
-                }
-            }
         }
     }
 
@@ -72,12 +55,6 @@ struct LibraryView: View {
     ) -> some View {
         row {
             NavigationLink(destination: destination) { categoryLabel(title, symbol) }
-        }
-    }
-
-    private func categoryRow(_ title: String, _ symbol: String, value: some Hashable) -> some View {
-        row {
-            NavigationLink(value: value) { categoryLabel(title, symbol) }
         }
     }
 

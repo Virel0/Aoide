@@ -79,8 +79,9 @@ struct DownloadedView: View {
         }
         .miniPlayerInset()
         .appBackground()
-        .navigationTitle("Downloaded")
-        .navigationBarTitleDisplayMode(.inline)
+        // A large title now that this is a tab root rather than a row pushed from
+        // Library — inline would leave it the only top-level screen with a small one.
+        .navigationTitle("Downloads")
         .toolbar {
             if !tracks.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
