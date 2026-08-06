@@ -51,7 +51,9 @@ struct NowPlayingView: View {
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $isShowingLyrics) {
+            // Same environment boundary as above — carried across explicitly.
             LyricsView()
+                .environment(lyricsStore)
         }
         .task(id: track?.id) {
             // Loading here rather than on demand is what lets the lyrics button

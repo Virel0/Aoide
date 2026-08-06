@@ -51,10 +51,19 @@ struct MainTabView: View {
         .tabViewBottomAccessory {
             MiniPlayerView(isShowingNowPlaying: $isShowingNowPlaying)
         }
+        .sheet(isPresented: $isShowingNowPlaying) {
+            // Injected directly into the sheet as well as inherited below. A sheet
+            // is an environment boundary: content presented by a modifier attached
+            // *above* an `.environment(_:)` call is hosted in the environment from
+            // above it, where the value doesn't exist — and a missing `@Environment`
+            // observable is a trap, not a nil.
+            NowPlayingView()
+                .environment(store)
+                .environment(lyrics)
+        }
+        // Applied last so everything beneath — the tabs, the accessory, and the
+        // sheet modifier itself — sees them.
         .environment(store)
         .environment(lyrics)
-        .sheet(isPresented: $isShowingNowPlaying) {
-            NowPlayingView()
-        }
     }
 }

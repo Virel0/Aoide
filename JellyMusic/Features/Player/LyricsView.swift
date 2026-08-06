@@ -54,6 +54,7 @@ struct LyricsView: View {
             }
             .sheet(isPresented: $isShowingOffset) {
                 LyricsOffsetSheet()
+                    .environment(store)
                     .presentationDetents([.height(240)])
             }
         }
