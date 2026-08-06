@@ -19,5 +19,16 @@
 	-->
 	<key>com.apple.developer.siri</key>
 	<true/>
+
+	<!--
+	  SharePlay. Self-service like Siri: tick "Group Activities" on the App ID and
+	  automatic signing picks it up. Enabled 2026-08-06.
+
+	  Without it the app still builds and runs — only `activate()` fails, so the
+	  SharePlay button appears during a FaceTime call and then quietly does
+	  nothing, which is why this key and the capability have to move together.
+	-->
+	<key>com.apple.developer.group-session</key>
+	<true/>
 </dict>
 </plist>
