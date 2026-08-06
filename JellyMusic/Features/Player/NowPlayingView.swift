@@ -10,6 +10,9 @@ struct NowPlayingView: View {
     /// player — otherwise every time update yanks the thumb back.
     @State private var scrubPosition: Double?
     @State private var isShowingQueue = false
+    @State private var isShowingLyrics = false
+
+    @Environment(LyricsStore.self) private var lyricsStore
 
     private var track: Track? { engine.currentTrack }
 
@@ -46,6 +49,15 @@ struct NowPlayingView: View {
         .sheet(isPresented: $isShowingQueue) {
             QueueView()
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $isShowingLyrics) {
+            LyricsView()
+        }
+        .task(id: track?.id) {
+            // Loading here rather than on demand is what lets the lyrics button
+            // know whether to appear at all.
+            guard let id = track?.id else { return }
+            await lyricsStore.load(trackId: id)
         }
     }
 
@@ -139,6 +151,16 @@ struct NowPlayingView: View {
 
             Spacer()
 
+            if let trackId = track?.id, lyricsStore.mayHaveLyrics(trackId) {
+                Button {
+                    isShowingLyrics = true
+                } label: {
+                    Image(systemName: "quote.bubble")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
             Button {
                 isShowingQueue = true
             } label: {
@@ -157,7 +179,7 @@ struct NowPlayingView: View {
         }
         .font(.title3)
         .buttonStyle(.plain)
-        .padding(.horizontal, 48)
+        .padding(.horizontal, 40)
     }
 }
 

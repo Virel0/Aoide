@@ -27,11 +27,13 @@ struct RootView: View {
 
 struct MainTabView: View {
     @State private var store: LibraryStore
+    @State private var lyrics: LyricsStore
     @State private var isShowingNowPlaying = false
     @State private var engine = PlaybackEngine.shared
 
     init(client: JellyfinClient) {
         _store = State(initialValue: LibraryStore(client: client))
+        _lyrics = State(initialValue: LyricsStore(client: client))
     }
 
     var body: some View {
@@ -50,6 +52,7 @@ struct MainTabView: View {
             MiniPlayerView(isShowingNowPlaying: $isShowingNowPlaying)
         }
         .environment(store)
+        .environment(lyrics)
         .sheet(isPresented: $isShowingNowPlaying) {
             NowPlayingView()
         }

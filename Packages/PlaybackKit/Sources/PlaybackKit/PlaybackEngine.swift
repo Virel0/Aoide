@@ -45,6 +45,35 @@ public final class PlaybackEngine {
 
     public var currentTrack: Track? { queue.currentTrack }
 
+    /// Where the listener actually is in the track, as opposed to where the player
+    /// has got to.
+    ///
+    /// The media clock reports when audio was handed to the renderer, not when it
+    /// reaches someone's ears. Over wired output the difference is 10–40ms and
+    /// invisible; over AirPods or car Bluetooth it is routinely 150–300ms. A sung
+    /// word lasts 150–400ms, so lyrics highlighted off the raw clock sit a full word
+    /// ahead of the audio — the single thing most likely to make this feature feel
+    /// broken.
+    ///
+    /// Read fresh on each access rather than from the 0.5s observer, which is far
+    /// too coarse to follow a lyric line. Used for lyrics only: seeking and the
+    /// scrubber stay on the raw clock, where a latency correction would be wrong.
+    public var audibleElapsed: Duration? {
+        let time = player.currentTime()
+        guard time.isNumeric, time.seconds.isFinite else { return nil }
+        return .seconds(max(0, time.seconds - outputLatency - lyricsOffset.seconds))
+    }
+
+    /// Manual nudge for lyric timing, in addition to the automatic correction.
+    ///
+    /// Bluetooth codec latency is under-reported by the OS, so the automatic figure
+    /// gets close but not exact — and how close varies by headphone. Apple Music
+    /// exposes the same control for the same reason.
+    public var lyricsOffset: Duration = .zero
+
+    /// Cached because reading it is not free and it only changes with the route.
+    private var outputLatency: TimeInterval = 0
+
     public var repeatMode: RepeatMode {
         get { queue.repeatMode }
         set {
@@ -120,6 +149,12 @@ public final class PlaybackEngine {
         observePlayerTime()
         configureRemoteCommands()
         observeAudioSessionEvents()
+        refreshOutputLatency()
+    }
+
+    private func refreshOutputLatency() {
+        let session = AVAudioSession.sharedInstance()
+        outputLatency = session.outputLatency + session.ioBufferDuration
     }
 
     // MARK: - Loading
@@ -800,6 +835,10 @@ public final class PlaybackEngine {
     }
 
     private func handleRouteChange(reasonRaw: UInt?) {
+        // Latency is a property of the route, so it has to be re-read on every
+        // change — plugging in AirPods moves it by a couple of hundred milliseconds.
+        refreshOutputLatency()
+
         guard let reasonRaw, let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) else { return }
 
         // The old device went away — pulled headphones, left Bluetooth range.
