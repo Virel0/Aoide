@@ -399,6 +399,11 @@ final class LibraryStore {
         (client.credentials?.username ?? "—", client.serverURL.host() ?? client.serverURL.absoluteString)
     }
 
+    /// One item by id. Spotlight hands back an identifier and nothing else.
+    func item(id: String) async throws -> JellyfinItem {
+        try await client.item(id: id)
+    }
+
     /// Songs matching a structured query, as built by smart search.
     func songs(matching query: MusicQuery) async throws -> [JellyfinItem] {
         try await client.songs(matching: query)

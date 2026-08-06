@@ -1,3 +1,4 @@
+import CoreSpotlight
 import JellyfinKit
 import PlaybackKit
 import SwiftUI
@@ -59,14 +60,19 @@ struct RootView: View {
 struct MainTabView: View {
     private enum TabID: Hashable { case home, library, downloads, search }
 
+    private let client: JellyfinClient
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
     @State private var smartSearch: SmartSearch
     @State private var isShowingNowPlaying = false
     @State private var engine = PlaybackEngine.shared
     @State private var selectedTab: TabID = .home
+    /// Held here, not inside `LibraryView`, so a Spotlight result can push onto a
+    /// tab that has never appeared.
+    @State private var libraryPath = NavigationPath()
 
     init(client: JellyfinClient) {
+        self.client = client
         _store = State(initialValue: LibraryStore(client: client))
         _lyrics = State(initialValue: LyricsStore(client: client))
         _smartSearch = State(initialValue: SmartSearch(client: client))
@@ -83,7 +89,7 @@ struct MainTabView: View {
                 HomeView()
             }
             Tab("Library", systemImage: "music.note.list", value: TabID.library) {
-                LibraryView()
+                LibraryView(path: $libraryPath)
             }
             // `arrow.down.circle` is the download glyph everywhere else in the app,
             // but a tab bar substitutes the filled variant and it renders as a
@@ -97,6 +103,20 @@ struct MainTabView: View {
             }
         }
         .task { await openToDownloadsIfOffline() }
+        .task { await SpotlightIndexer.shared.indexIfNeeded(client: client) }
+        .task {
+            // Joining needs no button: when someone else on the call starts a
+            // session, this picks it up and adopts what they're playing.
+            SharePlayCoordinator.shared.connect(client: client)
+            SharePlayCoordinator.shared.listenForSessions()
+        }
+        // Spotlight hands back the identifier it was given at index time and
+        // nothing else, so the destination resolves it into a real item itself.
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            guard let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String else { return }
+            selectedTab = .library
+            libraryPath.append(LibraryRoute.item(id: id))
+        }
         // iOS 26's bottom accessory slot — the same one Apple Music's mini player
         // lives in, so it picks up the glass material and collapse behaviour rather
         // than us faking a bar on top of the tab bar.

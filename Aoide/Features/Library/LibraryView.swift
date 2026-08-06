@@ -7,8 +7,12 @@ struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
     @Environment(AppSession.self) private var session
 
+    /// Owned by `MainTabView` so a Spotlight result can push a detail screen onto
+    /// this tab before it has ever been shown.
+    @Binding var path: NavigationPath
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             // A ScrollView rather than a List: the shelf below is a horizontal
             // carousel, and a NavigationLink inside a List row draws a disclosure
             // chevron on every album cell.
@@ -45,6 +49,11 @@ struct LibraryView: View {
             }
             .refreshable { await store.refresh() }
             .task { await store.loadRecentlyAddedIfNeeded() }
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case .item(let id): SpotlightDestination(id: id)
+                }
+            }
         }
     }
 

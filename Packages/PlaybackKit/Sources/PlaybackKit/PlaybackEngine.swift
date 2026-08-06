@@ -322,6 +322,13 @@ public final class PlaybackEngine {
     /// holds.
     private static let seekTolerance = CMTime(seconds: 0.25, preferredTimescale: 600)
 
+    /// The player's SharePlay coordinator.
+    ///
+    /// Exposed so the app can attach a `GroupSession` to it without PlaybackKit
+    /// importing GroupActivities — this package stays about playing audio, and the
+    /// question of who else is listening belongs a layer up.
+    public var playbackCoordinator: AVPlayerPlaybackCoordinator { player.playbackCoordinator }
+
     public func seek(to position: Duration) {
         let clamped = max(.zero, min(position, duration ?? position))
         player.seek(

@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     /// player — otherwise every time update yanks the thumb back.
     @State private var scrubPosition: Double?
     @State private var isShowingQueue = false
+    @State private var sharePlay = SharePlayCoordinator.shared
     @State private var isShowingLyrics = false
 
     @Environment(LyricsStore.self) private var lyricsStore
@@ -180,6 +181,18 @@ struct NowPlayingView: View {
                 .accessibilityLabel("AirPlay")
 
             Spacer()
+
+            if sharePlay.isEligible {
+                Button {
+                    Task { await sharePlay.start() }
+                } label: {
+                    Image(systemName: "shareplay")
+                        .foregroundStyle(sharePlay.isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                }
+                .accessibilityLabel(sharePlay.isActive ? "Listening together" : "Start SharePlay")
+
+                Spacer()
+            }
 
             Button {
                 isShowingQueue = true

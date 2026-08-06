@@ -148,8 +148,16 @@ final class AppSession {
         // exists, with the mini player gone and no way to stop it.
         JellyfinPlaybackBridge.disconnect()
         clearStoredCredentials()
+        clearSpotlightIndex()
         client = nil
         state = .signedOut
+    }
+
+    /// Spotlight entries outlive the session that published them, so they have to
+    /// be withdrawn explicitly — otherwise one account's albums stay searchable from
+    /// the Home Screen after somebody else signs in.
+    private func clearSpotlightIndex() {
+        Task { await SpotlightIndexer.shared.clear() }
     }
 
     private func clearStoredCredentials() {
@@ -169,6 +177,7 @@ final class AppSession {
         try? await client?.signOut()
 
         clearStoredCredentials()
+        clearSpotlightIndex()
         client = nil
         state = .signedOut
     }
