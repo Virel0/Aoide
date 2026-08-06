@@ -93,30 +93,17 @@ struct NowPlayingView: View {
         let current = scrubPosition ?? engine.elapsed.seconds
 
         return VStack(spacing: 2) {
-            Slider(
-                value: Binding(
-                    get: { min(current, max(total, 0.01)) },
-                    set: { scrubPosition = $0 }
-                ),
-                in: 0...max(total, 0.01),
-                onEditingChanged: { editing in
-                    // Commit only when the finger lifts. Seeking continuously during
-                    // the drag would stutter a network stream badly.
-                    if !editing, let position = scrubPosition {
-                        engine.seek(to: .seconds(position))
-                        scrubPosition = nil
-                    }
-                }
-            )
-            .disabled(total <= 0)
-            // `scrubPosition` overrides the engine's position while it is set, so
-            // anything that leaves it set strands the scrubber: it stops following
-            // playback and keeps reporting the spot the finger left, even after the
-            // song changes. SwiftUI does not guarantee the `false` edit callback —
-            // a drag interrupted by the sheet, or by this Slider being rebuilt
-            // mid-gesture, simply never delivers it. A new track is unambiguous
-            // proof the drag is over, so clear it there rather than trusting the
-            // callback to be the only way out.
+            ScrubBar(
+                elapsed: engine.elapsed.seconds,
+                duration: total,
+                dragPosition: $scrubPosition
+            ) { position in
+                engine.seek(to: .seconds(position))
+            }
+            // Kept as a safety net even though ScrubBar now clears the drag itself:
+            // a stranded position is invisible until someone notices the bar has
+            // stopped following the music, and a new track is unambiguous proof the
+            // drag is over.
             .onChange(of: engine.currentTrack?.id) { scrubPosition = nil }
 
             HStack {

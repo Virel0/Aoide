@@ -9,6 +9,9 @@ import SwiftUI
 /// is the only way to catch things like a control that is a few points off centre.
 struct UIHarness: View {
     @State private var favorite = false
+    @State private var scrubElapsed: Double = 30
+    @State private var scrubDrag: Double?
+    @State private var isShowingScrubSheet = false
 
     var body: some View {
         ScrollView {
@@ -51,6 +54,10 @@ struct UIHarness: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 40)
                 }
+                sample("Scrub bar — in a sheet, where the old one broke") {
+                    Button("Open scrub sheet") { isShowingScrubSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
                 sample("Disabled — empty playlist") {
                     DetailActionRow(isEnabled: false, onLeading: {}, onPlay: {}, onTrailing: {})
                 }
@@ -58,6 +65,25 @@ struct UIHarness: View {
             .padding(.vertical, 28)
         }
         .appBackground()
+        // Presented as a sheet on purpose. The stock Slider only failed here: the
+        // sheet's drag-to-dismiss recogniser cancelled its gesture, so the "editing
+        // ended" callback never arrived and the bar stayed where the finger left it.
+        // Testing outside a sheet would have passed against the broken version.
+        .sheet(isPresented: $isShowingScrubSheet) {
+            VStack(spacing: 20) {
+                Text("Drag the bar, then lift").font(.headline)
+                ScrubBar(elapsed: scrubElapsed, duration: 200, dragPosition: $scrubDrag) {
+                    scrubElapsed = $0
+                }
+                .padding(.horizontal, 32)
+                // The readout is the assertion: after a drag, committed must have
+                // moved and dragging must read nil. A stuck drag shows up here.
+                Text("committed \(Int(scrubElapsed))s · dragging \(scrubDrag.map { String(Int($0)) } ?? "nil")")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.tint)
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     /// Decoded rather than constructed: `JellyfinItem` is a wire type with no public
