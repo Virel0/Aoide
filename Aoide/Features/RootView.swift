@@ -10,6 +10,15 @@ struct RootView: View {
 
     var body: some View {
         content
+            // An alert rather than something in Settings: until this is answered the
+            // store stays unclaimed and nothing syncs, so a version of this that
+            // waited to be found would present as sync simply not working.
+            .alert("Keep What's Already Here?", isPresented: unclaimedStorePrompt) {
+                Button("Keep") { CurationDatabase.keepUnclaimedStore() }
+                Button("Start Fresh", role: .destructive) { CurationDatabase.eraseUnclaimedStore() }
+            } message: {
+                Text("This device has playlists and listening history saved from before you signed in. Keep them if they're yours — if this was someone else's account, start fresh.")
+            }
             .preferredColorScheme(appearance.colorScheme)
             .tint(.accentColor)
             // Coming back is the moment everything the other devices did while this
@@ -22,6 +31,14 @@ struct RootView: View {
                 guard phase == .active else { return }
                 SyncCoordinator.shared.syncSoon(.foreground)
             }
+    }
+
+    /// True while the store is waiting to be told whose it is.
+    ///
+    /// One-way by construction: every button answers, and answering clears the
+    /// underlying value. There is no dismissal that leaves the question open.
+    private var unclaimedStorePrompt: Binding<Bool> {
+        Binding(get: { CurationDatabase.unclaimedStoreOwner != nil }, set: { _ in })
     }
 
     @ViewBuilder

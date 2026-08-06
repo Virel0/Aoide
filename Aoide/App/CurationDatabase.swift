@@ -42,17 +42,48 @@ enum CurationDatabase {
     /// or queued an op against the wrong account's data. The erasure itself, and why
     /// it happens on the way in rather than on sign-out, is in
     /// `CurationStore.adoptAccount`.
+    /// Set when the store predates account claims and already holds data, so only a
+    /// person can say whose it is. `RootView` presents the question.
+    @MainActor private(set) static var unclaimedStoreOwner: String?
+
     @MainActor
     static func adopt(accountId: String) {
         guard let store = shared else { return }
         do {
-            guard try store.adoptAccount(accountId) else { return }
-            // The sync status is the account's too — "last synced 5 minutes ago" would
-            // be describing a library this account has never seen.
-            SyncCoordinator.shared.forgetAccountStatus()
-            log.notice("Curation store belonged to another account; erased it.")
+            switch try store.adoptAccount(accountId) {
+            case .unchanged:
+                return
+            case .erased:
+                // The sync status is the account's too — "last synced 5 minutes ago"
+                // would be describing a library this account has never seen.
+                SyncCoordinator.shared.forgetAccountStatus()
+                log.notice("Curation store belonged to another account; erased it.")
+            case .unknownOwner:
+                // Deliberately left unclaimed until answered. Claiming it now and
+                // asking afterwards would let a sync push one person's library into
+                // another person's log before they had a chance to say no.
+                unclaimedStoreOwner = accountId
+                log.notice("Curation store predates account claims and holds data; asking.")
+            }
         } catch {
             log.error("Couldn't claim the curation store: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// The person says the existing playlists and history are theirs.
+    @MainActor
+    static func keepUnclaimedStore() {
+        guard let store = shared, let accountId = unclaimedStoreOwner else { return }
+        try? store.keepAndClaim(accountId: accountId)
+        unclaimedStoreOwner = nil
+    }
+
+    /// The person says it is somebody else's.
+    @MainActor
+    static func eraseUnclaimedStore() {
+        guard let store = shared, let accountId = unclaimedStoreOwner else { return }
+        try? store.eraseAndClaim(accountId: accountId)
+        SyncCoordinator.shared.forgetAccountStatus()
+        unclaimedStoreOwner = nil
     }
 }

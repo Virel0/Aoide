@@ -48,9 +48,19 @@ public extension CurationStore {
         }
     }
 
-    /// Claims the store for `accountId`, erasing it first if it belonged to somebody else.
-    ///
-    /// Returns whether it erased.
+    /// What claiming the store on behalf of an account resolved to.
+    public enum AccountClaim: Equatable, Sendable {
+        /// Already this account's, or empty — nothing happened.
+        case unchanged
+        /// It belonged to a different account and has been erased.
+        case erased
+        /// It predates the account claim and holds data, so whose it is cannot be
+        /// determined from inside the app. Only a person can answer.
+        case unknownOwner
+    }
+
+    /// Claims the store for `accountId`, erasing it if it demonstrably belonged to
+    /// somebody else.
     ///
     /// The pull cursor is the sharp edge. It is a position in *one user's* log, and
     /// the sidecar scopes its sequences per user — so carrying a cursor of 4000 into
@@ -69,55 +79,104 @@ public extension CurationStore {
     /// out would throw that away every time; erasing on the way in throws it away
     /// only when it has genuinely become somebody else's problem.
     ///
-    /// A store with no `account` key is claimed without erasing, and that is a real
-    /// trade rather than an oversight. Every store written by a build older than this
-    /// one is unclaimed while already holding somebody's library, so "unclaimed means
-    /// erase" would wipe the entire local history of anyone who happened to be signed
-    /// out when they updated and then signed back in as themselves — which is the
-    /// ordinary case, and on those builds nothing had ever been pushed, so the local
-    /// copy was the only copy. Keeping is the smaller loss. The residual risk is one
-    /// update window wide: signed out across the update, then a *different* user signs
-    /// in, and they inherit the previous user's rows.
+    /// A store with no `account` key that already holds data is neither adopted nor
+    /// erased — see `AccountClaim.unknownOwner`. Both silent answers are wrong in
+    /// opposite directions, and nothing in the database can tell them apart.
+    ///
+    /// Returns `.unknownOwner` rather than guessing when the store carries no claim
+    /// but does hold data — a store written before claims existed. Both guesses are
+    /// bad and in opposite directions: adopting silently hands one person's playlists
+    /// and listening history to whoever signs in next, while erasing silently
+    /// destroys the library of somebody who merely signed out and back in as
+    /// themselves — and before sync existed, the local copy was the only copy.
+    /// Nothing in the database distinguishes the two cases, so the question goes to
+    /// the person who knows.
     @discardableResult
-    func adoptAccount(_ accountId: String) throws -> Bool {
+    func adoptAccount(_ accountId: String) throws -> AccountClaim {
         // The claim already stands on every launch after the first, and this is called
         // on the main actor before anything can play — so the common path should not
         // open a write transaction at all. Only a fast path: the decision is made again
         // inside the transaction, where it cannot race.
-        guard try self.accountId() != accountId else { return false }
+        guard try self.accountId() != accountId else { return .unchanged }
 
         return try writeLocal { db in
             let previous = try String.fetchOne(db, sql: "SELECT value FROM syncState WHERE key = 'account'")
-            let mustErase = previous != nil && previous != accountId
 
-            if mustErase {
-                // Children before parents: `PRAGMA foreign_keys` is on, and this
-                // ordering is correct whether or not the schema declares the
-                // relationships it describes.
-                for table in ["playlistItem", "playlist", "folder", "like", "playEvent",
-                              "queueState", "op", "quarantinedOp", "track"] {
-                    try db.execute(sql: "DELETE FROM \(table)")
-                }
-                // The whole table, not the cursor row. Every key in here describes the
-                // account or the data that just went with it, and naming them
-                // individually means the next one added survives an account change by
-                // default — which is how `trackIndexCompletedAt` came to outlive the
-                // `track` rows it vouches for. That combination is invisible and
-                // unrecoverable from inside the app: `indexIfNeeded` reads the mark,
-                // concludes the library has been walked, and never runs again, so
-                // every smart playlist evaluates against an empty universe and reports
-                // that the rules have no hits. Erase-by-default, and `account` is
-                // written back immediately below.
-                try db.execute(sql: "DELETE FROM syncState")
+            // An unclaimed store that holds nothing is nobody's, so there is no
+            // question to ask and a fresh install claims it in silence.
+            if previous == nil, try Self.holdsData(db) {
+                return .unknownOwner
             }
 
-            guard previous != accountId else { return false }
+            let mustErase = previous != nil && previous != accountId
+
+            if mustErase { try Self.eraseEverything(db) }
+
+            guard previous != accountId else { return .unchanged }
             try db.execute(
                 sql: "INSERT INTO syncState (key, value) VALUES ('account', ?) " +
                      "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 arguments: [accountId]
             )
-            return mustErase
+            return mustErase ? .erased : .unchanged
         }
+    }
+
+    /// Erases everything and claims the store. The answer to `.unknownOwner` when the
+    /// person says the data is not theirs.
+    public func eraseAndClaim(accountId: String) throws {
+        try writeLocal { db in
+            try Self.eraseEverything(db)
+            try db.execute(
+                sql: "INSERT INTO syncState (key, value) VALUES ('account', ?) " +
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                arguments: [accountId]
+            )
+        }
+    }
+
+    /// Claims the store without erasing. The answer to `.unknownOwner` when the person
+    /// says the data is theirs.
+    public func keepAndClaim(accountId: String) throws {
+        try writeLocal { db in
+            try db.execute(
+                sql: "INSERT INTO syncState (key, value) VALUES ('account', ?) " +
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                arguments: [accountId]
+            )
+        }
+    }
+
+    /// Empties every table the account owns.
+    private static func eraseEverything(_ db: Database) throws {
+        // Children before parents: `PRAGMA foreign_keys` is on, and this ordering is
+        // correct whether or not the schema declares the relationships it describes.
+        for table in ["playlistItem", "playlist", "folder", "like", "playEvent",
+                      "queueState", "op", "quarantinedOp", "track"] {
+            try db.execute(sql: "DELETE FROM \(table)")
+        }
+        // The whole table, not the cursor row. Every key in here describes the account
+        // or the data that just went with it, and naming them individually means the
+        // next one added survives an account change by default — which is how
+        // `trackIndexCompletedAt` came to outlive the `track` rows it vouches for.
+        // That combination is invisible and unrecoverable from inside the app:
+        // `indexIfNeeded` reads the mark, concludes the library has been walked, and
+        // never runs again, so every smart playlist evaluates against an empty
+        // universe and reports that the rules have no hits.
+        try db.execute(sql: "DELETE FROM syncState")
+    }
+
+    /// Whether there is anything here worth asking about.
+    ///
+    /// Deliberately excludes `track`, which is a rebuildable cache of what Jellyfin
+    /// already knows and reveals nothing about a person — a store holding only a
+    /// track cache is not evidence of somebody's listening.
+    private static func holdsData(_ db: Database) throws -> Bool {
+        for table in ["playlist", "playlistItem", "folder", "like", "playEvent", "queueState"] {
+            if try Int.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM \(table))") == 1 {
+                return true
+            }
+        }
+        return false
     }
 }

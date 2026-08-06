@@ -53,13 +53,20 @@ struct SyncAccountTests {
 
     // MARK: - Account ownership
 
-    @Test("an unclaimed store adopts without erasing")
+    /// This used to adopt silently, which handed the previous person's playlists and
+    /// history to whoever signed in next. It now asks, and the data is untouched
+    /// either way until it is answered — so nothing is lost by the question itself.
+    @Test("an unclaimed store with data asks, and touches nothing until answered")
     func firstClaimKeepsEverything() throws {
         let store = try CurationStore.inMemory(deviceId: "phone")
         try stocked(store)
         let pending = try store.pendingOpCount()
 
-        #expect(try store.adoptAccount("user-a") == false)
+        #expect(try store.adoptAccount("user-a") == .unknownOwner)
+        #expect(try store.accountId() == nil)
+        #expect(try store.pendingOpCount() == pending)
+
+        try store.keepAndClaim(accountId: "user-a")
         #expect(try store.accountId() == "user-a")
         #expect(try store.pendingOpCount() == pending)
     }
@@ -73,7 +80,7 @@ struct SyncAccountTests {
         try stocked(store)
         let pending = try store.pendingOpCount()
 
-        #expect(try store.adoptAccount("user-a") == false)
+        #expect(try store.adoptAccount("user-a") == .unchanged)
         #expect(try store.pendingOpCount() == pending)
         #expect(try store.read { try Playlist.fetchCount($0) } == 1)
     }
@@ -89,7 +96,7 @@ struct SyncAccountTests {
             at: 1
         )
 
-        #expect(try store.adoptAccount("user-b") == true)
+        #expect(try store.adoptAccount("user-b") == .erased)
         #expect(try store.accountId() == "user-b")
         #expect(try store.pendingOpCount() == 0)
         #expect(try store.quarantineCount() == 0)
@@ -146,5 +153,92 @@ struct SyncAccountTests {
 
         try store.adoptAccount("user-a")
         #expect(try store.pullCursor() == PullCursor(4000))
+    }
+}
+
+/// A store written before account claims existed carries no owner, and guessing is
+/// wrong in both directions — adopting hands one person's library to the next signer,
+/// erasing destroys the library of somebody who merely signed out and back in.
+@Suite("Unclaimed stores")
+struct UnclaimedStoreTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    private func seed(_ store: CurationStore) throws {
+        _ = try store.createPlaylist(name: "From Before")
+    }
+
+    @Test("an unclaimed store holding data asks rather than guessing")
+    func asks() throws {
+        let store = try store()
+        try seed(store)
+        #expect(try store.adoptAccount("user-a") == .unknownOwner)
+        // Still unclaimed: claiming and then asking would let a sync push one
+        // person's library into another person's log before they could say no.
+        #expect(try store.accountId() == nil)
+    }
+
+    /// Nobody's data means no question, so a fresh install claims in silence.
+    @Test("an unclaimed but empty store is claimed without asking")
+    func emptyStoreIsSilent() throws {
+        let store = try store()
+        #expect(try store.adoptAccount("user-a") == .unchanged)
+        #expect(try store.accountId() == "user-a")
+    }
+
+    @Test("keeping claims the store and leaves the data alone")
+    func keeping() throws {
+        let store = try store()
+        try seed(store)
+        _ = try store.adoptAccount("user-a")
+
+        try store.keepAndClaim(accountId: "user-a")
+
+        #expect(try store.accountId() == "user-a")
+        #expect(try store.playlists().count == 1)
+        // The op from before the claim still has to reach the server — it is this
+        // person's work, and discarding it would lose whatever was never pushed.
+        #expect(try store.pendingOps().isEmpty == false)
+    }
+
+    @Test("starting fresh erases everything, including the pending ops")
+    func startingFresh() throws {
+        let store = try store()
+        try seed(store)
+        _ = try store.adoptAccount("user-a")
+
+        try store.eraseAndClaim(accountId: "user-a")
+
+        #expect(try store.accountId() == "user-a")
+        #expect(try store.playlists().isEmpty)
+        // The sharp edge: unpushed ops belonging to the previous person would
+        // otherwise be pushed into this account's log on the very first sync.
+        #expect(try store.pendingOps().isEmpty)
+    }
+
+    /// A track cache is a rebuildable copy of what Jellyfin already knows and says
+    /// nothing about anyone's listening, so it is not evidence worth interrupting for.
+    @Test("a store holding only a track cache is not worth asking about")
+    func trackCacheAloneIsNotData() throws {
+        let store = try store()
+        try store.writeLocal { db in
+            try TrackRef(
+                jellyfinId: "t1",
+                contentKey: "k",
+                title: "Song",
+                artist: "Artist",
+                album: "Album",
+                lastSeenAt: 1
+            ).insert(db)
+        }
+        #expect(try store.adoptAccount("user-a") == .unchanged)
+    }
+
+    @Test("a store claimed by somebody else is still erased without asking")
+    func differentAccountStillErases() throws {
+        let store = try store()
+        _ = try store.adoptAccount("user-a")
+        try seed(store)
+        #expect(try store.adoptAccount("user-b") == .erased)
+        #expect(try store.playlists().isEmpty)
     }
 }
