@@ -752,15 +752,83 @@ struct ImageBlobTests {
         let hash = CurationStore.imageHash(of: bytes)
         try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 100)
 
-        #expect(try store.orphanedImages(before: 200).map(\.hash) == [hash])
+        let wellPast = Millis(100) + Millis(31) * 24 * 60 * 60 * 1000
+        #expect(try store.orphanedImages(now: wellPast).map(\.hash) == [hash])
 
         let list = try store.createPlaylist(name: "Uses It")
         var row = try #require(try store.playlist(list.id))
         row.imageHash = hash
         try store.record(row)
 
-        #expect(try store.orphanedImages(before: 200).isEmpty)
+        #expect(try store.orphanedImages(now: wellPast).isEmpty)
         #expect(try store.image(hash) != nil, "reported, never reclaimed")
+    }
+
+    /// "Nothing references this" is only ever true *here*. A device out of contact
+    /// for a fortnight is a phone in a drawer, not a device that has been replaced.
+    @Test("a freshly orphaned cover is left alone until the grace period is up")
+    func gracePeriodIsRespected() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 0)
+
+        let day: Millis = 24 * 60 * 60 * 1000
+        #expect(try store.orphanedImages(now: 29 * day).isEmpty)
+        #expect(try store.orphanedImages(now: 31 * day).count == 1)
+    }
+
+    /// Asking to sweep sooner is asking to defeat the reason the period exists, and
+    /// the code that deletes data is the wrong place to take that instruction.
+    @Test("a shorter grace than the configured one is raised, not honoured")
+    func shortGraceIsRaised() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 0)
+
+        let day: Millis = 24 * 60 * 60 * 1000
+        #expect(try store.orphanedImages(olderThanDays: 1, now: 5 * day).isEmpty)
+        #expect(try store.orphanedImages(olderThanDays: 0, now: 5 * day).isEmpty)
+        // A longer one is taken at its word — that direction is only more cautious.
+        #expect(try store.orphanedImages(olderThanDays: 90, now: 31 * day).isEmpty)
+    }
+
+    /// Content addressing makes sharing normal, and a sweep that reasoned one
+    /// playlist at a time would delete a cover the other one is still using.
+    @Test("a cover shared by two playlists survives losing one of them")
+    func sharedCoversSurvive() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 0)
+
+        var ids: [String] = []
+        for name in ["First", "Second"] {
+            let list = try store.createPlaylist(name: name)
+            var row = try #require(try store.playlist(list.id))
+            row.imageHash = hash
+            try store.record(row)
+            ids.append(list.id)
+        }
+
+        let day: Millis = 24 * 60 * 60 * 1000
+        try store.deletePlaylist(ids[0])
+        #expect(try store.orphanedImages(now: 31 * day).isEmpty, "the other playlist still uses it")
+
+        try store.deletePlaylist(ids[1])
+        #expect(try store.orphanedImages(now: 31 * day).map(\.hash) == [hash])
+    }
+
+    @Test("forgetting a blob is a separate, explicit step")
+    func forgettingIsSeparate() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 0)
+
+        let day: Millis = 24 * 60 * 60 * 1000
+        let orphans = try store.orphanedImages(now: 31 * day)
+        #expect(try store.image(hash) != nil, "reporting removes nothing")
+
+        #expect(try store.forgetImages(orphans.map(\.hash)) == 1)
+        #expect(try store.image(hash) == nil)
     }
 
     /// The row carries a name, not a picture — the property the whole sync design

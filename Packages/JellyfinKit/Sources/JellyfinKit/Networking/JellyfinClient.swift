@@ -1,4 +1,10 @@
 import Foundation
+// URLSession and friends live in a separate module on Linux. The guard costs
+// nothing on Apple platforms and is the whole difference between this package
+// being portable and not.
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A stateless, `Sendable` handle to one Jellyfin server.
 ///

@@ -1,4 +1,10 @@
+// CryptoKit is Apple-only; Swift Crypto is Apple's own drop-in with the same
+// API, so the call sites below are identical either way.
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 import GRDB
 
@@ -89,14 +95,39 @@ public extension CurationStore {
         }
     }
 
-    /// Blobs no playlist names any more, oldest first.
+    /// How long a blob nothing references is kept before it is even considered for
+    /// removal, matching the sidecar's own sweep.
     ///
-    /// Not deleted automatically. A cover dropped by one device may still be named by
-    /// a playlist another device has not synced yet, and content addressing means
-    /// re-adding it later costs nothing — so this reports rather than reclaims, and
-    /// the caller decides.
-    func orphanedImages(before cutoff: Millis) throws -> [ImageBlob] {
-        try read { db in
+    /// The period exists because "nothing references this" is only ever true *here*.
+    /// A cover dropped on this device may still be named by a playlist another device
+    /// has not synced yet, and that device may be a phone in a drawer. Thirty days is
+    /// long enough that a device out of contact for a month is a device that has been
+    /// replaced.
+    static let imageGraceDays = 30
+
+    /// Blobs no live playlist names, older than the grace period, oldest first.
+    ///
+    /// Reports rather than reclaims. Deleting is the caller's decision because it is
+    /// the one action here that cannot be undone by syncing again — and content
+    /// addressing means keeping a stray blob costs a few kilobytes while dropping a
+    /// live one costs an image nobody can get back.
+    ///
+    /// A shorter grace than the configured one is *raised* rather than honoured. A
+    /// caller asking to sweep more aggressively is asking to defeat the reason the
+    /// period exists, and the code that deletes data is the wrong place to take
+    /// instructions about how careful to be.
+    func orphanedImages(
+        olderThanDays days: Int = CurationStore.imageGraceDays,
+        now: Millis = Date().millis
+    ) throws -> [ImageBlob] {
+        let grace = max(days, Self.imageGraceDays)
+        let cutoff = now - Millis(grace) * 24 * 60 * 60 * 1000
+
+        return try read { db in
+            // Every playlist that still names a hash, not one playlist at a time. A
+            // blob shared by two playlists stays alive while either does — content
+            // addressing makes sharing the normal case, and a per-playlist sweep
+            // deletes a cover the other one is still using.
             try ImageBlob
                 .filter(sql: """
                     createdAt < ? AND hash NOT IN (
@@ -105,6 +136,19 @@ public extension CurationStore {
                     """, arguments: [cutoff])
                 .order(Column("createdAt"))
                 .fetchAll(db)
+        }
+    }
+
+    /// Removes blobs this device is done with, and the files behind them.
+    ///
+    /// Takes the hashes rather than deciding for itself, so the decision and the
+    /// deletion are separable — and so a caller cannot accidentally sweep by passing
+    /// a shorter grace.
+    @discardableResult
+    func forgetImages(_ hashes: [String]) throws -> Int {
+        guard !hashes.isEmpty else { return 0 }
+        return try writeLocal { db in
+            try ImageBlob.filter(keys: hashes).deleteAll(db)
         }
     }
 }
