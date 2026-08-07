@@ -69,7 +69,16 @@ actor PlaylistImageStore: ImageByteSource {
         guard longest > maxDimension else { return image }
         let scale = maxDimension / longest
         let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        return UIGraphicsImageRenderer(size: size).image { _ in
+
+        // Scale 1, explicitly. The renderer defaults to the *screen's* scale, so
+        // asking for 1000 points on a 3x phone quietly produces a 3000-pixel image —
+        // nine times the pixels and, measured, a 1.5 MB JPEG where 200 KB was
+        // intended. It still fits under the 5 MB ceiling, which is exactly why the
+        // mistake survives: nothing fails, every cover is just several times larger
+        // than it needs to be, forever, on a phone connection.
+        let format = UIGraphicsImageRendererFormat.preferred()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
     }
