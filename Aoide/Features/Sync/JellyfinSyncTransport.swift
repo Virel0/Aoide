@@ -22,13 +22,33 @@ struct JellyfinSyncTransport: SyncTransport {
 
     func push(_ request: PushRequest) async throws -> PushResponse {
         let body = try Self.encoder().encode(request)
-        let data = try await client.syncPush(body: body)
+        let data = try await Self.translatingStatus { try await client.syncPush(body: body) }
         return try Self.decoder().decode(PushResponse.self, from: data)
     }
 
     func pull(since cursor: PullCursor?, limit: Int) async throws -> PullResponse {
-        let data = try await client.syncPull(since: cursor?.value, limit: limit)
+        let data = try await Self.translatingStatus {
+            try await client.syncPull(since: cursor?.value, limit: limit)
+        }
         return try Self.decoder().decode(PullResponse.self, from: data)
+    }
+
+    /// Turns an HTTP status into the engine's vocabulary.
+    ///
+    /// CurationKit knows nothing about HTTP on purpose, and the one distinction it
+    /// genuinely needs — did the server fail on what I sent, or did the network go
+    /// away — is only visible here. Everything else is left as it is and treated as
+    /// transient, which is the safe default: retrying a healthy op costs a round trip,
+    /// quarantining one because a router blinked costs the change.
+    private static func translatingStatus(_ body: () async throws -> Data) async throws -> Data {
+        do {
+            return try await body()
+        } catch let error as JellyfinError {
+            if case .http(let status, _, let detail) = error {
+                throw SyncTransportFault(status: status, detail: detail)
+            }
+            throw error
+        }
     }
 
     /// Compact, and that is load-bearing rather than a default we happen to inherit.

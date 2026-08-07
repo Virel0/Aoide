@@ -1732,3 +1732,108 @@ struct SyncIntegrationTests {
         #expect(try phone.localQueue()?.elapsedMs == 190_000)
     }
 }
+
+/// A 5xx has no story in the contract: it is neither a rejection nor a validation
+/// failure, so nothing takes the op out of the queue and every change behind it waits
+/// on one the server cannot swallow.
+@Suite("A server that throws on one op")
+struct ServerFaultIsolationTests {
+    @Test("the offending op is found and quarantined, and the rest get through")
+    func isolatesAndContinues() async throws {
+        let sidecar = Sidecar()
+        let store = try CurationStore.inMemory(deviceId: "phone")
+
+        var ops: [String] = []
+        for index in 0..<8 {
+            _ = try store.createPlaylist(name: "List \(index)")
+        }
+        ops = try store.pendingOps().map(\.opId)
+        let victim = try #require(ops.dropFirst(3).first)
+        await sidecar.poison(victim)
+
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+        let report = try await engine.sync()
+
+        #expect(report.quarantinedOutbound == 1)
+        // Everything else reached the server rather than waiting behind it.
+        #expect(report.pushed == ops.count - 1)
+        #expect(try store.pendingOps().isEmpty)
+
+        let held = try store.quarantinedOps()
+        #expect(held.count == 1)
+        #expect(held.first?.opId == victim)
+    }
+
+    /// A restart or a timeout must not cost a change. Only an op that reproduces the
+    /// failure *by itself* is blamed for it.
+    @Test("a fault that does not reproduce alone quarantines nothing")
+    func transientFaultsAreNotBlamed() async throws {
+        let sidecar = Sidecar()
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        for index in 0..<4 { _ = try store.createPlaylist(name: "List \(index)") }
+
+        let all = try store.pendingOps().map(\.opId)
+        for id in all { await sidecar.poison(id) }
+        // Only the first request fails, standing in for a server that was merely
+        // restarting when the batch landed. Every op is poisoned, so a client that
+        // blamed whichever op it happened to isolate would quarantine a healthy one.
+        await sidecar.clearPoisonAfterNextFailure()
+
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+        let report = try await engine.sync()
+
+        #expect(report.quarantinedOutbound == 0)
+        #expect(try store.quarantinedOps().isEmpty)
+        #expect(try store.pendingOps().isEmpty)
+    }
+}
+
+/// A server fault is the one thing in quarantine that gets fixed, so the change has
+/// to be recoverable — otherwise a bug on the server permanently costs the listener
+/// whatever they did while it was broken.
+@Suite("Retrying after a server is fixed")
+struct QuarantineRetryTests {
+    @Test("a held change goes through once the server stops failing")
+    func recoversAfterTheFix() async throws {
+        let sidecar = Sidecar()
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        let list = try store.createPlaylist(name: "Held Back")
+
+        let opId = try #require(try store.pendingOps().first?.opId)
+        await sidecar.poison(opId)
+
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+        _ = try await engine.sync()
+        #expect(try store.quarantinedOps().count == 1)
+        #expect(try store.retryableQuarantineCount() == 1)
+
+        // The server is fixed.
+        await sidecar.unpoison(opId)
+        #expect(try store.requeueQuarantined() == 1)
+        #expect(try store.quarantinedOps().isEmpty)
+
+        let report = try await engine.sync()
+        #expect(report.pushed == 1)
+
+        // And it really reached the server, in its original form.
+        let stored = await sidecar.ops(for: "u1")
+        #expect(stored.contains { $0.op.opId == opId })
+        #expect(stored.contains { $0.op.entityId == list.id })
+    }
+
+    /// Retrying something the server will refuse forever would spin, so only server
+    /// faults are offered.
+    @Test("a permanently invalid op is not offered a retry")
+    func permanentFaultsAreNotRetryable() throws {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        let list = try store.createPlaylist(name: "Bad")
+        let op = try #require(try store.pendingOps().first)
+
+        try store.quarantine(op, reason: .payloadTooLarge(bytes: 999_999), at: 100)
+
+        #expect(try store.retryableQuarantineCount() == 0)
+        #expect(try store.requeueQuarantined() == 0)
+        #expect(try store.quarantinedOps().count == 1)
+        _ = list
+    }
+}

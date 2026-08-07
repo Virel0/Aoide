@@ -186,6 +186,19 @@ enum Schema {
             )
         }
 
+        migrator.registerMigration("v5") { db in
+            // What a quarantined op needs to become a real op again. Without these a
+            // change held back by a *server* fault could only ever be discarded, and
+            // a server fault is the one kind here that gets fixed — the op is not
+            // wrong, the server was. Nullable because rows quarantined before this
+            // migration genuinely do not have them, and inventing a `createdAt` from
+            // the quarantine time would put a lie in the op log's ordering.
+            try db.alter(table: "quarantinedOp") { t in
+                t.add(column: "operation", .text)
+                t.add(column: "createdAt", .integer)
+            }
+        }
+
         return migrator
     }
 }

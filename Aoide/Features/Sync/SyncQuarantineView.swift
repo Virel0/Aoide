@@ -10,10 +10,12 @@ import SwiftUI
 /// worth a listener's attention, and it is the only one this app surfaces.
 struct SyncQuarantineView: View {
     @State private var ops: [QuarantinedOp] = []
+    private var retryable: Int { ops.count(where: \.isRetryable) }
     @State private var isConfirmingDiscardAll = false
 
     var body: some View {
         List {
+            retrySection
             if ops.isEmpty {
                 Section {
                     Text("Everything has synced.")
@@ -49,6 +51,39 @@ struct SyncQuarantineView: View {
         ) {
             Button("Discard All", role: .destructive) { discardAll() }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Offered only when something here is worth retrying.
+    ///
+    /// Every other reason in this list is a statement about the change itself, which
+    /// retrying cannot alter. A 5xx is a statement about the server, and servers get
+    /// fixed — so this button appears exactly when the thing that went wrong might
+    /// have stopped being wrong.
+    @ViewBuilder
+    private var retrySection: some View {
+        if retryable > 0 {
+            Section {
+                Button {
+                    retry()
+                } label: {
+                    Label(
+                        "Try \(retryable) Again",
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+            } footer: {
+                Text("These failed because your server had a problem, not because anything is wrong with them. If it's been fixed, they'll go through.")
+            }
+        }
+    }
+
+    private func retry() {
+        Task {
+            guard let store = CurationDatabase.shared else { return }
+            _ = await Task.detached { try? store.requeueQuarantined() }.value
+            await reload()
+            SyncCoordinator.shared.syncNow()
         }
     }
 

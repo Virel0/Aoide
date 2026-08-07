@@ -354,3 +354,29 @@ public protocol SyncTransport: Sendable {
     /// as the beginning of the log.
     func pull(since cursor: PullCursor?, limit: Int) async throws -> PullResponse
 }
+
+/// A failure a `SyncTransport` raises that carries the server's status code.
+///
+/// The engine has to tell "the server threw on what I sent" from "the network went
+/// away": one means this batch will never work and the queue behind it is blocked,
+/// the other means try again shortly and change nothing. It cannot ask an HTTP
+/// client that question, because this package deliberately knows nothing about one —
+/// so the transport translates, and this is the vocabulary it translates into.
+///
+/// Anything a transport throws that is *not* one of these is treated as transient,
+/// which is the safe default: retrying a healthy op costs a round trip, while
+/// quarantining one because a router blinked costs the change itself.
+public struct SyncTransportFault: Error, Hashable, Sendable {
+    public let status: Int
+    public let detail: String?
+
+    public init(status: Int, detail: String? = nil) {
+        self.status = status
+        self.detail = detail
+    }
+
+    /// A fault in the server rather than in the request. 4xx is the server telling us
+    /// something true about what we sent, and the contract already routes those
+    /// through `rejected`; 5xx is the server failing to answer at all.
+    public var isServerFault: Bool { (500...599).contains(status) }
+}

@@ -26,6 +26,23 @@ public struct QuarantinedOp: Codable, FetchableRecord, PersistableRecord, Hashab
     /// cursor has moved past it.
     public var payload: String
     public var quarantinedAt: Millis
+    /// `upsert` or `delete`. Absent on rows quarantined before v5, which therefore
+    /// cannot be put back in the queue.
+    public var operation: String?
+    /// When the change was originally made, not when it was quarantined.
+    public var createdAt: Millis?
+
+    /// Whether this can be handed back to the outbound queue.
+    ///
+    /// Only a server fault, and only outbound: everything else here is permanent by
+    /// definition, and an inbound op has no queue to return to — the pull cursor
+    /// moved past it and the server will not offer it again.
+    public var isRetryable: Bool {
+        syncDirection == .outbound
+            && operation != nil
+            && createdAt != nil
+            && reason.contains("the server failed")
+    }
 
     public init(
         opId: String,
@@ -34,13 +51,17 @@ public struct QuarantinedOp: Codable, FetchableRecord, PersistableRecord, Hashab
         direction: SyncDirection,
         reason: String,
         payload: String,
-        quarantinedAt: Millis
+        quarantinedAt: Millis,
+        operation: String? = nil,
+        createdAt: Millis? = nil
     ) {
         self.opId = opId
         self.entity = entity
         self.entityId = entityId
         self.direction = direction.rawValue
         self.reason = reason
+        self.operation = operation
+        self.createdAt = createdAt
         self.payload = payload
         self.quarantinedAt = quarantinedAt
     }
@@ -111,10 +132,54 @@ extension CurationStore {
                 direction: .outbound,
                 reason: reason.reason,
                 payload: op.payload,
-                quarantinedAt: now
+                quarantinedAt: now,
+                operation: op.operation,
+                createdAt: op.createdAt
             ).save(db)
             _ = try Op.deleteOne(db, key: op.opId)
         }
+    }
+
+    /// Puts server-faulted ops back in the outbound queue.
+    ///
+    /// Only for `serverFaulted`, and that restriction is the whole point: every other
+    /// reason here is a statement about the op, which no amount of retrying changes.
+    /// A 5xx is a statement about the server, and servers get fixed — so this is the
+    /// one case where holding the change rather than discarding it was worth the
+    /// columns it costs.
+    ///
+    /// Returns how many actually went back, which is not always how many were asked
+    /// for: rows quarantined before those columns existed cannot be rebuilt.
+    @discardableResult
+    public func requeueQuarantined(_ opIds: [String]? = nil) throws -> Int {
+        try writeLocal { db in
+            var candidates = try QuarantinedOp.fetchAll(db)
+            if let opIds { candidates = candidates.filter { opIds.contains($0.opId) } }
+
+            var moved = 0
+            for held in candidates where held.isRetryable {
+                guard let operation = held.operation.flatMap(Op.Kind.init(rawValue:)),
+                      let createdAt = held.createdAt
+                else { continue }
+
+                try Op(
+                    opId: held.opId,
+                    entity: held.entity,
+                    entityId: held.entityId,
+                    operation: operation,
+                    payload: held.payload,
+                    createdAt: createdAt
+                ).insert(db)
+                _ = try QuarantinedOp.deleteOne(db, key: held.opId)
+                moved += 1
+            }
+            return moved
+        }
+    }
+
+    /// How many are worth offering a retry for.
+    public func retryableQuarantineCount() throws -> Int {
+        try read { db in try QuarantinedOp.fetchAll(db).count(where: \.isRetryable) }
     }
 
     /// Overwrites the pull cursor. Internal on purpose: the only correct place to

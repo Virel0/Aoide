@@ -106,6 +106,17 @@ actor Sidecar {
     func reject(_ opId: String, because reason: String) { forcedRejections[opId] = reason }
 
     func failPush(atCall call: Int) { failPushCalls.insert(call) }
+
+    /// Op ids the server throws a 500 on, as an unhandled exception would: the whole
+    /// request fails, including the innocent ops that happened to travel with it.
+    private var poisonOpIds: Set<String> = []
+    func poison(_ opId: String) { poisonOpIds.insert(opId) }
+    func unpoison(_ opId: String) { poisonOpIds.remove(opId) }
+
+    /// Makes the poison one-shot, so the next request throws and everything after it
+    /// succeeds — a server that was restarting rather than one with a bad row.
+    private var clearPoisonAfterFailure = false
+    func clearPoisonAfterNextFailure() { clearPoisonAfterFailure = true }
     func failPull(atCall call: Int) { failPullCalls.insert(call) }
     func setPullDelay(nanos: UInt64) { pullDelayNanos = nanos }
 
@@ -135,6 +146,13 @@ actor Sidecar {
         largestBatchPushed = max(largestBatchPushed, request.ops.count)
 
         if failPushCalls.contains(pushCount) { throw SidecarError.unreachable }
+        if request.ops.contains(where: { poisonOpIds.contains($0.opId) }) {
+            if clearPoisonAfterFailure {
+                poisonOpIds.removeAll()
+                clearPoisonAfterFailure = false
+            }
+            throw SyncTransportFault(status: 500, detail: "Error processing request.")
+        }
         guard request.ops.count <= 1_000 else {
             throw SidecarError.batchTooLarge(request.ops.count)
         }

@@ -133,6 +133,48 @@ public actor SyncEngine {
 
     // MARK: - Push
 
+    /// Finds which op the server chokes on by halving the batch, and quarantines it.
+    ///
+    /// Binary search rather than one-at-a-time: a batch of 250 costs eight round trips
+    /// instead of 250, and a server that is failing is the last thing to send 250
+    /// requests to. A half that succeeds is genuinely pushed on the way past, so the
+    /// search makes progress rather than merely diagnosing.
+    ///
+    /// If a half stops failing when sent alone, the fault was transient — a restart,
+    /// a timeout — and nothing is quarantined. That is the important asymmetry: only
+    /// an op that reproduces the failure *by itself* is blamed for it.
+    private func isolateServerFault(
+        _ wire: [WireOp],
+        pending: [Op],
+        status: Int
+    ) async throws -> (quarantined: Int, pushed: Int) {
+        guard let single = wire.first, wire.count == 1 else {
+            let middle = wire.count / 2
+            var quarantined = 0
+            var pushed = 0
+            for half in [Array(wire[..<middle]), Array(wire[middle...])] where !half.isEmpty {
+                do {
+                    let response = try await transport.push(
+                        PushRequest(deviceId: store.deviceId, ops: half)
+                    )
+                    try store.markSynced(response.accepted)
+                    pushed += response.accepted.count
+                } catch let error as SyncTransportFault where error.isServerFault {
+                    let inner = try await isolateServerFault(
+                        half, pending: pending, status: error.status
+                    )
+                    quarantined += inner.quarantined
+                    pushed += inner.pushed
+                }
+            }
+            return (quarantined, pushed)
+        }
+
+        guard let op = pending.first(where: { $0.opId == single.opId }) else { return (0, 0) }
+        try store.quarantine(op, reason: .serverFaulted(status: status), at: clock())
+        return (1, 0)
+    }
+
     private func pushPending() async throws -> SyncReport {
         var report = SyncReport()
         var previousBatch: Set<String> = []
@@ -163,9 +205,26 @@ public actor SyncEngine {
             // the next fetch returns different rows and the loop still terminates.
             guard !wire.isEmpty else { continue }
 
-            let response = try await transport.push(
-                PushRequest(deviceId: store.deviceId, ops: wire)
-            )
+            let response: PushResponse
+            do {
+                response = try await transport.push(
+                    PushRequest(deviceId: store.deviceId, ops: wire)
+                )
+            } catch let error as SyncTransportFault where error.isServerFault {
+                // The server threw on this batch. Retrying it unchanged sends the same
+                // bytes to the same effect forever, and every innocent op behind it
+                // waits on one the server cannot swallow — the same wedge `rejected`
+                // exists to prevent, arriving as a 5xx where the contract has no story
+                // for it. Bisecting finds the offender, quarantines that one alone,
+                // and lets the rest through.
+                let isolated = try await isolateServerFault(wire, pending: pending, status: error.status)
+                report.quarantinedOutbound += isolated.quarantined
+                // Halves that succeeded on the way past were genuinely pushed, so the
+                // search makes progress rather than only diagnosing.
+                report.pushed += isolated.pushed
+                previousBatch = []
+                continue
+            }
 
             // `accepted` includes ops the server had already seen, so a push that
             // timed out and was sent again acknowledges everything rather than

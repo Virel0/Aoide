@@ -25,6 +25,15 @@ public enum SyncFault: Error, Hashable, Sendable {
     /// The server said no. It will say no again, forever.
     case serverRejected(String)
 
+    /// The server *threw* on this op — a 5xx, not a refusal.
+    ///
+    /// Alone among these cases this is a fault in the server rather than in the op,
+    /// so it is the one thing here that may stop being true and the one worth
+    /// offering to try again. It is still quarantined rather than left queued: a
+    /// batch that 500s takes every op in it down with it, so leaving the offender in
+    /// the queue blocks every innocent change behind it indefinitely.
+    case serverFaulted(status: Int)
+
     /// Stored in the quarantine table and shown to whoever has to work out what
     /// happened, so it names the value that was wrong rather than only the rule.
     public var reason: String {
@@ -57,6 +66,8 @@ public enum SyncFault: Error, Hashable, Sendable {
             "play events are append-only and cannot be deleted"
         case .serverRejected(let detail):
             "rejected by the server: \(detail)"
+        case .serverFaulted(let status):
+            "the server failed while storing this change (HTTP \(status))"
         }
     }
 }
