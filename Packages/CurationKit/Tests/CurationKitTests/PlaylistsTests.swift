@@ -782,3 +782,52 @@ struct ImageBlobTests {
         #expect(op.payload.count < 2_000, "a quarter-megabyte cover must not be in here")
     }
 }
+
+/// Export adoption on the sidecar matches an Aoide playlist to a Jellyfin one by
+/// name, so what import does to names decides whether adoption finds them.
+@Suite("Import for export adoption")
+struct ImportForAdoptionTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    private func links(_ ids: [String]) -> [TrackLink] {
+        ids.map { TrackLink(jellyfinId: $0, contentKey: "key-\($0)") }
+    }
+
+    /// The name is the join. A copy that renamed, trimmed or decorated it would make
+    /// adoption miss and the exporter create a duplicate alongside the original.
+    @Test("a copy keeps the server playlist's name exactly")
+    func nameIsPreservedExactly() throws {
+        let store = try store()
+        for name in ["Road Trip", "  Padded  ", "Café — 90s", "Copy"] {
+            let list = try store.importPlaylist(named: name, from: "srv-\(name)", tracks: links(["a"]))
+            #expect(list.name == name)
+        }
+    }
+
+    /// Adoption needs exactly one same-named candidate, so two server playlists
+    /// sharing a name are ambiguous and the sidecar will create a new one rather than
+    /// guess. Import must at least not *add* to the ambiguity by inventing collisions.
+    @Test("two server playlists sharing a name stay two distinct copies")
+    func duplicateNamesStayDistinct() throws {
+        let store = try store()
+        let first = try store.importPlaylist(named: "Favourites", from: "srv-1", tracks: links(["a"]))
+        let second = try store.importPlaylist(named: "Favourites", from: "srv-2", tracks: links(["b"]))
+
+        #expect(first.id != second.id)
+        #expect(try store.playlists().count == 2)
+        #expect(first.sourceJellyfinId == "srv-1")
+        #expect(second.sourceJellyfinId == "srv-2")
+    }
+
+    /// `sourceJellyfinId` is an exact mapping the client already has, and it travels
+    /// in the payload — so the sidecar can match on it instead of guessing by name
+    /// for every playlist that came from an import.
+    @Test("a copy records exactly which server playlist it came from")
+    func sourceIsRecorded() throws {
+        let store = try store()
+        let list = try store.importPlaylist(named: "Road Trip", from: "srv-42", tracks: links(["a"]))
+
+        let op = try #require(try store.pendingOps().last { $0.entityId == list.id })
+        #expect(op.payload.contains("srv-42"), "the mapping has to reach the server to be usable there")
+    }
+}

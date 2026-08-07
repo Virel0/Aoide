@@ -38,6 +38,9 @@ struct PlaylistsHomeView: View {
     @State private var deleteTarget: RenameTarget?
     /// The server playlist whose local copy is about to be replaced.
     @State private var refreshing: JellyfinItem?
+    @State private var isConfirmingImportAll = false
+    @State private var isImportingAll = false
+    @State private var importSummary: LocalPlaylistStore.ImportSummary?
     @State private var isConfirmingDelete = false
     @State private var isBuildingSmart = false
     @State private var errorMessage: String?
@@ -70,6 +73,29 @@ struct PlaylistsHomeView: View {
         .miniPlayerInset()
         .appBackground()
         .navigationTitle(folder?.name ?? "Playlists")
+        .confirmationDialog(
+            "Copy your Jellyfin playlists?",
+            isPresented: $isConfirmingImportAll,
+            titleVisibility: .visible
+        ) {
+            Button("Copy") {
+                if case .loaded(let server) = library.playlists { importAll(server) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            // Says what it will not touch, because that is the worry: a bulk
+            // button over playlists somebody has already edited reads as
+            // destructive even when it isn't.
+            Text("Each one becomes a playlist you can edit here. Copies you already have are left alone, including anything you've changed in them.")
+        }
+        .alert(
+            "Copied",
+            isPresented: Binding(get: { importSummary != nil }, set: { if !$0 { importSummary = nil } })
+        ) {
+            Button("OK") { importSummary = nil }
+        } message: {
+            Text(summaryMessage)
+        }
         .confirmationDialog(
             "Replace the copy of “\(refreshing?.name ?? "")”?",
             isPresented: Binding(get: { refreshing != nil }, set: { if !$0 { refreshing = nil } }),
@@ -350,6 +376,31 @@ struct PlaylistsHomeView: View {
         }
     }
 
+    /// Reports failures rather than only successes. A bulk copy that silently lost
+    /// three playlists to a server hiccup is worse than one that says so.
+    private var summaryMessage: String {
+        guard let summary = importSummary else { return "" }
+        var parts = ["\(summary.copied) playlist\(summary.copied == 1 ? "" : "s") copied"]
+        if summary.skipped > 0 { parts.append("\(summary.skipped) already here") }
+        if summary.failed > 0 { parts.append("\(summary.failed) couldn't be read") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Server playlists with no copy here yet. The count is on the button because
+    /// "copy everything" reads as destructive when some of it is already here, and
+    /// nothing is going to be overwritten.
+    private func uncopied(from serverPlaylists: [JellyfinItem]) -> Int {
+        serverPlaylists.count { !playlists.importedSourceIds.contains($0.id) }
+    }
+
+    private func importAll(_ serverPlaylists: [JellyfinItem]) {
+        isImportingAll = true
+        Task {
+            importSummary = await playlists.importAllFromServer(serverPlaylists)
+            isImportingAll = false
+        }
+    }
+
     // MARK: - Server
 
     @ViewBuilder
@@ -363,6 +414,17 @@ struct PlaylistsHomeView: View {
                 // failed state, which is exactly when this button is on screen.
                 ErrorRow(message: message) { Task { await library.reloadPlaylists() } }
             case .loaded(let serverPlaylists):
+                if !serverPlaylists.isEmpty, uncopied(from: serverPlaylists) > 0 {
+                    Button {
+                        isConfirmingImportAll = true
+                    } label: {
+                        Label(
+                            "Copy \(uncopied(from: serverPlaylists)) to My Playlists",
+                            systemImage: "square.and.arrow.down.on.square"
+                        )
+                    }
+                    .disabled(isImportingAll)
+                }
                 if serverPlaylists.isEmpty {
                     Text("Playlists you create on your Jellyfin server show up here.")
                         .font(.footnote)

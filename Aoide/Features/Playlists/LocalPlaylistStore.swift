@@ -466,6 +466,40 @@ final class LocalPlaylistStore {
         return imported
     }
 
+    /// How a bulk copy went.
+    struct ImportSummary: Sendable {
+        var copied = 0
+        var skipped = 0
+        var failed = 0
+    }
+
+    /// Copies every server playlist that does not already have a copy.
+    ///
+    /// Deliberately *skips* ones already copied rather than refreshing them. A refresh
+    /// replaces contents outright, so a bulk button that refreshed would silently
+    /// destroy every local edit made since — and the whole point of a bulk action is
+    /// that somebody presses it without inspecting each row. Refreshing one playlist
+    /// stays a per-playlist decision with its own confirmation.
+    ///
+    /// Safe to run twice, and re-running is how a newly-made server playlist gets
+    /// copied without touching anything already here.
+    @discardableResult
+    func importAllFromServer(_ serverPlaylists: [JellyfinItem]) async -> ImportSummary {
+        var summary = ImportSummary()
+        for playlist in serverPlaylists {
+            if importedSourceIds.contains(playlist.id) {
+                summary.skipped += 1
+                continue
+            }
+            if await importFromServer(playlist) == nil {
+                summary.failed += 1
+            } else {
+                summary.copied += 1
+            }
+        }
+        return summary
+    }
+
     /// Sets a picked photo as the playlist's cover.
     ///
     /// The bytes are written to disk and registered *before* the playlist row names
