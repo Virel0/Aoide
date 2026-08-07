@@ -831,3 +831,56 @@ struct ImportForAdoptionTests {
         #expect(op.payload.contains("srv-42"), "the mapping has to reach the server to be usable there")
     }
 }
+
+/// The exporter that puts art on a Jellyfin playlist has a hash and nothing else, so
+/// a cover that never becomes bytes is a cover that exists in Aoide alone.
+@Suite("Covers that reach the server")
+struct CoverPublishingTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+    private let bytes = Data("cover bytes".utf8)
+
+    @Test("a cover chosen as an album carries no hash until it is published")
+    func referenceAloneIsNotEnough() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Chosen")
+        try store.setArtwork("album-1", on: list.id)
+
+        let row = try #require(try store.playlist(list.id))
+        #expect(row.artworkItemId == "album-1")
+        // Nothing to export yet: the reference is an instruction only this app can
+        // carry out.
+        #expect(row.imageHash == nil)
+        #expect(try store.imagesNeededBeforePush().isEmpty)
+    }
+
+    @Test("publishing gives it bytes, a hash, and a place in the upload queue")
+    func publishingMakesItExportable() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Chosen")
+        try store.setArtwork("album-1", on: list.id)
+
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count)
+        var row = try #require(try store.playlist(list.id))
+        row.imageHash = hash
+        row.imageMime = "image/jpeg"
+        try store.record(row)
+
+        #expect(try store.imagesNeededBeforePush().map(\.hash) == [hash])
+        // The reference is kept: it still says what the cover is, and is what a
+        // republish would work from if the blob were ever lost.
+        #expect(try store.playlist(list.id)?.artworkItemId == "album-1")
+    }
+
+    /// A cover that stopped being true is worse than no cover: Jellyfin builds its own
+    /// collage for a playlist with no artwork, which is the same picture kept honest.
+    @Test("a playlist with only a mosaic has nothing to publish")
+    func mosaicsAreNotPublished() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Derived")
+
+        let row = try #require(try store.playlist(list.id))
+        #expect(row.artworkItemId == nil)
+        #expect(row.imageHash == nil)
+    }
+}

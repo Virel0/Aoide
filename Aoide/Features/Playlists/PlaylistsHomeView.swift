@@ -117,6 +117,11 @@ struct PlaylistsHomeView: View {
         .task {
             await playlists.reload()
             if folder == nil { await library.loadPlaylistsIfNeeded() }
+            // Covers chosen before publishing existed have a reference but no bytes,
+            // so they reach neither the other devices nor Jellyfin. Done here rather
+            // than during sync: it downloads and re-uploads an image each time, and
+            // this is the screen where a missing cover is the visible problem.
+            await playlists.publishPendingCovers()
         }
         .refreshable {
             await playlists.reload()

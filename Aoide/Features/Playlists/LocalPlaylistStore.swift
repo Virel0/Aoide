@@ -542,7 +542,65 @@ final class LocalPlaylistStore {
             row.imageMime = nil
             try store.record(row)
         }
+        // Published straight away rather than left for the sweep, so the cover is on
+        // its way to the other devices — and to Jellyfin — while the person who chose
+        // it is still looking at it.
+        if itemId != nil, let refreshed = try? CurationDatabase.shared?.playlist(playlist.id) {
+            await publishCover(for: refreshed)
+        }
         await reload()
+    }
+
+    /// Turns a chosen album cover into a blob, so it reaches other devices and
+    /// Jellyfin rather than only existing as a reference this app knows how to follow.
+    ///
+    /// An `artworkItemId` is an instruction — "draw the cover of that album" — which
+    /// only something holding this database can carry out. The exporter putting art on
+    /// a Jellyfin playlist has a hash and nothing else, so a cover that never becomes
+    /// bytes is a cover that exists in Aoide alone.
+    ///
+    /// Mosaics are deliberately *not* published. They are derived from what a playlist
+    /// currently holds and change whenever it does, so freezing one into an immutable
+    /// blob would pin a cover that has stopped being true — and Jellyfin builds its
+    /// own collage for a playlist with no artwork, which is the same picture kept
+    /// honest by somebody else.
+    private func publishCover(for playlist: Playlist) async {
+        guard playlist.imageHash == nil, let itemId = playlist.artworkItemId else { return }
+        let url = client.artworkURL(itemId: itemId, tag: nil, maxWidth: 1000)
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let prepared = await PlaylistImageStore.shared.prepare(data)
+        else { return }
+
+        await run("publish that cover") { store in
+            try store.registerImage(
+                hash: prepared.hash,
+                mime: prepared.mime,
+                bytes: prepared.bytes.count
+            )
+            guard var row = try store.playlist(playlist.id) else { return }
+            // `artworkItemId` is kept alongside the hash rather than replaced. It
+            // still describes what the cover *is*, and it is what a later republish
+            // would work from if the blob were ever lost.
+            row.imageHash = prepared.hash
+            row.imageMime = prepared.mime
+            try store.record(row)
+        }
+        SyncCoordinator.shared.syncNow()
+    }
+
+    /// Publishes covers for playlists chosen before publishing existed.
+    ///
+    /// Bounded per run: this downloads and re-uploads an image each time, and a
+    /// library of a few hundred playlists should trickle rather than saturate a phone
+    /// connection the first time it opens.
+    func publishPendingCovers(limit: Int = 5) async {
+        let waiting = playlists
+            .filter { $0.imageHash == nil && $0.artworkItemId != nil }
+            .prefix(limit)
+        for playlist in waiting {
+            await publishCover(for: playlist)
+        }
     }
 
     func removeItem(_ itemId: String) async {
