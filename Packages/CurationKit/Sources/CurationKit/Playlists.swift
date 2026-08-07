@@ -695,3 +695,55 @@ public extension CurationStore {
         return playlist
     }
 }
+
+// MARK: - Cover art
+
+public extension CurationStore {
+    /// Sets or clears the item whose cover stands in for a playlist's.
+    @discardableResult
+    func setArtwork(_ itemId: String?, on playlistId: String, now: Millis = Date().millis) throws -> Playlist? {
+        guard var list = try playlist(playlistId) else { return nil }
+        list.artworkItemId = itemId
+        return try record(list, at: now)
+    }
+
+    /// Up to `limit` distinct albums per playlist, in playing order.
+    ///
+    /// For drawing a cover from what a playlist holds, the way Jellyfin and Apple
+    /// Music both do. Distinct *albums* rather than tracks: a playlist of one album
+    /// would otherwise tile the same square four times, which reads as a rendering
+    /// bug rather than as a deliberate mosaic.
+    ///
+    /// Answered for every playlist in one query. Asking per playlist would be one
+    /// query per row of a list screen, which is the shape that makes a library of a
+    /// few hundred playlists scroll badly.
+    func coverAlbums(for playlistIds: [String], limit: Int = 4) throws -> [String: [String]] {
+        guard !playlistIds.isEmpty else { return [:] }
+
+        return try read { db in
+            let placeholders = databaseQuestionMarks(count: playlistIds.count)
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT i.playlistId AS playlistId, t.albumId AS albumId
+                FROM playlistItem i
+                JOIN track t ON t.jellyfinId = i.jellyfinId
+                WHERE i.deleted = 0 AND t.albumId IS NOT NULL AND i.playlistId IN (\(placeholders))
+                ORDER BY i.playlistId, i.position
+                """,
+                arguments: StatementArguments(playlistIds)
+            )
+
+            var covers: [String: [String]] = [:]
+            for row in rows {
+                let playlistId: String = row["playlistId"]
+                let albumId: String = row["albumId"]
+                var albums = covers[playlistId] ?? []
+                guard albums.count < limit, !albums.contains(albumId) else { continue }
+                albums.append(albumId)
+                covers[playlistId] = albums
+            }
+            return covers
+        }
+    }
+}

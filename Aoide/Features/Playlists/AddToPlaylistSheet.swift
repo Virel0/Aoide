@@ -67,7 +67,7 @@ struct AddToPlaylistSheet: View {
                                 Task { await add(to: list) }
                             } label: {
                                 HStack(spacing: 12) {
-                                    LocalPlaylistTile(name: list.name)
+                                    PlaylistArtwork(playlist: list, albumIds: playlists.coverAlbums[list.id] ?? [])
                                         .frame(width: 36, height: 36)
                                     VStack(alignment: .leading, spacing: 1) {
                                         // `Color.primary` rather than `.primary`: the

@@ -441,6 +441,12 @@ final class LibraryStore {
         try await client.songs(matching: query)
     }
 
+    /// Artwork for an item we hold only the id of — a playlist cover chosen from the
+    /// curation store, where nothing but ids are kept.
+    func artworkURL(itemId: String, maxWidth: Int) -> URL? {
+        client.artworkURL(itemId: itemId, tag: nil, maxWidth: maxWidth)
+    }
+
     func artworkURL(for item: JellyfinItem, width: Int) -> URL? {
         client.artworkURL(for: item, maxWidth: width)
     }

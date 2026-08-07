@@ -299,7 +299,7 @@ struct PlaylistsHomeView: View {
             LocalPlaylistDetailView(playlist: list)
         } label: {
             HStack(spacing: 12) {
-                LocalPlaylistTile(name: list.name, isSmart: list.isSmart)
+                PlaylistArtwork(playlist: list, albumIds: playlists.coverAlbums[list.id] ?? [])
                     .frame(width: Design.Size.listThumbnail, height: Design.Size.listThumbnail)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(list.name)

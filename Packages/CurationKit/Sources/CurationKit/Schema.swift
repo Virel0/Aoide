@@ -199,6 +199,25 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v6") { db in
+            // A Jellyfin item id whose Primary image is this playlist's cover — never
+            // image bytes. The op log replays in full onto every fresh device and the
+            // payload ceiling is 256 KB, so a cover stored as data would be the
+            // largest thing in the system and would be copied forever. An id is
+            // sixteen bytes and resolves against a server both devices already talk
+            // to.
+            try db.alter(table: "playlist") { t in
+                t.add(column: "artworkItemId", .text)
+            }
+            // The album a cached track belongs to, so a playlist with no cover of its
+            // own can be drawn from the albums it holds. The track cache is local and
+            // rebuilt from Jellyfin, so a null here just means "not seen since this
+            // column existed" and fills in on the next index.
+            try db.alter(table: "track") { t in
+                t.add(column: "albumId", .text)
+            }
+        }
+
         return migrator
     }
 }

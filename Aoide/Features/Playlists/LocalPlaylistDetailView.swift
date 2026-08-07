@@ -15,6 +15,7 @@ struct LocalPlaylistDetailView: View {
 
     @Environment(LibraryStore.self) private var library
     @Environment(LocalPlaylistStore.self) private var playlists
+    @State private var isChoosingCover = false
     @Environment(\.dismiss) private var dismiss
     @State private var indexer = SongIndexer.shared
     @State private var engine = PlaybackEngine.shared
@@ -78,6 +79,13 @@ struct LocalPlaylistDetailView: View {
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(isPresented: $isChoosingCover) {
+            // Both stores handed in explicitly: a sheet is an environment boundary,
+            // and a missing `@Environment` observable is a crash rather than a nil.
+            CoverPicker(playlist: current, albums: albumChoices)
+                .environment(library)
+                .environment(playlists)
+        }
         .task { await load() }
         .task {
             // A smart playlist can only see songs the local index knows about, so this is
@@ -165,7 +173,8 @@ struct LocalPlaylistDetailView: View {
             PlaylistHeroArtwork(
                 name: current.name,
                 isSmart: current.isSmart,
-                covers: coverURLs
+                covers: coverURLs,
+                chosen: chosenCoverURL
             )
             .frame(maxWidth: 260)
             .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
@@ -214,6 +223,26 @@ struct LocalPlaylistDetailView: View {
         .padding(.top, 12)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity)
+    }
+
+    /// The distinct albums this playlist holds, as things a cover could be chosen
+    /// from. Its own contents rather than the whole library: picking a cover is
+    /// saying "this playlist looks like *this* record", and offering ten thousand
+    /// albums makes that a search problem instead of a choice.
+    private var albumChoices: [JellyfinItem] {
+        var seen: Set<String> = []
+        return contents.tracks.compactMap(\.item).filter { track in
+            guard let albumId = track.albumId, !seen.contains(albumId) else { return false }
+            seen.insert(albumId)
+            return true
+        }
+    }
+
+    /// A cover chosen by hand, or inherited from the Jellyfin playlist this was
+    /// copied from — the image that playlist already had on the server.
+    private var chosenCoverURL: URL? {
+        guard let itemId = playlist.artworkItemId ?? playlist.sourceJellyfinId else { return nil }
+        return library.artworkURL(itemId: itemId, maxWidth: Design.ArtworkWidth.hero)
     }
 
     /// The first few covers, for the mosaic. Only playable rows have one.
@@ -327,6 +356,17 @@ struct LocalPlaylistDetailView: View {
                     Button("Edit Rules", systemImage: "slider.horizontal.3") { isEditingRules = true }
                 } else {
                     Button("Rename & Notes", systemImage: "square.and.pencil") { isEditingDetails = true }
+                }
+                // Only offered where there is something to choose from. A smart
+                // playlist's contents change with its rules, so a cover picked from
+                // today's matches would quietly stop describing it.
+                if !current.isSmart, !albumChoices.isEmpty {
+                    Button("Choose Cover", systemImage: "photo") { isChoosingCover = true }
+                }
+                if current.artworkItemId != nil {
+                    Button("Use Album Covers", systemImage: "square.grid.2x2") {
+                        Task { await playlists.setArtwork(nil, on: current) }
+                    }
                 }
                 Divider()
                 Button("Delete Playlist", systemImage: "trash", role: .destructive) {
@@ -500,10 +540,16 @@ struct PlaylistHeroArtwork: View {
     let name: String
     var isSmart = false
     let covers: [URL]
+    /// A cover chosen by hand, or the Jellyfin playlist this was copied from. Beats
+    /// the mosaic: a mosaic describes what a playlist holds, and a chosen cover is
+    /// somebody saying what it *is*.
+    var chosen: URL?
 
     var body: some View {
         Group {
-            if covers.count >= 4 {
+            if let chosen {
+                ArtworkView(url: chosen, cornerRadius: Design.Radius.hero)
+            } else if covers.count >= 4 {
                 Grid(horizontalSpacing: 0, verticalSpacing: 0) {
                     GridRow {
                         ArtworkView(url: covers[0], cornerRadius: 0)

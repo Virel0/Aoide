@@ -47,6 +47,7 @@ enum TrackCatalogue {
             artist: artist,
             album: album,
             albumArtist: item.albumArtist,
+            albumId: item.albumId,
             durationMs: durationMs,
             year: item.productionYear,
             genres: item.genres,

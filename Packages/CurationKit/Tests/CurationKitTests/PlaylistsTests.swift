@@ -587,3 +587,100 @@ struct PlaylistImportTests {
         #expect(try store.importedSourceIds().isEmpty)
     }
 }
+
+/// Covers are ids, never image bytes. The op log replays in full onto every new
+/// device and payloads are capped at 256 KB, so a cover held as data would be the
+/// largest thing in the system and would be copied forever.
+@Suite("Playlist covers")
+struct PlaylistCoverTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    private func cache(_ store: CurationStore, track: String, album: String) throws {
+        try store.cacheTracks([TrackRef(
+            jellyfinId: track,
+            contentKey: "key-\(track)",
+            title: track,
+            artist: "Artist",
+            album: album,
+            albumId: album,
+            lastSeenAt: 1
+        )])
+    }
+
+    @Test("choosing a cover syncs as an id and nothing else")
+    func coverIsAnId() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Covered")
+
+        let saved = try #require(try store.setArtwork("album-7", on: list.id))
+        #expect(saved.artworkItemId == "album-7")
+
+        let op = try #require(try store.pendingOps().last { $0.entityId == list.id })
+        #expect(op.payload.contains("album-7"))
+        // The whole row, cover included, stays small enough that it could never
+        // approach the payload ceiling.
+        #expect(op.payload.count < 2_000)
+    }
+
+    @Test("clearing a cover goes back to the mosaic")
+    func clearing() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Covered")
+        try store.setArtwork("album-7", on: list.id)
+
+        let cleared = try #require(try store.setArtwork(nil, on: list.id))
+        #expect(cleared.artworkItemId == nil)
+    }
+
+    /// Distinct albums, not distinct tracks: a playlist of one album would otherwise
+    /// tile the same square four times, which reads as a rendering bug.
+    @Test("the mosaic draws from distinct albums in playing order")
+    func mosaicAlbums() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Mixed")
+        for (track, album) in [("t1", "a1"), ("t2", "a1"), ("t3", "a2"), ("t4", "a3")] {
+            try cache(store, track: track, album: album)
+        }
+        try store.addTracks(
+            [("t1", "a1"), ("t2", "a1"), ("t3", "a2"), ("t4", "a3")]
+                .map { TrackLink(jellyfinId: $0.0, contentKey: "key-\($0.0)") },
+            to: list.id
+        )
+
+        let covers = try store.coverAlbums(for: [list.id])
+        #expect(covers[list.id] == ["a1", "a2", "a3"])
+    }
+
+    @Test("a removed song stops contributing its album")
+    func removedSongsDropOut() throws {
+        let store = try store()
+        let list = try store.createPlaylist(name: "Trimmed")
+        for (track, album) in [("t1", "a1"), ("t2", "a2")] {
+            try cache(store, track: track, album: album)
+        }
+        let items = try store.addTracks(
+            [TrackLink(jellyfinId: "t1", contentKey: "key-t1"),
+             TrackLink(jellyfinId: "t2", contentKey: "key-t2")],
+            to: list.id
+        )
+        try store.removeItem(try #require(items.first).id)
+
+        #expect(try store.coverAlbums(for: [list.id])[list.id] == ["a2"])
+    }
+
+    /// One query answers a whole screen. Per playlist it would be one query per row.
+    @Test("covers for many playlists come back in one call")
+    func batched() throws {
+        let store = try store()
+        try cache(store, track: "t1", album: "a1")
+        var ids: [String] = []
+        for index in 0..<3 {
+            let list = try store.createPlaylist(name: "List \(index)")
+            try store.addTracks([TrackLink(jellyfinId: "t1", contentKey: "key-t1")], to: list.id)
+            ids.append(list.id)
+        }
+        let covers = try store.coverAlbums(for: ids)
+        #expect(covers.count == 3)
+        #expect(covers.values.allSatisfy { $0 == ["a1"] })
+    }
+}

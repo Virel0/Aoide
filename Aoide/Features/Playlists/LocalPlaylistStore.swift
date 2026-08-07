@@ -183,7 +183,9 @@ final class LocalPlaylistStore {
                 folders: folders,
                 playlists: playlists,
                 counts: counts,
-                importedSources: try store.importedSourceIds()
+                importedSources: try store.importedSourceIds(),
+                // One query for the whole screen. Per tile it would be one per row.
+                coverAlbums: try store.coverAlbums(for: playlists.map(\.id))
             )
         }
 
@@ -192,6 +194,7 @@ final class LocalPlaylistStore {
             playlists = snapshot.playlists
             trackCounts = snapshot.counts
             importedSourceIds = snapshot.importedSources
+            coverAlbums = snapshot.coverAlbums
         }
         hasLoaded = true
     }
@@ -201,6 +204,7 @@ final class LocalPlaylistStore {
         let playlists: [Playlist]
         let counts: [String: Int]
         let importedSources: Set<String>
+        let coverAlbums: [String: [String]]
     }
 
     // MARK: - Playlists
@@ -426,6 +430,8 @@ final class LocalPlaylistStore {
 
     /// Which Jellyfin playlists already have a local copy, so the server list can say so.
     private(set) var importedSourceIds: Set<String> = []
+    /// Albums each playlist holds, for drawing a cover from its contents.
+    private(set) var coverAlbums: [String: [String]] = [:]
 
     /// Copies a Jellyfin playlist into a local one, or refreshes an existing copy.
     ///
@@ -458,6 +464,14 @@ final class LocalPlaylistStore {
         }
         await reload()
         return imported
+    }
+
+    /// Sets the playlist's cover to an album it holds, or clears it back to the mosaic.
+    func setArtwork(_ itemId: String?, on playlist: Playlist) async {
+        await run("change that cover") { store in
+            try store.setArtwork(itemId, on: playlist.id)
+        }
+        await reload()
     }
 
     func removeItem(_ itemId: String) async {

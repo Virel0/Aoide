@@ -33,6 +33,8 @@ public struct TrackRef: Codable, FetchableRecord, PersistableRecord, Hashable, S
     public var artist: String
     public var album: String
     public var albumArtist: String?
+    /// The album's own id, for drawing a playlist cover from what it holds.
+    public var albumId: String?
     public var durationMs: Int?
     public var year: Int?
     /// JSON array. Stored as text because SQLite has no array type and a join table
@@ -48,6 +50,7 @@ public struct TrackRef: Codable, FetchableRecord, PersistableRecord, Hashable, S
         artist: String,
         album: String,
         albumArtist: String? = nil,
+        albumId: String? = nil,
         durationMs: Int? = nil,
         year: Int? = nil,
         genres: [String] = [],
@@ -60,6 +63,7 @@ public struct TrackRef: Codable, FetchableRecord, PersistableRecord, Hashable, S
         self.artist = artist
         self.album = album
         self.albumArtist = albumArtist
+        self.albumId = albumId
         self.durationMs = durationMs
         self.year = year
         self.genres = (try? String(data: JSONEncoder().encode(genres), encoding: .utf8)) ?? "[]"
@@ -144,6 +148,9 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
     public var fieldUpdatedAt: FieldStamps?
     /// The Jellyfin playlist this was imported from, if it was.
     public var sourceJellyfinId: String?
+    /// A Jellyfin item whose cover stands in for this playlist's. `nil` means one is
+    /// drawn from the playlist's own albums instead.
+    public var artworkItemId: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -157,7 +164,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         deleted: Bool = false,
         originDevice: String,
         fieldUpdatedAt: FieldStamps? = nil,
-        sourceJellyfinId: String? = nil
+        sourceJellyfinId: String? = nil,
+        artworkItemId: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -171,6 +179,7 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         self.originDevice = originDevice
         self.fieldUpdatedAt = fieldUpdatedAt
         self.sourceJellyfinId = sourceJellyfinId
+        self.artworkItemId = artworkItemId
     }
 }
 
