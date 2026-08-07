@@ -159,6 +159,20 @@ enum Schema {
             try db.create(index: "idx_quarantine_time", on: "quarantinedOp", columns: ["quarantinedAt"])
         }
 
+        // Never edit an earlier migration: it has already run on real devices, and a
+        // changed one runs only where it had not, so the schema silently diverges
+        // between a device that upgraded and one that installed fresh.
+        migrator.registerMigration("v3") { db in
+            // Nullable, and null is meaningful rather than merely absent: it marks a
+            // row written before per-field merging existed, which falls back to the
+            // row's own `updatedAt` for every field.
+            for table in ["playlist", "folder"] {
+                try db.alter(table: table) { t in
+                    t.add(column: "fieldUpdatedAt", .text)
+                }
+            }
+        }
+
         return migrator
     }
 }

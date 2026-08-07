@@ -70,6 +70,16 @@ public final class CurationStore: Sendable {
         deleted: Bool = false,
         at now: Millis = Date().millis
     ) throws -> Record where Record: PersistableRecord & Encodable & Syncable {
+        try recordRow(record, deleted: deleted, at: now)
+    }
+
+    /// The write itself, shared by both `record` overloads.
+    @discardableResult
+    private func recordRow<Record>(
+        _ record: Record,
+        deleted: Bool = false,
+        at now: Millis = Date().millis
+    ) throws -> Record where Record: PersistableRecord & Encodable & Syncable {
         var row = record
         row.updatedAt = now
         row.deleted = deleted
@@ -89,6 +99,39 @@ public final class CurationStore: Sendable {
             try op.insert(db)
         }
         return row
+    }
+
+    /// Saves a row that merges field by field, stamping whichever fields changed.
+    ///
+    /// A more specific overload of `record` above, chosen by the compiler for the two
+    /// types that carry `fieldUpdatedAt`. Which fields changed can only be known here,
+    /// against the row already on disk — a caller passing a whole updated row does not
+    /// know which of its values are new, and asking every call site to say would be a
+    /// rule that is wrong the first time somebody forgets it.
+    @discardableResult
+    public func record<Record>(
+        _ record: Record,
+        deleted: Bool = false,
+        at now: Millis = Date().millis
+    ) throws -> Record
+    where Record: PersistableRecord & FetchableRecord & Codable & FieldStamped {
+        // The id is lifted out because the closure is `@Sendable` and `Record` is not
+        // required to be — capturing the whole row to read one string would force a
+        // constraint on every caller for no reason.
+        let id = record.id
+        let previous = try read { db in try Record.fetchOne(db, key: id) }
+
+        var row = record
+        var stamps = previous?.fieldUpdatedAt ?? FieldStamps()
+        // A delete touches no content field, so it stamps none: a playlist deleted on
+        // one device and renamed on another keeps the rename, and the delete is
+        // resolved at row level where it belongs.
+        if !deleted {
+            stamps.stamp(try FieldMerge.changedFields(row, from: previous), at: now)
+        }
+        row.fieldUpdatedAt = stamps
+
+        return try recordRow(row, deleted: deleted, at: now)
     }
 
     /// Appends a play event and its op.

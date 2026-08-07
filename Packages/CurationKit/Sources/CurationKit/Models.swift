@@ -92,7 +92,7 @@ public enum ContentKey {
 
 // MARK: - Curation
 
-public struct Folder: Codable, FetchableRecord, PersistableRecord, Syncable, Hashable, Sendable {
+public struct Folder: Codable, FetchableRecord, PersistableRecord, Syncable, FieldStamped, Hashable, Sendable {
     public static let databaseTableName = "folder"
 
     public var id: String
@@ -102,6 +102,8 @@ public struct Folder: Codable, FetchableRecord, PersistableRecord, Syncable, Has
     public var updatedAt: Millis
     public var deleted: Bool
     public var originDevice: String
+    /// When each field last changed. `nil` on rows written before per-field merging.
+    public var fieldUpdatedAt: FieldStamps?
 
     public init(
         id: String = UUID().uuidString,
@@ -110,7 +112,8 @@ public struct Folder: Codable, FetchableRecord, PersistableRecord, Syncable, Has
         sortIndex: String,
         updatedAt: Millis,
         deleted: Bool = false,
-        originDevice: String
+        originDevice: String,
+        fieldUpdatedAt: FieldStamps? = nil
     ) {
         self.id = id
         self.name = name
@@ -119,10 +122,11 @@ public struct Folder: Codable, FetchableRecord, PersistableRecord, Syncable, Has
         self.updatedAt = updatedAt
         self.deleted = deleted
         self.originDevice = originDevice
+        self.fieldUpdatedAt = fieldUpdatedAt
     }
 }
 
-public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, Hashable, Sendable {
+public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, FieldStamped, Hashable, Sendable {
     public static let databaseTableName = "playlist"
 
     public var id: String
@@ -136,6 +140,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, H
     public var updatedAt: Millis
     public var deleted: Bool
     public var originDevice: String
+    /// When each field last changed. `nil` on rows written before per-field merging.
+    public var fieldUpdatedAt: FieldStamps?
 
     public init(
         id: String = UUID().uuidString,
@@ -147,7 +153,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, H
         sortIndex: String,
         updatedAt: Millis,
         deleted: Bool = false,
-        originDevice: String
+        originDevice: String,
+        fieldUpdatedAt: FieldStamps? = nil
     ) {
         self.id = id
         self.name = name
@@ -159,6 +166,7 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, H
         self.updatedAt = updatedAt
         self.deleted = deleted
         self.originDevice = originDevice
+        self.fieldUpdatedAt = fieldUpdatedAt
     }
 }
 

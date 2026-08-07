@@ -105,7 +105,7 @@ struct InboundApplier {
     /// loses to a later edit exactly the way any other stale write does.
     private mutating func mergePlaylist(_ op: PulledOp, in db: Database) throws {
         let existing = try Playlist.fetchOne(db, key: op.entityId)
-        guard let row = try winner(Playlist.self, op, existing: existing, in: db) else { return }
+        guard let row = try fieldMergedWinner(Playlist.self, op, existing: existing, in: db) else { return }
         // A local soft delete losing to a newer inbound edit un-deletes the playlist,
         // and that is the intended reading rather than an oversight: a delete is a
         // versioned write like any other, and the alternative — deletes always win —
@@ -124,7 +124,7 @@ struct InboundApplier {
 
     private mutating func mergeFolder(_ op: PulledOp, in db: Database) throws {
         let existing = try Folder.fetchOne(db, key: op.entityId)
-        guard let row = try winner(Folder.self, op, existing: existing, in: db) else { return }
+        guard let row = try fieldMergedWinner(Folder.self, op, existing: existing, in: db) else { return }
         try row.save(db)
         report.applied += 1
     }
@@ -272,6 +272,73 @@ struct InboundApplier {
     /// Decodes the payload, corrects a broken clock, and resolves last-writer-wins.
     /// `nil` means there is nothing to store — the op was stale, or it was
     /// quarantined on the way through.
+    /// The row-level winner, then each content field taken from whichever side
+    /// changed it more recently.
+    ///
+    /// The row-level comparison still decides the metadata — `deleted`, `updatedAt`,
+    /// `originDevice` — because those describe the write rather than any one field.
+    /// The content is then merged on the individual stamps, so a rename on one device
+    /// and a description edit on another both survive instead of the later sync
+    /// erasing the earlier.
+    ///
+    /// Note the losing side still contributes: an incoming row that loses the row
+    /// comparison may hold the newer copy of one field, and dropping it because the
+    /// row as a whole is older is exactly the loss this exists to stop. So the stale
+    /// path returns the merge rather than nothing whenever the merge differs from
+    /// what is already stored.
+    private mutating func fieldMergedWinner<R>(
+        _ type: R.Type,
+        _ op: PulledOp,
+        existing: R?,
+        in db: Database
+    ) throws -> R? where R: Codable & FieldStamped & Equatable {
+        var incoming: R
+        do {
+            incoming = try decodeRow(R.self, from: op)
+        } catch {
+            try quarantine(op, .undecodablePayload("\(error)"), in: db)
+            return nil
+        }
+
+        correctSkew(&incoming.updatedAt, receivedAt: op.receivedAt)
+        if var stamps = incoming.fieldUpdatedAt {
+            let corrected = stamps.correctingSkew(
+                credible: { isDatable($0, receivedAt: op.receivedAt) },
+                to: op.receivedAt
+            )
+            if corrected { incoming.fieldUpdatedAt = stamps }
+        }
+
+        guard let existing else { return incoming }
+
+        // A local row this device can no longer place in time forfeits whole. Its
+        // field stamps come from the same unbelievable clock as its row timestamp, so
+        // merging against them would let the broken row keep individual fields — and
+        // the recovery this exists for is precisely that it stops keeping anything.
+        let datable = isDatable(existing.updatedAt, receivedAt: op.receivedAt)
+        guard datable else { return incoming }
+
+        let incomingLeads = Self.incomingWins(
+            incoming: (incoming.updatedAt, incoming.originDevice),
+            existing: (existing.updatedAt, existing.originDevice),
+            existingIsDatable: true
+        )
+
+        let merged = try FieldMerge.merged(
+            incoming: incoming,
+            existing: existing,
+            metadataFrom: incomingLeads ? incoming : existing
+        )
+
+        // Nothing changed, so nothing is written — which is what keeps re-applying an
+        // op idempotent, and keeps our own ops coming back down from touching a row.
+        guard merged != existing else {
+            report.ignoredStale += 1
+            return nil
+        }
+        return merged
+    }
+
     private mutating func winner<R: Syncable & Decodable>(
         _ type: R.Type,
         _ op: PulledOp,
