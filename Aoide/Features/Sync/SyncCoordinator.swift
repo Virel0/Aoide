@@ -368,8 +368,26 @@ final class SyncCoordinator {
             }
             return .unavailable(jellyfin.errorDescription ?? "Couldn't reach the server")
         }
-        if case SyncError.pushStalled(let count) = error {
-            return .unavailable("Stuck sending \(count) change\(count == 1 ? "" : "s")")
+        if case SyncError.pushStalled(let count, let accepted, let rejected, let unmatched) = error {
+            // The bare count is true and useless: it describes this device's
+            // predicament and says nothing about the cause. These three separate the
+            // cases that look identical from here — a server acknowledging nothing, a
+            // server rejecting in a shape this build cannot read, and a server naming
+            // ops it was never sent.
+            let plural = count == 1 ? "" : "s"
+            if accepted == 0, rejected == 0, unmatched == 0 {
+                return .unavailable(
+                    "Stuck sending \(count) change\(plural) — your server accepted and refused none of them."
+                )
+            }
+            if unmatched > 0 {
+                return .unavailable(
+                    "Stuck sending \(count) change\(plural) — your server refused \(unmatched) it wasn't sent."
+                )
+            }
+            return .unavailable(
+                "Stuck sending \(count) change\(plural) — \(accepted) accepted, \(rejected) refused."
+            )
         }
         // A reachable server answering 200 with something this build can't read. It
         // used to fall through to "Couldn't reach the server", which sends whoever is

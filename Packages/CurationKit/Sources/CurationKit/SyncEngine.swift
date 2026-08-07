@@ -178,6 +178,8 @@ public actor SyncEngine {
     private func pushPending() async throws -> SyncReport {
         var report = SyncReport()
         var previousBatch: Set<String> = []
+        /// What the previous round trip came back with, kept so a stall can say why.
+        var lastExchange = (accepted: 0, rejected: 0, unmatched: 0)
 
         while true {
             let pending = try store.pendingOps(limit: policy.pushBatchSize)
@@ -188,7 +190,14 @@ public actor SyncEngine {
             // sends the same bytes to the same effect. Better to surface a stall than
             // to hold the connection open forever making no progress.
             let ids = Set(pending.map(\.opId))
-            guard ids != previousBatch else { throw SyncError.pushStalled(pending: pending.count) }
+            guard ids != previousBatch else {
+                throw SyncError.pushStalled(
+                    pending: pending.count,
+                    accepted: lastExchange.accepted,
+                    rejected: lastExchange.rejected,
+                    unmatchedRejections: lastExchange.unmatched
+                )
+            }
             previousBatch = ids
 
             var wire: [WireOp] = []
@@ -232,18 +241,27 @@ public actor SyncEngine {
             try store.markSynced(response.accepted)
             report.pushed += response.accepted.count
 
+            var unmatched = 0
             if !response.rejected.isEmpty {
                 let byId = Dictionary(pending.map { ($0.opId, $0) }, uniquingKeysWith: { first, _ in first })
                 for rejection in response.rejected {
                     // A rejected op will never be accepted. Retrying it is an
                     // infinite loop, so it leaves the queue here and is surfaced
                     // instead.
-                    guard let op = byId[rejection.opId] else { continue }
+                    guard let op = byId[rejection.opId] else {
+                        // A rejection naming an op that was not in this batch. Dropped
+                        // silently, this is indistinguishable from the server saying
+                        // nothing at all — and it produces the same stall, so the
+                        // count has to survive to explain it.
+                        unmatched += 1
+                        continue
+                    }
                     try store.quarantine(op, reason: .serverRejected(rejection.reason), at: clock())
                     report.quarantinedOutbound += 1
                     report.rejected += 1
                 }
             }
+            lastExchange = (response.accepted.count, response.rejected.count, unmatched)
 
             // The response's cursor is deliberately dropped on the floor. It is the
             // server's head sequence, not this device's read position — see

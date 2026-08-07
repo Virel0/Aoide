@@ -79,7 +79,14 @@ public enum SyncError: Error, Hashable, Sendable {
     case alreadyRunning
     /// A push round trip changed nothing: the same ops came back pending, none were
     /// accepted, none were rejected. Continuing would spin forever.
-    case pushStalled(pending: Int)
+    ///
+    /// Carries what the server actually said, because "stuck sending 7 changes" is
+    /// true and useless — it describes the client's predicament and says nothing
+    /// about the cause. The three counts separate the cases that look identical from
+    /// the outside: a server acknowledging nothing, a server rejecting everything in
+    /// a shape this build cannot read, and a server naming ops that are not the ones
+    /// it was sent.
+    case pushStalled(pending: Int, accepted: Int, rejected: Int, unmatchedRejections: Int)
 }
 
 /// The numbers the engine works to, and why each one is what it is.

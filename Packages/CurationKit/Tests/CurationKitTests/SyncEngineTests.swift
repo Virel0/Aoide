@@ -193,7 +193,11 @@ struct SyncEngineTests {
         let server = FakeSyncServer()
         await server.setAcceptNothing(true)
 
-        await #expect(throws: SyncError.pushStalled(pending: 1)) {
+        // The counts are part of the assertion now: a stall that cannot say whether
+        // the server answered is the failure this whole error exists to describe.
+        await #expect(throws: SyncError.pushStalled(
+            pending: 1, accepted: 0, rejected: 0, unmatchedRejections: 0
+        )) {
             try await self.engine(store, server).sync()
         }
         #expect(try store.pendingOps().count == 1)

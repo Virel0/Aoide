@@ -1837,3 +1837,66 @@ struct QuarantineRetryTests {
         _ = list
     }
 }
+
+/// "Stuck sending 7 changes" is true and useless: it describes the client's
+/// predicament and says nothing about the cause. These pin that the stall carries
+/// enough to tell the causes apart.
+@Suite("A stall that explains itself")
+struct StallDiagnosisTests {
+    private func storeWithWork() throws -> CurationStore {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        for index in 0..<3 { _ = try store.createPlaylist(name: "List \(index)") }
+        return store
+    }
+
+    @Test("a server that acknowledges nothing says so")
+    func acknowledgesNothing() async throws {
+        let sidecar = Sidecar()
+        await sidecar.stopAcknowledging()
+        let store = try storeWithWork()
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+
+        await #expect(throws: SyncError.self) { _ = try await engine.sync() }
+
+        do {
+            _ = try await engine.sync()
+            Issue.record("expected a stall")
+        } catch let error as SyncError {
+            guard case .pushStalled(let pending, let accepted, let rejected, let unmatched) = error else {
+                Issue.record("expected pushStalled, got \(error)")
+                return
+            }
+            #expect(pending == 3)
+            #expect(accepted == 0)
+            #expect(rejected == 0)
+            #expect(unmatched == 0)
+        }
+    }
+
+    /// Dropped silently, a rejection naming an op that was never sent is
+    /// indistinguishable from the server saying nothing — and produces the same stall.
+    @Test("a server rejecting ids it was never sent is told apart from one saying nothing")
+    func rejectsUnknownIds() async throws {
+        let sidecar = Sidecar()
+        await sidecar.rejectWithUnknownIds()
+        let store = try storeWithWork()
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+
+        _ = try? await engine.sync()
+        do {
+            _ = try await engine.sync()
+            Issue.record("expected a stall")
+        } catch let error as SyncError {
+            guard case .pushStalled(_, let accepted, let rejected, let unmatched) = error else {
+                Issue.record("expected pushStalled, got \(error)")
+                return
+            }
+            #expect(accepted == 0)
+            #expect(rejected == 3, "the server did answer, in a shape that matched nothing")
+            #expect(unmatched == 3)
+        }
+        // And nothing was quarantined on the strength of an id that matched no op.
+        #expect(try store.quarantinedOps().isEmpty)
+        #expect(try store.pendingOps().count == 3)
+    }
+}

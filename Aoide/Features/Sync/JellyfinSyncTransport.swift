@@ -23,6 +23,11 @@ struct JellyfinSyncTransport: SyncTransport {
     func push(_ request: PushRequest) async throws -> PushResponse {
         let body = try Self.encoder().encode(request)
         let data = try await Self.translatingStatus { try await client.syncPush(body: body) }
+        // Kept because a push that answers 200 and acknowledges nothing is the one
+        // failure the counts cannot explain: the client can say what it sent and what
+        // it understood, but not what the server meant. This is the only place the
+        // server's own words exist.
+        await SyncDiagnostics.shared.recordPush(sent: request.ops.count, reply: data)
         return try Self.decoder().decode(PushResponse.self, from: data)
     }
 

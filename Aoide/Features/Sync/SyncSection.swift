@@ -13,6 +13,9 @@ import SwiftUI
 /// destination, and burying the quarantine count one tap deeper would defeat the
 /// point of showing it.
 struct SyncSection: View {
+    /// Only fetched while a failure is on screen: it is a debugging aid, not a
+    /// permanent part of Settings.
+    @State private var lastReply: SyncDiagnostics.Exchange?
     @State private var sync = SyncCoordinator.shared
 
     var body: some View {
@@ -41,6 +44,18 @@ struct SyncSection: View {
                 }
             }
 
+            // Shown only when something is wrong, and it is the server's own words
+            // rather than a summary of them. Three faults in this integration have
+            // now been diagnosed only after somebody read the actual reply — the
+            // summary is what hid the cause each time.
+            if let reply = lastReply {
+                NavigationLink {
+                    ServerReplyView(reply: reply)
+                } label: {
+                    LabeledContent("Server's Last Reply", value: "View")
+                }
+            }
+
             Button {
                 sync.syncNow()
             } label: {
@@ -58,6 +73,12 @@ struct SyncSection: View {
         } footer: {
             Text(footer)
         }
+        // Fetched only while a failure is showing. Keyed on the failure itself so it
+        // refreshes when the fault changes and clears when it goes away, rather than
+        // leaving a stale reply behind describing a problem that is over.
+        .task(id: sync.failure) {
+            lastReply = sync.failure == nil ? nil : await SyncDiagnostics.shared.lastPush
+        }
     }
 
     /// Says what is happening when something is, and what the feature is for when
@@ -66,5 +87,33 @@ struct SyncSection: View {
     private var footer: String {
         if let detail = sync.statusDetail { return detail }
         return "Playlists, favourites and listening history sync between your devices through your Jellyfin server. It happens by itself when you open the app and after you make changes \u{2014} this button is only for when you don't want to wait."
+    }
+}
+
+/// The sidecar's last answer, verbatim.
+///
+/// Selectable rather than merely displayed: the point of this screen is that somebody
+/// can copy what the server said into wherever the server is being fixed.
+private struct ServerReplyView: View {
+    let reply: SyncDiagnostics.Exchange
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Changes Sent", value: "\(reply.opsSent)")
+                LabeledContent("At", value: reply.at.formatted(date: .omitted, time: .standard))
+            }
+            Section {
+                Text(reply.reply)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+            } header: {
+                Text("What Your Server Replied")
+            } footer: {
+                Text("Copy this if you're working out why sync is stuck — it's the server's own answer, not this app's summary of it.")
+            }
+        }
+        .navigationTitle("Server's Last Reply")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

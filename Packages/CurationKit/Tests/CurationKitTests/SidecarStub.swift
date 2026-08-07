@@ -117,6 +117,15 @@ actor Sidecar {
     /// succeeds — a server that was restarting rather than one with a bad row.
     private var clearPoisonAfterFailure = false
     func clearPoisonAfterNextFailure() { clearPoisonAfterFailure = true }
+
+    /// Answers 200 and acknowledges nothing — the shape a server takes when it cannot
+    /// read the ops it was sent, or forgets to list them.
+    private var acknowledgesNothing = false
+    func stopAcknowledging() { acknowledgesNothing = true }
+
+    /// Rejects using ids it was never sent, which a client matching on id drops.
+    private var rejectsWithStrangeIds = false
+    func rejectWithUnknownIds() { rejectsWithStrangeIds = true }
     func failPull(atCall call: Int) { failPullCalls.insert(call) }
     func setPullDelay(nanos: UInt64) { pullDelayNanos = nanos }
 
@@ -182,6 +191,16 @@ actor Sidecar {
             accepted.append(op.opId)
         }
 
+        if acknowledgesNothing {
+            return PushResponse(accepted: [], rejected: [], cursor: PushCursor(head))
+        }
+        if rejectsWithStrangeIds {
+            return PushResponse(
+                accepted: [],
+                rejected: request.ops.map { RejectedOp(opId: "not-" + $0.opId, reason: "nope") },
+                cursor: PushCursor(head)
+            )
+        }
         return PushResponse(accepted: accepted, rejected: rejected, cursor: PushCursor(head))
     }
 
