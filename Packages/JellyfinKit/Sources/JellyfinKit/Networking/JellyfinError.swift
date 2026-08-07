@@ -8,7 +8,11 @@ public enum JellyfinError: Error, Equatable, Sendable {
     case unauthorized
     case forbidden
     case notFound(path: String)
-    case http(status: Int, path: String)
+    /// `detail` is a short prefix of the response body. Discarding it left a 500
+    /// reading only "the server returned an error", which says nothing a person or a
+    /// log can act on — and a sidecar failure is exactly where the server's own words
+    /// are the whole diagnosis.
+    case http(status: Int, path: String, detail: String?)
     case decoding(path: String, underlying: String)
     case transport(String)
     case notSignedIn
@@ -27,8 +31,11 @@ extension JellyfinError: LocalizedError {
             "This account isn't allowed to do that."
         case .notFound(let path):
             "The server has no \(path)."
-        case .http(let status, _):
-            "The server returned an error (HTTP \(status))."
+        case .http(let status, _, let detail):
+            // The server's own first line, when it gave one. "HTTP 500" alone tells a
+            // person nothing they can do and tells whoever reads the log even less.
+            detail.map { "The server returned an error (HTTP \(status)): \($0)" }
+                ?? "The server returned an error (HTTP \(status))." 
         case .decoding:
             "The server sent a response this app couldn't read."
         case .transport(let message):

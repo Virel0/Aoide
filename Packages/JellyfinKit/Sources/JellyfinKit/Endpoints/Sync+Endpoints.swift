@@ -30,13 +30,17 @@ public extension JellyfinClient {
 
     /// `GET /aoide/sync/pull`.
     ///
-    /// `since` is omitted rather than sent as zero on a device that has never synced.
-    /// The two happen to mean the same thing today, and a cursor is a sequence number
-    /// rather than a count — the only honest way to say "from the beginning" is not
-    /// to name a position at all.
+    /// `since` is always sent, as zero on a device that has never synced.
+    ///
+    /// It used to be omitted, on the reasoning that a cursor is a position and there
+    /// is no honest position meaning "the beginning". That is true and it is also the
+    /// client being clever at the server's expense: every example in the contract
+    /// carries the parameter, sequence numbers start above zero so `since=0` is
+    /// unambiguous, and a server that binds it as required fails on the one request a
+    /// brand-new device makes first — which is indistinguishable, from here, from the
+    /// sidecar being broken.
     func syncPull(since cursor: Int64?, limit: Int) async throws -> Data {
-        var query: [URLQueryItem] = []
-        if let cursor { query.append(URLQueryItem(name: "since", value: String(cursor))) }
+        var query = [URLQueryItem(name: "since", value: String(cursor ?? 0))]
         query.append(URLQueryItem(name: "limit", value: String(limit)))
         return try await send(request("GET", path: Self.pullPath, query: query), path: Self.pullPath)
     }
@@ -50,7 +54,7 @@ public extension JellyfinClient {
     static func isSidecarAbsent(_ error: any Error) -> Bool {
         switch error as? JellyfinError {
         case .notFound: true
-        case .http(let status, _): status == 405 || status == 501
+        case .http(let status, _, _): status == 405 || status == 501
         default: false
         }
     }

@@ -160,7 +160,16 @@ public struct JellyfinClient: Sendable {
         case 401: throw JellyfinError.unauthorized
         case 403: throw JellyfinError.forbidden
         case 404: throw JellyfinError.notFound(path: path)
-        default: throw JellyfinError.http(status: http.statusCode, path: path)
+        default:
+            // Truncated rather than dropped: an ASP.NET exception page runs to
+            // kilobytes, and the first line is the part that names the fault.
+            let body = String(decoding: data.prefix(400), as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw JellyfinError.http(
+                status: http.statusCode,
+                path: path,
+                detail: body.isEmpty ? nil : body
+            )
         }
     }
 
