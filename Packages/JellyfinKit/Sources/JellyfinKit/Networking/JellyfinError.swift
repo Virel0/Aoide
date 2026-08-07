@@ -31,11 +31,13 @@ extension JellyfinError: LocalizedError {
             "This account isn't allowed to do that."
         case .notFound(let path):
             "The server has no \(path)."
-        case .http(let status, _, let detail):
-            // The server's own first line, when it gave one. "HTTP 500" alone tells a
-            // person nothing they can do and tells whoever reads the log even less.
-            detail.map { "The server returned an error (HTTP \(status)): \($0)" }
-                ?? "The server returned an error (HTTP \(status))." 
+        case .http(let status, let path, let detail):
+            // The path is named because a server can fail on one route and not
+            // another, and "which request" is half the diagnosis — with sync there
+            // are exactly two, and knowing whether it broke sending or receiving
+            // halves the search before anyone reads a server log.
+            detail.map { "\(path) returned an error (HTTP \(status)): \($0)" }
+                ?? "\(path) returned an error (HTTP \(status))." 
         case .decoding:
             "The server sent a response this app couldn't read."
         case .transport(let message):

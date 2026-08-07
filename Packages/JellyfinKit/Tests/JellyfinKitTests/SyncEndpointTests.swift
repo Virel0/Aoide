@@ -87,12 +87,14 @@ struct SyncEndpointTests {
         ).errorDescription
         #expect(described?.contains("500") == true)
         #expect(described?.contains("NullReferenceException") == true)
+        // Which of the two sync calls broke is half the diagnosis.
+        #expect(described?.contains("aoide/sync/push") == true)
     }
 
     @Test("an error with no body still reads as a sentence")
     func errorWithoutDetail() {
         let described = JellyfinError.http(status: 503, path: "aoide/sync/pull", detail: nil).errorDescription
-        #expect(described == "The server returned an error (HTTP 503).")
+        #expect(described == "aoide/sync/pull returned an error (HTTP 503).")
     }
 
     // MARK: - Telling "no sidecar" from "not right now"
