@@ -360,10 +360,12 @@ struct LocalPlaylistDetailView: View {
                 // Only offered where there is something to choose from. A smart
                 // playlist's contents change with its rules, so a cover picked from
                 // today's matches would quietly stop describing it.
-                if !current.isSmart, !albumChoices.isEmpty {
+                // Offered whatever the playlist holds: a photo needs no albums, and
+                // an empty playlist is exactly the one with no mosaic to fall back on.
+                if !current.isSmart {
                     Button("Choose Cover", systemImage: "photo") { isChoosingCover = true }
                 }
-                if current.artworkItemId != nil {
+                if current.artworkItemId != nil || current.imageHash != nil {
                     Button("Use Album Covers", systemImage: "square.grid.2x2") {
                         Task { await playlists.setArtwork(nil, on: current) }
                     }

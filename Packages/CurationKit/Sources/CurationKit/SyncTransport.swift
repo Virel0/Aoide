@@ -347,6 +347,28 @@ extension PullResponse: Codable {
 /// `/aoide/sync` — and the package stays buildable and testable from the command
 /// line on macOS, with a fake server standing in for the real one. Without this
 /// seam the sync engine could only be exercised against a running Jellyfin.
+/// Moving cover bytes, which travel outside the op log.
+///
+/// Separate from `SyncTransport` because it is optional: a sidecar without the image
+/// endpoints still syncs everything else, and a transport that cannot do this says so
+/// by not conforming rather than by throwing at the moment somebody picks a picture.
+public protocol SyncImageTransport: Sendable {
+    /// Whether the server already holds these bytes. Cheap, and the point is to skip
+    /// re-sending a cover that is already there.
+    func hasImage(sha256: String) async throws -> Bool
+    func uploadImage(sha256: String, data: Data, mime: String) async throws
+    func downloadImage(sha256: String) async throws -> Data
+}
+
+/// Reads the bytes behind a hash from wherever this device keeps them.
+///
+/// The store records that a blob exists and whether it has been uploaded; the bytes
+/// themselves live on disk in the app, which is the layer that knows about files.
+public protocol ImageByteSource: Sendable {
+    func bytes(for hash: String) async -> Data?
+    func store(_ data: Data, hash: String) async
+}
+
 public protocol SyncTransport: Sendable {
     func push(_ request: PushRequest) async throws -> PushResponse
 

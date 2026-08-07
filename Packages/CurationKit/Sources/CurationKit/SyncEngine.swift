@@ -28,6 +28,9 @@ public struct SyncReport: Hashable, Sendable {
     public var unreadable = 0
     /// Timestamps pulled back to the server's receipt time.
     public var clockSkewed = 0
+    /// Covers sent this sync. Counted separately from `pushed` because they are not
+    /// ops — a sync that uploaded three pictures and no changes did do something.
+    public var imagesUploaded = 0
 
     /// Where the pull got to. `nil` when nothing was pulled.
     public var cursor: PullCursor?
@@ -43,6 +46,7 @@ public struct SyncReport: Hashable, Sendable {
     }
 
     mutating func absorb(_ other: SyncReport) {
+        imagesUploaded += other.imagesUploaded
         pushed += other.pushed
         quarantinedOutbound += other.quarantinedOutbound
         rejected += other.rejected
@@ -78,6 +82,10 @@ public enum SyncPhase: Hashable, Sendable {
 public actor SyncEngine {
     private let store: CurationStore
     private let transport: any SyncTransport
+    /// Both optional: a sidecar without the image endpoints still syncs everything
+    /// else, and covers simply stay on the device that chose them.
+    private let images: (any SyncImageTransport)?
+    private let imageBytes: (any ImageByteSource)?
     private let policy: SyncPolicy
     private let clock: @Sendable () -> Millis
     private let observer: (@Sendable (SyncPhase) -> Void)?
@@ -90,12 +98,16 @@ public actor SyncEngine {
     public init(
         store: CurationStore,
         transport: any SyncTransport,
+        images: (any SyncImageTransport)? = nil,
+        imageBytes: (any ImageByteSource)? = nil,
         policy: SyncPolicy = .default,
         clock: @escaping @Sendable () -> Millis = { Date().millis },
         onPhaseChange observer: (@Sendable (SyncPhase) -> Void)? = nil
     ) {
         self.store = store
         self.transport = transport
+        self.images = images
+        self.imageBytes = imageBytes
         self.policy = policy
         self.clock = clock
         self.observer = observer
@@ -120,7 +132,12 @@ public actor SyncEngine {
         defer { running = false }
 
         do {
+            // Before push, never after: an op naming a hash the server does not hold
+            // leaves every other device with a cover it can never fetch, and nothing
+            // afterwards notices — the playlist row is perfectly valid.
+            let uploaded = try await uploadPendingImages()
             var report = try await pushPending()
+            report.imagesUploaded = uploaded
             report.absorb(try await pullAndApply())
             lastReport = report
             transition(to: .idle)
@@ -173,6 +190,38 @@ public actor SyncEngine {
         guard let op = pending.first(where: { $0.opId == single.opId }) else { return (0, 0) }
         try store.quarantine(op, reason: .serverFaulted(status: status), at: clock())
         return (1, 0)
+    }
+
+    /// Gets every cover named by a waiting op onto the server, before any of them are
+    /// pushed.
+    ///
+    /// The ordering is the whole rule: an op naming a hash the server does not have
+    /// leaves every other device holding a playlist whose cover can never be fetched,
+    /// and nothing later notices — the row is valid, the image simply is not there.
+    /// Uploading first costs one HEAD per new cover and makes that impossible.
+    ///
+    /// A cover that cannot be uploaded does *not* fail the sync. Everything else
+    /// still pushes, and the op naming it waits — a playlist arriving without its
+    /// picture a few minutes late is a far smaller thing than a device that stops
+    /// syncing because one image would not go.
+    private func uploadPendingImages() async throws -> Int {
+        guard let images, let bytes = imageBytes else { return 0 }
+
+        var uploaded = 0
+        for blob in try store.imagesNeededBeforePush() {
+            // Asked before sent: another device may have uploaded the same bytes
+            // already, which content addressing makes not merely possible but likely
+            // for a cover shared between playlists.
+            if try await images.hasImage(sha256: blob.hash) {
+                try store.markImageUploaded(blob.hash, at: clock())
+                continue
+            }
+            guard let data = await bytes.bytes(for: blob.hash) else { continue }
+            try await images.uploadImage(sha256: blob.hash, data: data, mime: blob.mime)
+            try store.markImageUploaded(blob.hash, at: clock())
+            uploaded += 1
+        }
+        return uploaded
     }
 
     private func pushPending() async throws -> SyncReport {

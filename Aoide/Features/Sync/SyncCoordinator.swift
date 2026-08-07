@@ -151,9 +151,14 @@ final class SyncCoordinator {
         }
 
         self.store = store
+        // One value in both roles: ops and cover bytes go to the same sidecar with
+        // the same credentials, and two would be two things to keep in step.
+        let transport = JellyfinSyncTransport(client: client)
         engine = SyncEngine(
             store: store,
-            transport: JellyfinSyncTransport(client: client),
+            transport: transport,
+            images: transport,
+            imageBytes: PlaylistImageStore.shared,
             onPhaseChange: Self.publishPhase
         )
         watchQueueDepth(store)
@@ -232,6 +237,16 @@ final class SyncCoordinator {
 
     /// The Sync Now button.
     func syncNow() { syncSoon(.manual) }
+
+    /// Fetches cover bytes this device does not have.
+    ///
+    /// Deliberately not part of a sync. A device joining an account would otherwise
+    /// download every cover in the library before it finished syncing, most of which
+    /// it will never draw — so these are pulled when something is about to show one.
+    func fetchImage(hash: String) async -> Data? {
+        guard let client = AppSession.shared.client else { return nil }
+        return try? await JellyfinSyncTransport(client: client).downloadImage(sha256: hash)
+    }
 
     /// Watches the outbound queue and syncs once writing has stopped.
     ///

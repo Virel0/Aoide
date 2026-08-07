@@ -13,7 +13,7 @@ import JellyfinKit
 /// produces a *new* client rather than mutating this one, so a transport can never
 /// find its credentials changed underneath a request in flight. It is thrown away and
 /// rebuilt at every sign-in instead.
-struct JellyfinSyncTransport: SyncTransport {
+struct JellyfinSyncTransport: SyncTransport, SyncImageTransport {
     private let client: JellyfinClient
 
     init(client: JellyfinClient) {
@@ -45,6 +45,20 @@ struct JellyfinSyncTransport: SyncTransport {
     /// away — is only visible here. Everything else is left as it is and treated as
     /// transient, which is the safe default: retrying a healthy op costs a round trip,
     /// quarantining one because a router blinked costs the change.
+    // MARK: - Covers
+
+    func hasImage(sha256: String) async throws -> Bool {
+        try await client.syncImageExists(sha256: sha256)
+    }
+
+    func uploadImage(sha256: String, data: Data, mime: String) async throws {
+        try await client.uploadSyncImage(sha256: sha256, data: data, mime: mime)
+    }
+
+    func downloadImage(sha256: String) async throws -> Data {
+        try await client.downloadSyncImage(sha256: sha256)
+    }
+
     private static func translatingStatus(_ body: () async throws -> Data) async throws -> Data {
         do {
             return try await body()

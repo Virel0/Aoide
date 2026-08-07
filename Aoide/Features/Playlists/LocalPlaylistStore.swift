@@ -466,10 +466,47 @@ final class LocalPlaylistStore {
         return imported
     }
 
+    /// Sets a picked photo as the playlist's cover.
+    ///
+    /// The bytes are written to disk and registered *before* the playlist row names
+    /// them, so the op referencing a hash can never exist without the blob behind it —
+    /// which is what lets sync guarantee the same thing to every other device.
+    func setPhotoArtwork(_ data: Data, on playlist: Playlist) async -> Bool {
+        guard let prepared = await PlaylistImageStore.shared.prepare(data) else {
+            lastErrorMessage = "That image couldn't be read."
+            return false
+        }
+
+        let saved: Bool? = await run("set that cover") { store in
+            try store.registerImage(
+                hash: prepared.hash,
+                mime: prepared.mime,
+                bytes: prepared.bytes.count
+            )
+            guard var row = try store.playlist(playlist.id) else { return false }
+            row.imageHash = prepared.hash
+            row.imageMime = prepared.mime
+            // A photo is a deliberate choice and outranks a cover picked from the
+            // library, so the older one is cleared rather than left to shadow it.
+            row.artworkItemId = nil
+            try store.record(row)
+            return true
+        }
+        await reload()
+        SyncCoordinator.shared.syncNow()
+        return saved ?? false
+    }
+
     /// Sets the playlist's cover to an album it holds, or clears it back to the mosaic.
     func setArtwork(_ itemId: String?, on playlist: Playlist) async {
         await run("change that cover") { store in
-            try store.setArtwork(itemId, on: playlist.id)
+            guard var row = try store.playlist(playlist.id) else { return }
+            row.artworkItemId = itemId
+            // Cleared together: leaving a hash behind would keep the photo winning
+            // and make choosing an album look like it did nothing.
+            row.imageHash = nil
+            row.imageMime = nil
+            try store.record(row)
         }
         await reload()
     }

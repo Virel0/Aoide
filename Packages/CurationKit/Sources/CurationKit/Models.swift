@@ -151,6 +151,10 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
     /// A Jellyfin item whose cover stands in for this playlist's. `nil` means one is
     /// drawn from the playlist's own albums instead.
     public var artworkItemId: String?
+    /// SHA-256 of a cover uploaded for this playlist, when one was chosen from
+    /// outside the library. Beats `artworkItemId`; the bytes live behind the hash.
+    public var imageHash: String?
+    public var imageMime: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -165,7 +169,9 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         originDevice: String,
         fieldUpdatedAt: FieldStamps? = nil,
         sourceJellyfinId: String? = nil,
-        artworkItemId: String? = nil
+        artworkItemId: String? = nil,
+        imageHash: String? = nil,
+        imageMime: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -180,6 +186,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         self.fieldUpdatedAt = fieldUpdatedAt
         self.sourceJellyfinId = sourceJellyfinId
         self.artworkItemId = artworkItemId
+        self.imageHash = imageHash
+        self.imageMime = imageMime
     }
 }
 

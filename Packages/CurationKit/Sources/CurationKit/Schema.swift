@@ -218,6 +218,32 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v7") { db in
+            // A cover held as bytes somewhere else, named by the SHA-256 of those
+            // bytes. Only the hash and the type travel in the op — a few dozen bytes
+            // through the ordinary log, with no server change, because payloads are
+            // opaque. The bytes go through their own endpoints.
+            try db.alter(table: "playlist") { t in
+                t.add(column: "imageHash", .text)
+                t.add(column: "imageMime", .text)
+            }
+
+            // Which blobs this device holds, and whether the server has them yet.
+            //
+            // `uploadedAt` is the ordering rule made checkable: an op referencing a
+            // hash must not be pushed until the bytes behind it are on the server, or
+            // every other device sees a cover it cannot fetch. Keeping the answer
+            // here rather than asking the server each time is what lets a sync that
+            // has nothing new to upload cost nothing.
+            try db.create(table: "imageBlob") { t in
+                t.primaryKey("hash", .text)
+                t.column("mime", .text).notNull()
+                t.column("bytes", .integer).notNull()
+                t.column("createdAt", .integer).notNull()
+                t.column("uploadedAt", .integer)
+            }
+        }
+
         return migrator
     }
 }

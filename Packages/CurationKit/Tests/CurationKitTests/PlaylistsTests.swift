@@ -684,3 +684,101 @@ struct PlaylistCoverTests {
         #expect(covers.values.allSatisfy { $0 == ["a1"] })
     }
 }
+
+/// Cover bytes travel outside the op log, and the one rule that makes that safe is
+/// ordering: the blob must reach the server before any op that names it.
+@Suite("Cover blobs")
+struct ImageBlobTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    private let bytes = Data("not really a jpeg, but bytes are bytes".utf8)
+
+    @Test("the hash is the lower-case hex the server addresses by")
+    func hashing() {
+        let hash = CurationStore.imageHash(of: bytes)
+        #expect(hash.count == 64)
+        #expect(hash == hash.lowercased())
+        #expect(CurationStore.imageHash(of: bytes) == hash, "same bytes, same name")
+    }
+
+    /// The whole ordering rule, made answerable. An op naming a hash the server does
+    /// not hold leaves every other device with a cover it can never fetch.
+    @Test("an op naming an unuploaded cover holds that cover back for upload")
+    func pendingUploads() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count)
+
+        let list = try store.createPlaylist(name: "Photographed")
+        var row = try #require(try store.playlist(list.id))
+        row.imageHash = hash
+        try store.record(row)
+
+        #expect(try store.imagesNeededBeforePush().map(\.hash) == [hash])
+
+        try store.markImageUploaded(hash)
+        #expect(try store.imagesNeededBeforePush().isEmpty)
+    }
+
+    @Test("a cover nothing references is not queued for upload")
+    func unreferencedIsNotUploaded() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count)
+        _ = try store.createPlaylist(name: "No Photo")
+
+        #expect(try store.imagesNeededBeforePush().isEmpty)
+    }
+
+    /// Re-registering must not un-mark an upload, or every sync would send the same
+    /// bytes again forever.
+    @Test("registering the same bytes twice keeps the upload mark")
+    func registerIsIdempotent() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count)
+        try store.markImageUploaded(hash, at: 500)
+
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count)
+        #expect(try store.image(hash)?.uploadedAt == 500)
+    }
+
+    /// A cover dropped here may still be named by a playlist another device has not
+    /// synced yet, and content addressing makes re-adding it free — so this reports
+    /// rather than reclaims.
+    @Test("a cover no playlist names is reported as orphaned, not deleted")
+    func orphans() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: bytes.count, at: 100)
+
+        #expect(try store.orphanedImages(before: 200).map(\.hash) == [hash])
+
+        let list = try store.createPlaylist(name: "Uses It")
+        var row = try #require(try store.playlist(list.id))
+        row.imageHash = hash
+        try store.record(row)
+
+        #expect(try store.orphanedImages(before: 200).isEmpty)
+        #expect(try store.image(hash) != nil, "reported, never reclaimed")
+    }
+
+    /// The row carries a name, not a picture — the property the whole sync design
+    /// rests on.
+    @Test("a cover adds only a hash to the op, never bytes")
+    func opsStaySmall() throws {
+        let store = try store()
+        let hash = CurationStore.imageHash(of: bytes)
+        try store.registerImage(hash: hash, mime: "image/jpeg", bytes: 250_000)
+
+        let list = try store.createPlaylist(name: "Photographed")
+        var row = try #require(try store.playlist(list.id))
+        row.imageHash = hash
+        row.imageMime = "image/jpeg"
+        try store.record(row)
+
+        let op = try #require(try store.pendingOps().last { $0.entityId == list.id })
+        #expect(op.payload.contains(hash))
+        #expect(op.payload.count < 2_000, "a quarter-megabyte cover must not be in here")
+    }
+}

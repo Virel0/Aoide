@@ -1,5 +1,6 @@
 import CurationKit
 import JellyfinKit
+import PhotosUI
 import SwiftUI
 
 /// A local playlist's cover.
@@ -30,7 +31,11 @@ struct PlaylistArtwork: View {
 
     var body: some View {
         Group {
-            if let single = chosenItemId {
+            if let hash = playlist.imageHash {
+                // A picked photo beats everything: it is the one cover somebody chose
+                // deliberately rather than the app inferring one.
+                SyncedImage(hash: hash, cornerRadius: cornerRadius)
+            } else if let single = chosenItemId {
                 ArtworkView(url: url(for: single), cornerRadius: cornerRadius)
             } else if albumIds.count >= 4 {
                 mosaic
@@ -91,11 +96,34 @@ struct CoverPicker: View {
     @Environment(LocalPlaylistStore.self) private var playlists
     @Environment(\.dismiss) private var dismiss
 
+    @State private var picked: PhotosPickerItem?
+
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: Design.Spacing.card)]
 
     var body: some View {
         NavigationStack {
             ScrollView {
+                PhotosPicker(selection: $picked, matching: .images) {
+                    Label("Choose a Photo", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.bordered)
+                .pageMargin()
+                .padding(.top, 12)
+
+                Text("Photos are shared with your other devices through your server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .pageMargin()
+                    .padding(.top, 4)
+
+                if !albums.isEmpty {
+                    PlainShelfHeader(title: "Or an album in this playlist")
+                        .pageMargin()
+                        .padding(.top, 18)
+                }
+
                 LazyVGrid(columns: columns, spacing: Design.Spacing.card) {
                     ForEach(albums) { album in
                         Button {
@@ -129,6 +157,54 @@ struct CoverPicker: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .task(id: picked) {
+                guard let picked,
+                      let data = try? await picked.loadTransferable(type: Data.self)
+                else { return }
+                if await playlists.setPhotoArtwork(data, on: playlist) { dismiss() }
+            }
         }
+    }
+}
+
+/// A cover held behind a content hash, from disk if this device has it and from the
+/// sidecar if it does not.
+///
+/// Fetched lazily rather than during sync. A device joining an account could
+/// otherwise be made to download every cover in the library before it finished
+/// syncing, most of which it will never draw.
+struct SyncedImage: View {
+    let hash: String
+    var cornerRadius: CGFloat = Design.Radius.thumbnail
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        Rectangle()
+            .fill(.fill.tertiary)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                }
+            }
+            .clipped()
+            .clipShape(.rect(cornerRadius: cornerRadius))
+            .task(id: hash) { await load() }
+    }
+
+    private func load() async {
+        if let local = await PlaylistImageStore.shared.bytes(for: hash) {
+            image = UIImage(data: local)
+            return
+        }
+        // Bytes behind a hash cannot change, so a fetched copy is kept forever
+        // rather than re-fetched — there is no invalidation problem to have.
+        // The singleton rather than the environment: nothing injects the coordinator,
+        // and a missing `@Environment` observable is a trap rather than a nil — this
+        // view is drawn inside sheets, which is exactly where that has crashed before.
+        guard let fetched = await SyncCoordinator.shared.fetchImage(hash: hash) else { return }
+        await PlaylistImageStore.shared.store(fetched, hash: hash)
+        image = UIImage(data: fetched)
     }
 }

@@ -369,6 +369,42 @@ differs, the running system is right.
   over-nested document before any per-element seam exists, so there is no client
   defence to write.
 
+## Cover images
+
+Bytes are **not** in the op log. Payloads cap at 256 KB and every device replays the
+whole log, so images carried inside ops would make a full history sync grow without
+bound — the one property the whole design rests on.
+
+The playlist row carries `image_hash` and `image_mime`, a few dozen bytes travelling
+through the ordinary log with no server change, because payloads are opaque. The
+bytes move through their own endpoints, addressed by their own SHA-256:
+
+```
+PUT  /aoide/images/{sha256}   body = raw bytes, Content-Type: image/jpeg|png|webp
+GET  /aoide/images/{sha256}
+HEAD /aoide/images/{sha256}   a cheap "do I need to upload this?"
+```
+
+Content addressing earns three things: re-uploading is a no-op rather than a
+conflict, two playlists sharing a cover store one copy, and clients cache forever —
+bytes behind a hash cannot change, so there is no invalidation problem to have.
+
+**One ordering rule, and everything depends on it: upload the blob before pushing the
+op that names it.** An op naming a hash the server does not hold leaves every other
+device with a playlist whose cover can never be fetched, and nothing afterwards
+notices — the row is perfectly valid, the image simply is not there. The client keeps
+an `imageBlob` table recording which blobs it holds and whether the server has them,
+reads the hashes out of the pending ops themselves so an op and its blob requirement
+cannot drift apart, and uploads before push.
+
+A cover that will not upload does not fail the sync: everything else still pushes and
+the op naming it waits. A playlist arriving without its picture a few minutes late is
+much smaller than a device that stops syncing because one image would not go.
+
+Inbound covers are fetched **lazily**, when something is about to draw one, never
+during sync — a device joining an account would otherwise download every cover in the
+library before it finished syncing, most of which it will never show.
+
 ## Jellyfin integration
 
 Making the sidecar a **Jellyfin plugin** rather than a standalone service is
