@@ -309,15 +309,65 @@ is how it learns they were durably accepted.
 
 ### Conflict resolution
 
-Last-writer-wins **per field**, comparing `updated_at`, with `origin_device` as a
-deterministic tiebreak when two clocks agree. Per *field* rather than per row: two
-people renaming a playlist and reordering it at the same time should both succeed.
+Last-writer-wins on `updated_at`, with `origin_device` as a deterministic tiebreak
+when two clocks agree. Which side wins is arbitrary; that every device independently
+reaches the *same* answer is not — two devices resolving one conflict differently
+diverge permanently, and nothing afterwards notices.
 
-Clock skew is a real concern here and worth the sidecar stamping a server-side
-receipt time alongside the client's `updated_at`, so a device with a badly wrong
-clock cannot win every conflict forever.
+**Per field for `playlists` and `folders`, per row for everything else.** The
+per-field stamps live in a `fieldUpdatedAt` map *inside* the payload, so this needed
+no server change at all: the sidecar stores payloads verbatim and never parses them,
+which is exactly the schema evolution that opacity was preserved for. A row without
+the map falls back to its `updated_at` for every field, so ops already in the log and
+devices on older builds keep working with no migration.
 
-Fractional indexing means playlist ordering never enters this path at all.
+Nothing else needs it. `playlist_items` and `likes` have one mutable field each, so
+per-row already *is* per-field. `play_events` is append-only and cannot conflict. And
+`queue_state` is deliberately excluded: merging a queue field by field could pair one
+device's playback position with another device's track list, a state that existed on
+neither and describes nothing.
+
+The motivating example above — renaming and reordering at once — turns out never to
+reach this path. Order lives in `playlist_items.position` as a fractional index, so
+concurrent reorders are separate rows and both survive already. The real case is
+narrower: two devices editing the *name* and the *description* of the same row.
+
+Clock skew is handled with the server's `receivedAt`, but **both** references have to
+agree before a timestamp is disbelieved: the writer must be ahead of the server *and*
+ahead of the receiving device's own clock. Testing against the server alone cannot
+tell a fast client from a slow server, and a Jellyfin box on a NAS with no RTC is a
+slow server — every device then looks "ahead", every inbound row is dragged below the
+local copy, and every device rejects every other device's edits permanently and
+silently.
+
+## As built
+
+The contract above was written before either side existed. Where the running system
+differs, the running system is right.
+
+- **Entity names are translated at the wire boundary.** The store's tables are
+  singular camelCase because the record types are; the sidecar's allow-list is plural
+  snake_case (`playlists`, `playlist_items`, `folders`, `likes`, `play_events`,
+  `queue_state`) and matched strictly. Rewriting stored `op` rows to spell it the
+  server's way would be a schema migration in service of a formatting preference, and
+  would still leave ops written by older builds spelling it the old way.
+- **`rejected` exists**, and is not in the design above. A push returns per-op
+  refusals alongside `accepted`; a refused op will never be accepted, so it is
+  quarantined and never retried. Failing the whole batch instead would let one
+  malformed op wedge the queue forever.
+- **A 5xx has no place in the contract and needed one.** An unhandled server
+  exception fails the whole request, so the client retried the same bytes forever and
+  every innocent change queued behind one the server could not swallow — the same
+  wedge `rejected` prevents, through a door the contract does not cover. A push that
+  5xxs is now bisected to find the offending op, which is quarantined alone; halves
+  that succeed are pushed on the way past. A fault that stops reproducing when an op
+  is sent alone is treated as transient and blamed on nothing.
+- **`since` is always sent**, as `0` on a device that has never synced, rather than
+  omitted. Omitting it is defensible and also the client being clever at the server's
+  expense.
+- **Payload depth is bounded server-side**, not client-side. Foundation refuses an
+  over-nested document before any per-element seam exists, so there is no client
+  defence to write.
 
 ## Jellyfin integration
 
