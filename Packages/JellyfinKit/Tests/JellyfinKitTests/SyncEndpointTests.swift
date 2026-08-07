@@ -62,18 +62,51 @@ struct SyncEndpointTests {
         #expect(url.query() == "limit=500")
     }
 
+    /// A brand-new device makes this request first, and a server that binds `since`
+    /// as required answers it with a 500 — which reads from here as the sidecar being
+    /// broken rather than as one missing parameter.
+    @Test("a device that has never synced still names a position")
+    func firstPullNamesZero() async throws {
+        let query = JellyfinClient.pullQuery(since: nil, limit: 500)
+        #expect(query.contains { $0.name == "since" && $0.value == "0" })
+        #expect(query.contains { $0.name == "limit" && $0.value == "500" })
+    }
+
+    @Test("a stored cursor is sent as itself")
+    func laterPullsSendTheCursor() {
+        let query = JellyfinClient.pullQuery(since: 12_345, limit: 250)
+        #expect(query.contains { $0.name == "since" && $0.value == "12345" })
+    }
+
+    /// "HTTP 500" alone tells a person nothing to act on, and a sidecar failure is
+    /// exactly where the server's own words are the whole diagnosis.
+    @Test("the server's own message reaches the listener")
+    func errorCarriesDetail() {
+        let described = JellyfinError.http(
+            status: 500, path: "aoide/sync/push", detail: "NullReferenceException in SyncController"
+        ).errorDescription
+        #expect(described?.contains("500") == true)
+        #expect(described?.contains("NullReferenceException") == true)
+    }
+
+    @Test("an error with no body still reads as a sentence")
+    func errorWithoutDetail() {
+        let described = JellyfinError.http(status: 503, path: "aoide/sync/pull", detail: nil).errorDescription
+        #expect(described == "The server returned an error (HTTP 503).")
+    }
+
     // MARK: - Telling "no sidecar" from "not right now"
 
     @Test("a missing plugin is not a failure to retry")
     func absentSidecar() {
         #expect(JellyfinClient.isSidecarAbsent(JellyfinError.notFound(path: "aoide/sync/push")))
-        #expect(JellyfinClient.isSidecarAbsent(JellyfinError.http(status: 405, path: "aoide/sync/push")))
+        #expect(JellyfinClient.isSidecarAbsent(JellyfinError.http(status: 405, path: "aoide/sync/push", detail: nil)))
     }
 
     @Test("a server that is merely down is worth trying again")
     func transientFailures() {
         #expect(!JellyfinClient.isSidecarAbsent(JellyfinError.transport("offline")))
-        #expect(!JellyfinClient.isSidecarAbsent(JellyfinError.http(status: 502, path: "aoide/sync/pull")))
+        #expect(!JellyfinClient.isSidecarAbsent(JellyfinError.http(status: 502, path: "aoide/sync/pull", detail: nil)))
         #expect(!JellyfinClient.isSidecarAbsent(JellyfinError.unauthorized))
     }
 }

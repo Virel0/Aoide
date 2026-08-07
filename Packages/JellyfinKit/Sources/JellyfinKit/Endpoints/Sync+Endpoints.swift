@@ -40,8 +40,7 @@ public extension JellyfinClient {
     /// brand-new device makes first — which is indistinguishable, from here, from the
     /// sidecar being broken.
     func syncPull(since cursor: Int64?, limit: Int) async throws -> Data {
-        var query = [URLQueryItem(name: "since", value: String(cursor ?? 0))]
-        query.append(URLQueryItem(name: "limit", value: String(limit)))
+        let query = Self.pullQuery(since: cursor, limit: limit)
         return try await send(request("GET", path: Self.pullPath, query: query), path: Self.pullPath)
     }
 
@@ -57,6 +56,14 @@ public extension JellyfinClient {
         case .http(let status, _, _): status == 405 || status == 501
         default: false
         }
+    }
+
+    /// Split out so the query can be asserted without a server.
+    static func pullQuery(since cursor: Int64?, limit: Int) -> [URLQueryItem] {
+        [
+            URLQueryItem(name: "since", value: String(cursor ?? 0)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
     }
 
     private static var pushPath: String { "aoide/sync/push" }
