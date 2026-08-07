@@ -179,13 +179,19 @@ final class LocalPlaylistStore {
                     counts[list.id] = try store.itemCount(in: list.id)
                 }
             }
-            return Snapshot(folders: folders, playlists: playlists, counts: counts)
+            return Snapshot(
+                folders: folders,
+                playlists: playlists,
+                counts: counts,
+                importedSources: try store.importedSourceIds()
+            )
         }
 
         if let snapshot {
             folders = snapshot.folders
             playlists = snapshot.playlists
             trackCounts = snapshot.counts
+            importedSourceIds = snapshot.importedSources
         }
         hasLoaded = true
     }
@@ -194,6 +200,7 @@ final class LocalPlaylistStore {
         let folders: [Folder]
         let playlists: [Playlist]
         let counts: [String: Int]
+        let importedSources: Set<String>
     }
 
     // MARK: - Playlists
@@ -415,6 +422,42 @@ final class LocalPlaylistStore {
         }
         await reload()
         return added ?? 0
+    }
+
+    /// Which Jellyfin playlists already have a local copy, so the server list can say so.
+    private(set) var importedSourceIds: Set<String> = []
+
+    /// Copies a Jellyfin playlist into a local one, or refreshes an existing copy.
+    ///
+    /// The songs are fetched from the server rather than taken from anything already
+    /// on screen: the list the listener is looking at may be a page of a longer
+    /// playlist, and importing what happened to be visible would quietly produce a
+    /// truncated copy.
+    @discardableResult
+    func importFromServer(_ serverPlaylist: JellyfinItem) async -> Playlist? {
+        let songs: [JellyfinItem]
+        do {
+            songs = try await client.tracks(inPlaylist: serverPlaylist.id).filter { $0.type == .audio }
+        } catch {
+            lastErrorMessage = "Couldn't read that playlist from your server."
+            return nil
+        }
+
+        let imported: Playlist? = await run("import that playlist") { store in
+            let now = Date().millis
+            let refs = songs.map { TrackCatalogue.trackRef(for: $0, at: now) }
+            // Cached on the way past for the same reason `add` does it: an entry whose
+            // fingerprint matches no cached row can never be relinked after a rescan.
+            try store.cacheTracks(refs)
+            return try store.importPlaylist(
+                named: serverPlaylist.name,
+                from: serverPlaylist.id,
+                tracks: refs.map { TrackLink($0) },
+                at: now
+            )
+        }
+        await reload()
+        return imported
     }
 
     func removeItem(_ itemId: String) async {

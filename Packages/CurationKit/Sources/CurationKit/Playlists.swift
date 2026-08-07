@@ -634,3 +634,64 @@ private extension CurationStore {
         if let lower, let upper, lower >= upper { throw PlaylistError.badNeighbours }
     }
 }
+
+// MARK: - Importing from Jellyfin
+
+public extension CurationStore {
+    /// The local copy of a Jellyfin playlist, if one has been imported.
+    func importedPlaylist(from sourceJellyfinId: String) throws -> Playlist? {
+        try read { db in
+            try Playlist
+                .filter(Column("sourceJellyfinId") == sourceJellyfinId)
+                .filter(Column("deleted") == false)
+                .fetchOne(db)
+        }
+    }
+
+    /// Which Jellyfin playlists already have a local copy.
+    func importedSourceIds() throws -> Set<String> {
+        try read { db in
+            try Set(String.fetchAll(
+                db,
+                sql: "SELECT sourceJellyfinId FROM playlist WHERE sourceJellyfinId IS NOT NULL AND deleted = 0"
+            ))
+        }
+    }
+
+    /// Copies a Jellyfin playlist into a local one, or refreshes the copy that exists.
+    ///
+    /// A copy rather than a link, because the two cannot stay in step: Jellyfin has no
+    /// way to tell us it changed, and a local playlist that silently drifts from a
+    /// server one it claims to mirror is worse than an honest snapshot. Refreshing is
+    /// therefore explicit, and replaces the contents outright — the server's order is
+    /// the answer, and merging the two would mean guessing which side meant to remove
+    /// a track.
+    ///
+    /// Local edits to an imported playlist survive right up until it is refreshed, at
+    /// which point they are gone. That is the trade, and the UI has to say so.
+    @discardableResult
+    func importPlaylist(
+        named name: String,
+        from sourceJellyfinId: String,
+        tracks: [TrackLink],
+        at now: Millis = Date().millis
+    ) throws -> Playlist {
+        let playlist: Playlist
+        if let existing = try importedPlaylist(from: sourceJellyfinId) {
+            // Soft-deleted one at a time rather than wiped, because every removal is an
+            // op another device has to be told about. A local truncate would leave the
+            // other devices holding the old contents forever.
+            for item in try items(in: existing.id) {
+                try removeItem(item.id, now: now)
+            }
+            playlist = existing
+        } else {
+            var created = try createPlaylist(name: name, now: now)
+            created.sourceJellyfinId = sourceJellyfinId
+            playlist = try record(created, at: now)
+        }
+
+        _ = try addTracks(tracks, to: playlist.id, now: now)
+        return playlist
+    }
+}

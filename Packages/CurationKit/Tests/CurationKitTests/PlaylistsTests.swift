@@ -503,3 +503,87 @@ struct PlaylistsTests {
         #expect(try store.items(in: list.id)[0].updatedAt == 0)
     }
 }
+
+/// A copy, not a link. Jellyfin cannot tell us when it changed, so a local playlist
+/// that silently drifted from the server one it claims to mirror would be worse than
+/// an honest snapshot.
+@Suite("Importing from Jellyfin")
+struct PlaylistImportTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    private func links(_ ids: [String]) -> [TrackLink] {
+        ids.map { TrackLink(jellyfinId: $0, contentKey: "key-\($0)") }
+    }
+
+    @Test("importing copies the server's songs in order")
+    func imports() throws {
+        let store = try store()
+        let list = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b", "c"]))
+
+        #expect(list.name == "Road Trip")
+        #expect(list.sourceJellyfinId == "srv-1")
+        #expect(try store.items(in: list.id).map(\.jellyfinId) == ["a", "b", "c"])
+    }
+
+    /// The obvious mistake: tapping import twice must not leave two playlists.
+    @Test("importing the same playlist twice refreshes one copy rather than making two")
+    func refreshesRatherThanDuplicating() throws {
+        let store = try store()
+        let first = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b"]))
+        let second = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b", "c"]))
+
+        #expect(first.id == second.id)
+        #expect(try store.playlists().count == 1)
+        #expect(try store.items(in: second.id).map(\.jellyfinId) == ["a", "b", "c"])
+    }
+
+    /// The server's contents are the answer, so a song removed there is removed here.
+    @Test("a refresh drops songs the server no longer has")
+    func refreshRemoves() throws {
+        let store = try store()
+        let list = try store.importPlaylist(named: "Trimmed", from: "srv-2", tracks: links(["a", "b", "c"]))
+        try store.importPlaylist(named: "Trimmed", from: "srv-2", tracks: links(["b"]))
+
+        #expect(try store.items(in: list.id).map(\.jellyfinId) == ["b"])
+    }
+
+    /// Removals have to travel: a device that only truncated locally would leave every
+    /// other device holding the old contents forever.
+    @Test("a refresh emits a delete op for every song it drops")
+    func refreshEmitsOps() throws {
+        let store = try store()
+        try store.importPlaylist(named: "Trimmed", from: "srv-3", tracks: links(["a", "b"]))
+        let before = try store.pendingOps().filter { $0.operation == "delete" }.count
+
+        try store.importPlaylist(named: "Trimmed", from: "srv-3", tracks: links(["a"]))
+
+        let after = try store.pendingOps().filter { $0.operation == "delete" }.count
+        #expect(after == before + 2, "both old rows have to be told to the other devices")
+    }
+
+    @Test("playlists made by hand are untouched by an import of the same name")
+    func handMadeIsSeparate() throws {
+        let store = try store()
+        let mine = try store.createPlaylist(name: "Road Trip")
+        try store.addTracks(links(["x"]), to: mine.id)
+
+        try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a"]))
+
+        #expect(try store.playlists().count == 2)
+        #expect(try store.items(in: mine.id).map(\.jellyfinId) == ["x"])
+    }
+
+    @Test("the imported set names exactly the server playlists that have a copy")
+    func importedIds() throws {
+        let store = try store()
+        try store.importPlaylist(named: "One", from: "srv-1", tracks: links(["a"]))
+        _ = try store.createPlaylist(name: "By Hand")
+
+        #expect(try store.importedSourceIds() == ["srv-1"])
+
+        // A deleted copy stops counting, so the server row offers to copy again.
+        let copy = try #require(try store.importedPlaylist(from: "srv-1"))
+        try store.deletePlaylist(copy.id)
+        #expect(try store.importedSourceIds().isEmpty)
+    }
+}

@@ -173,6 +173,19 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v4") { db in
+            // Which Jellyfin playlist this was imported from, if any. Kept so a second
+            // import refreshes the same local playlist instead of silently making a
+            // duplicate — and so the server list can say which of its playlists are
+            // already here.
+            try db.alter(table: "playlist") { t in
+                t.add(column: "sourceJellyfinId", .text)
+            }
+            try db.create(
+                index: "idx_playlist_source", on: "playlist", columns: ["sourceJellyfinId"]
+            )
+        }
+
         return migrator
     }
 }

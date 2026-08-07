@@ -142,6 +142,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
     public var originDevice: String
     /// When each field last changed. `nil` on rows written before per-field merging.
     public var fieldUpdatedAt: FieldStamps?
+    /// The Jellyfin playlist this was imported from, if it was.
+    public var sourceJellyfinId: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -154,7 +156,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         updatedAt: Millis,
         deleted: Bool = false,
         originDevice: String,
-        fieldUpdatedAt: FieldStamps? = nil
+        fieldUpdatedAt: FieldStamps? = nil,
+        sourceJellyfinId: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -167,6 +170,7 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
         self.deleted = deleted
         self.originDevice = originDevice
         self.fieldUpdatedAt = fieldUpdatedAt
+        self.sourceJellyfinId = sourceJellyfinId
     }
 }
 

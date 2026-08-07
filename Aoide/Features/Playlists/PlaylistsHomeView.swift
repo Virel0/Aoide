@@ -36,6 +36,8 @@ struct PlaylistsHomeView: View {
     @State private var isRenaming = false
     @State private var renameTarget: RenameTarget?
     @State private var deleteTarget: RenameTarget?
+    /// The server playlist whose local copy is about to be replaced.
+    @State private var refreshing: JellyfinItem?
     @State private var isConfirmingDelete = false
     @State private var isBuildingSmart = false
     @State private var errorMessage: String?
@@ -68,6 +70,22 @@ struct PlaylistsHomeView: View {
         .miniPlayerInset()
         .appBackground()
         .navigationTitle(folder?.name ?? "Playlists")
+        .confirmationDialog(
+            "Replace the copy of “\(refreshing?.name ?? "")”?",
+            isPresented: Binding(get: { refreshing != nil }, set: { if !$0 { refreshing = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                guard let target = refreshing else { return }
+                refreshing = nil
+                Task { await playlists.importFromServer(target) }
+            }
+            Button("Cancel", role: .cancel) { refreshing = nil }
+        } message: {
+            // Spelled out because it cannot be undone: a copy is a snapshot, and
+            // refreshing takes the server's contents whole rather than merging.
+            Text("This takes the songs from your server again. Anything you've added or reordered in your copy will be lost.")
+        }
         .navigationBarTitleDisplayMode(folder == nil ? .automatic : .inline)
         .toolbar { toolbar }
         .task {
@@ -366,6 +384,9 @@ struct PlaylistsHomeView: View {
     }
 
     private func serverRow(_ playlist: JellyfinItem) -> some View {
+        // Declared before the row so the confirmation can live on the list rather than
+        // on a context menu that is already gone by the time its action runs.
+
         NavigationLink {
             TrackListView(
                 title: playlist.name,
@@ -386,6 +407,25 @@ struct PlaylistsHomeView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+                Spacer(minLength: 8)
+                if playlists.importedSourceIds.contains(playlist.id) {
+                    // Says which server playlists already have a copy, so importing
+                    // the same one twice is a decision rather than an accident.
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Already copied")
+                }
+            }
+        }
+        .contextMenu {
+            if playlists.importedSourceIds.contains(playlist.id) {
+                Button("Refresh Copy", systemImage: "arrow.clockwise") {
+                    refreshing = playlist
+                }
+            } else {
+                Button("Copy to My Playlists", systemImage: "square.and.arrow.down") {
+                    Task { await playlists.importFromServer(playlist) }
                 }
             }
         }
