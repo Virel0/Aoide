@@ -23,6 +23,9 @@ struct LibraryView: View {
                         // on the server. See `PlaylistsHomeView` for why they share a
                         // destination rather than getting a Library row each.
                         categoryRow("Playlists", "music.note.list") { PlaylistsHomeView() }
+                        // Above the rest of the library on purpose: a mix is
+                        // something you ask for, not something you browse to.
+                        categoryRow("Mixes", "wand.and.stars") { MixView() }
                         categoryRow("Artists", "music.microphone") { ArtistsListView() }
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
