@@ -44,6 +44,10 @@ struct PlaylistsHomeView: View {
     @State private var isConfirmingDelete = false
     @State private var isBuildingSmart = false
     @State private var errorMessage: String?
+    @AppStorage(PlaylistSurface.key) private var surface = PlaylistSurface.both
+    /// Shows the kind the preference hides, for this visit only. A preference is a
+    /// statement about most days; this is for the day somebody needs the other list.
+    @State private var isShowingHidden = false
 
     private enum RenameTarget {
         case playlist(Playlist)
@@ -62,11 +66,13 @@ struct PlaylistsHomeView: View {
 
     var body: some View {
         List {
-            localSection
+            // Inside a folder there is only ever the local kind, whatever the
+            // preference says: the folder is itself a local thing.
+            if folder != nil || surface.showsLocal || isShowingHidden { localSection }
             // Only at the root: a folder holds local playlists, and repeating the whole
             // server list inside every one of them would say something untrue about
             // where those playlists are filed.
-            if folder == nil { serverSection }
+            if folder == nil, surface.showsServer || isShowingHidden { serverSection }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -519,6 +525,20 @@ struct PlaylistsHomeView: View {
             }
             .accessibilityLabel("New")
             .disabled(!playlists.isAvailable)
+        }
+        if folder == nil, surface != .both {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingHidden.toggle()
+                } label: {
+                    Image(systemName: isShowingHidden ? "eye.slash" : "eye")
+                }
+                .accessibilityLabel(
+                    isShowingHidden
+                        ? "Hide \(surface.showsLocal ? "server" : "my") playlists"
+                        : "Show \(surface.showsLocal ? "server" : "my") playlists"
+                )
+            }
         }
     }
 

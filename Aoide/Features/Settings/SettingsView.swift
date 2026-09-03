@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     @State private var isConfirmingSignOut = false
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
+    @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
     @State private var siri = SiriAuthorization.shared
     @State private var downloads = DownloadStore.shared
 
@@ -32,6 +33,19 @@ struct SettingsView: View {
                 Text("Appearance")
             } footer: {
                 Text("Dark by default — album artwork carries the page better against a dark ground.")
+            }
+
+            Section {
+                Picker("Playlists", selection: $playlistSurface) {
+                    ForEach(PlaylistSurface.allCases) { surface in
+                        Text(surface.displayName).tag(surface)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Playlists")
+            } footer: {
+                Text("Which playlists the Playlists screen shows: the ones kept on your devices, the ones on your Jellyfin server, or both. Whatever's hidden is still there, under the screen's menu.")
             }
 
             Section {
