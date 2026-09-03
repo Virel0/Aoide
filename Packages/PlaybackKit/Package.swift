@@ -5,7 +5,7 @@ let package = Package(
     name: "PlaybackKit",
     // macOS is declared only so `swift test` runs the queue logic from the command
     // line without booting a simulator. The app ships iOS-only.
-    platforms: [.iOS("26.0"), .macOS("14.0")],
+    platforms: [.iOS("26.0"), .macOS("15.0")],
     products: [
         .library(name: "PlaybackKit", targets: ["PlaybackKit"])
     ],

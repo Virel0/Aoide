@@ -95,7 +95,7 @@ struct SettingsView: View {
                 Toggle("Gapless Playback", isOn: .constant(true))
                     .disabled(true)
             } footer: {
-                Text("Tracks run straight into each other. Your library is FLAC, which Apple's decoder pads to a whole block — leaving about 57ms between tracks. Converting an album to ALAC removes it entirely.")
+                Text("Tracks run straight into each other. Downloads are converted to Apple Lossless on this phone, because Apple's FLAC decoder pads the end of a file and leaves about 57ms between tracks. Streaming still plays the server's FLAC, so albums you want gapless are worth downloading.")
             }
 
             Section {

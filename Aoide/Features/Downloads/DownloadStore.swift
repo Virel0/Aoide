@@ -204,7 +204,14 @@ final class DownloadStore: NSObject {
             includingPropertiesForKeys: nil
         ) else { return }
         var recovered = 0
+        var pendingFLAC: [(String, URL)] = []
         for url in contents {
+            // A conversion the app was killed in the middle of. Its real file, if
+            // any, is a sibling; this one is incomplete and wears the wrong name.
+            if url.pathExtension == "converting" {
+                try? FileManager.default.removeItem(at: url)
+                continue
+            }
             let trackId = url.deletingPathExtension().lastPathComponent
             guard !url.pathExtension.isEmpty else {
                 // Left by an earlier build that saved without an extension. Those
@@ -214,11 +221,26 @@ final class DownloadStore: NSObject {
                 log.notice("Removed an extensionless download that could never have played")
                 continue
             }
+            if url.pathExtension.lowercased() == "flac" {
+                // A converted copy beside it wins; the FLAC is what it was made
+                // from. Otherwise it is from before conversion existed, and gets
+                // converted now — quietly, one at a time, while the app runs.
+                let converted = Self.fileURL(for: trackId, extension: "m4a")
+                if FileManager.default.fileExists(atPath: converted.path) {
+                    try? FileManager.default.removeItem(at: url)
+                    continue
+                }
+                pendingFLAC.append((trackId, url))
+            }
             files[trackId] = url
             states[trackId] = .downloaded
             recovered += 1
         }
         log.info("Found \(recovered, privacy: .public) downloaded tracks on disk")
+        if !pendingFLAC.isEmpty {
+            log.info("Converting \(pendingFLAC.count, privacy: .public) FLAC downloads to Apple Lossless")
+            for (trackId, url) in pendingFLAC { convertIfFLAC(trackId, at: url) }
+        }
     }
 
     private func adoptRunningTasks() async {
@@ -251,6 +273,31 @@ final class DownloadStore: NSObject {
         }
         files[trackId] = destination
         states[trackId] = .downloaded
+        convertIfFLAC(trackId, at: destination)
+    }
+
+    // MARK: - Gapless
+
+    /// FLAC downloads are rewritten as Apple Lossless once they land.
+    ///
+    /// Apple's FLAC decoder pads the last block of a file, which leaves a short
+    /// silence between tracks mastered to run together; its ALAC decoder does not.
+    /// The file is playable as FLAC from the moment it lands, so nothing waits on
+    /// this — the row already says downloaded, and the next play uses whichever
+    /// file is there. See ``LosslessConverter``.
+    private func convertIfFLAC(_ trackId: String, at url: URL) {
+        guard url.pathExtension.lowercased() == "flac" else { return }
+        let target = Self.fileURL(for: trackId, extension: "m4a")
+        Task(priority: .utility) {
+            guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else { return }
+            // Removed while converting: the listener no longer wants either file.
+            guard files[trackId] == url else {
+                try? FileManager.default.removeItem(at: target)
+                return
+            }
+            files[trackId] = target
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     fileprivate func progress(taskId: Int, fraction: Double) {
