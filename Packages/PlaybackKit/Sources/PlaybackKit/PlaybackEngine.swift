@@ -119,10 +119,30 @@ public final class PlaybackEngine {
     /// becomes current, and `status` only transitions once.
     private var assetDurations: [ObjectIdentifier: Duration] = [:]
 
-    /// Entries whose item failed to load. Filtered out of the render window so a
-    /// dead track doesn't get re-enqueued, fail, and be re-enqueued forever.
-    /// Cleared whenever a new queue is loaded.
+    /// Entries given up on. Filtered out of the render window so a dead track
+    /// doesn't get re-enqueued, fail, and be re-enqueued forever. Cleared whenever a
+    /// new queue is loaded.
     private var failedEntries: Set<UUID> = []
+
+    /// Entries whose item failed and which are waiting out a retry delay. Filtered
+    /// from the window like `failedEntries`, but only until their timer fires and
+    /// puts them back — see ``LoadRetryPolicy``.
+    private var coolingEntries: Set<UUID> = []
+
+    /// Consecutive load failures per entry, reset the moment one loads.
+    private var loadFailures: [UUID: Int] = [:]
+
+    /// The pending retry per entry, so a deliberate action can cancel it.
+    private var retryTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// How far ahead of the playhead to buffer, in seconds.
+    ///
+    /// Long enough to hold a whole track: once a song has started over cellular it
+    /// should finish under a bridge. The default buffers only a few seconds, which
+    /// is tuned for video and for data plans, not for someone walking to the gym.
+    /// Lossless audio runs to a few megabytes a minute, so this is tens of
+    /// megabytes of memory at most.
+    private static let forwardBufferSeconds: TimeInterval = 600
 
     /// Per-item KVO, keyed so several simultaneously live items can each be
     /// observed. The previous single-observation design silently stopped watching
@@ -176,7 +196,7 @@ public final class PlaybackEngine {
         stopReportingCurrent()
         // A fresh queue gets a fresh chance for anything that failed before — the
         // failure may well have been a passing network problem.
-        failedEntries = []
+        forgetLoadFailures()
         queue.load(tracks, startingAt: index, shuffled: shuffled)
         beginCurrentTrack(autoplay: true)
     }
@@ -205,7 +225,7 @@ public final class PlaybackEngine {
 
     public func clearQueue() {
         stopReportingCurrent()
-        failedEntries = []
+        forgetLoadFailures()
         queue.clear()
         finishPlayback()
     }
@@ -378,7 +398,7 @@ public final class PlaybackEngine {
         // automatic boundary — so a track being asked for by name earns another try
         // even if it failed earlier. Auto-advance past a dead track still works,
         // because there the failed entry sits behind the head and stays filtered.
-        if let id = queue.current?.id { failedEntries.remove(id) }
+        if let id = queue.current?.id { forgetLoadFailures(of: id) }
 
         elapsed = .zero
         duration = track.duration
@@ -419,7 +439,8 @@ public final class PlaybackEngine {
     /// which is platform-free and unit-tested — including the subtle rule that
     /// repeat-one applies to a natural ending but not to a deliberate skip.
     private func desiredWindow() -> [RenderSlot] {
-        guard !failedEntries.isEmpty else {
+        let skipped = failedEntries.union(coolingEntries)
+        guard !skipped.isEmpty else {
             return queue.renderWindow(count: lookahead + 1)
         }
         // Ask for extra slots so filtering a dead track still fills the window.
@@ -428,9 +449,9 @@ public final class PlaybackEngine {
         // would leave the player loading a *different* track than the queue says is
         // current — Now Playing, the mini player and the server report would all
         // name one song while another played.
-        return queue.renderWindow(count: lookahead + 1 + failedEntries.count)
+        return queue.renderWindow(count: lookahead + 1 + skipped.count)
             .enumerated()
-            .filter { $0.offset == 0 || !failedEntries.contains($0.element.entryId) }
+            .filter { $0.offset == 0 || !skipped.contains($0.element.entryId) }
             .prefix(lookahead + 1)
             .map(\.element)
     }
@@ -509,6 +530,7 @@ public final class PlaybackEngine {
     /// which is why repeat-one needs two distinct items for one entry.
     private func makeItem(for track: Track, entryId: UUID) -> AVPlayerItem {
         let item = AVPlayerItem(url: track.streamURL)
+        item.preferredForwardBufferDuration = Self.forwardBufferSeconds
         let key = ObjectIdentifier(item)
         entryForItem[key] = entryId
         itemObservations[key] = observations(for: item)
@@ -689,6 +711,7 @@ public final class PlaybackEngine {
             // so not caching here means every track after the first falls back to
             // the server's metadata for its length.
             if let assetDuration { assetDurations[key] = assetDuration }
+            if let entryId = entryForItem[key] { loadFailures[entryId] = nil }
             guard isCurrent else { return }
             if let assetDuration { duration = assetDuration }
 
@@ -706,31 +729,96 @@ public final class PlaybackEngine {
 
         case .failed:
             let message = error ?? "This track couldn't be played."
+            // Read the entry id BEFORE releasing, which clears the mapping.
+            guard let entryId = entryForItem[key] else { return }
+            let failures = (loadFailures[entryId] ?? 0) + 1
+            loadFailures[entryId] = failures
+
             if isCurrent {
-                log.error("Playback failed: \(message, privacy: .public)")
-                state = .failed(message)
+                if let delay = LoadRetryPolicy.delay(afterFailures: failures, whileQueued: false) {
+                    // Almost always a phone between cell towers, not a bad track.
+                    // Keep the spinner and try again shortly; the listener sees
+                    // buffering, which is the truth.
+                    log.warning("Track failed to load (\(failures)), retrying in \(delay.seconds)s: \(message, privacy: .public)")
+                    if intendsToPlay { state = .buffering }
+                    scheduleRetry(of: entryId, after: delay)
+                } else {
+                    log.error("Playback failed, giving up: \(message, privacy: .public)")
+                    failedEntries.insert(entryId)
+                    skipPastDeadCurrent(message: message)
+                }
             } else {
                 // A queued track failed while something else plays. Don't interrupt
-                // the music — drop it so the boundary doesn't stall on it.
-                log.error("Queued track failed, dropping: \(message, privacy: .public)")
+                // the music — take it out of the window so the boundary doesn't
+                // stall on it, and put it back once the delay has passed. Dropping
+                // it outright is what used to make songs vanish on a walk.
+                let delay = LoadRetryPolicy.delay(afterFailures: failures, whileQueued: true) ?? .seconds(16)
+                log.warning("Queued track failed to load (\(failures)), retrying in \(delay.seconds)s: \(message, privacy: .public)")
 
-                // Read the entry id BEFORE releasing, which clears the mapping.
-                if let entryId = entryForItem[key] {
-                    // Remember it, or syncPlayer immediately re-creates the same
-                    // broken item and it fails again, forever.
-                    failedEntries.insert(entryId)
-                }
+                coolingEntries.insert(entryId)
                 if let item = player.items().first(where: { ObjectIdentifier($0) == key }) {
                     player.remove(item)
                 }
                 enqueued.removeAll { $0 == key }
                 release(key: key)
                 syncPlayer()
+                scheduleRetry(of: entryId, after: delay)
             }
 
         default:
             break
         }
+    }
+
+    /// Puts an entry back into contention once its retry delay has passed.
+    ///
+    /// The entry may have become current, stayed queued, or left the queue in the
+    /// meantime; `syncPlayer` and `rebuildWindow` both read the queue fresh, so the
+    /// right thing happens in each case without checking here.
+    private func scheduleRetry(of entryId: UUID, after delay: Duration) {
+        retryTasks[entryId]?.cancel()
+        retryTasks[entryId] = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.retryTasks[entryId] = nil
+            self.coolingEntries.remove(entryId)
+
+            if self.queue.current?.id == entryId {
+                // A fresh item for the same track; the old one is dead for good.
+                self.rebuildWindow(play: self.intendsToPlay)
+            } else {
+                self.syncPlayer()
+            }
+        }
+    }
+
+    /// The current track is not going to load. Move on if there is anywhere to
+    /// move on to; otherwise say so.
+    private func skipPastDeadCurrent(message: String) {
+        var probe = queue
+        guard probe.skipToNext() != .ended else {
+            state = .failed(message)
+            return
+        }
+        stopReportingCurrent()
+        _ = queue.skipToNext()
+        beginCurrentTrack(autoplay: intendsToPlay)
+    }
+
+    private func forgetLoadFailures() {
+        retryTasks.values.forEach { $0.cancel() }
+        retryTasks = [:]
+        failedEntries = []
+        coolingEntries = []
+        loadFailures = [:]
+    }
+
+    private func forgetLoadFailures(of entryId: UUID) {
+        retryTasks[entryId]?.cancel()
+        retryTasks[entryId] = nil
+        failedEntries.remove(entryId)
+        coolingEntries.remove(entryId)
+        loadFailures[entryId] = nil
     }
 
     private func handleBuffering(_ likelyToKeepUp: Bool, key: ObjectIdentifier) {
