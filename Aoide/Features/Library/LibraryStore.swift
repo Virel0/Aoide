@@ -108,47 +108,20 @@ final class LibraryStore {
 
     // MARK: - Loading
 
-    func loadAlbumsIfNeeded() async {
-        guard case .idle = albums else { return }
-        albums = .loading
-        albums = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.albums(parentId: parentId, sort: .name).items
-            }
-        }
-    }
-
-    func loadArtistsIfNeeded() async {
-        guard case .idle = artists else { return }
-        artists = .loading
-        artists = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.albumArtists(parentId: parentId).items
-            }
-        }
-    }
+    func loadAlbumsIfNeeded() async { await fill(\.albums, with: fetchAlbums) }
+    func loadArtistsIfNeeded() async { await fill(\.artists, with: fetchArtists) }
+    func loadPlaylistsIfNeeded() async { await fill(\.playlists, with: fetchPlaylists) }
+    func loadRecentlyAddedIfNeeded() async { await fill(\.recentlyAdded, with: fetchRecentlyAdded) }
+    func loadRecentlyPlayedIfNeeded() async { await fill(\.recentlyPlayed, with: fetchRecentlyPlayed) }
+    func loadMostPlayedIfNeeded() async { await fill(\.mostPlayed, with: fetchMostPlayed) }
+    func loadFavoritesIfNeeded() async { await fill(\.favorites, with: fetchFavorites) }
+    func loadRediscoverIfNeeded() async { await fill(\.rediscover, with: fetchRediscover) }
 
     /// Forces a retry from a `.failed` state, which `loadPlaylistsIfNeeded` will
     /// not do — its `.idle` guard is what made the Try Again button a no-op.
     func reloadPlaylists() async {
         playlists = .idle
         await loadPlaylistsIfNeeded()
-    }
-
-    func loadPlaylistsIfNeeded() async {
-        guard case .idle = playlists else { return }
-        playlists = .loading
-        playlists = await load { try await self.client.playlists() }
-    }
-
-    func loadRecentlyAddedIfNeeded() async {
-        guard case .idle = recentlyAdded else { return }
-        recentlyAdded = .loading
-        recentlyAdded = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.recentlyAdded(parentId: parentId, limit: 20)
-            }
-        }
     }
 
     /// Loads the Home shelves concurrently.
@@ -167,48 +140,118 @@ final class LibraryStore {
         }
     }
 
-    func loadRecentlyPlayedIfNeeded() async {
-        guard case .idle = recentlyPlayed else { return }
-        recentlyPlayed = .loading
-        recentlyPlayed = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.recentlyPlayedAlbums(parentId: parentId, limit: 20)
+    /// Fills a section that has never been asked for; leaves any other state alone.
+    private func fill<Value>(
+        _ section: ReferenceWritableKeyPath<LibraryStore, Loadable<Value>>,
+        with fetch: @escaping () async throws -> Value
+    ) async {
+        guard case .idle = self[keyPath: section] else { return }
+        self[keyPath: section] = .loading
+        self[keyPath: section] = await load(fetch)
+    }
+
+    // MARK: - Coming back
+
+    /// How long the caches may sit before coming back to the app fetches them again.
+    ///
+    /// Five minutes is long enough that switching apps to answer a message costs
+    /// nothing, and short enough that an album added from the desk over lunch is
+    /// on the phone's Home by the walk home.
+    private static let staleAfter: TimeInterval = 5 * 60
+    private var lastRefresh = Date()
+
+    /// Refreshes whatever is on screen if it has been a while, keeping the old data
+    /// up until the new arrives.
+    ///
+    /// Not `refresh()`: that drops every section to `.idle` first, which is right
+    /// under a pull-to-refresh spinner and wrong on return from the background,
+    /// where it would blank the screen somebody has just come back to. A section
+    /// that was never loaded is left alone — its screen loads it on appearance —
+    /// and one whose fetch fails keeps what it had rather than showing an error
+    /// nobody asked for.
+    func refreshIfStale() async {
+        guard Date().timeIntervalSince(lastRefresh) >= Self.staleAfter else { return }
+        lastRefresh = Date()
+        trackCache.removeAll()
+        // Formed here, on the main actor, because a key path to an isolated
+        // property cannot be written inside a child task.
+        let refreshers: [@MainActor () async -> Void] = [
+            { await self.replace(\.albums, with: self.fetchAlbums) },
+            { await self.replace(\.artists, with: self.fetchArtists) },
+            { await self.replace(\.playlists, with: self.fetchPlaylists) },
+            { await self.replace(\.recentlyAdded, with: self.fetchRecentlyAdded) },
+            { await self.replace(\.recentlyPlayed, with: self.fetchRecentlyPlayed) },
+            { await self.replace(\.mostPlayed, with: self.fetchMostPlayed) },
+            { await self.replace(\.favorites, with: self.fetchFavorites) },
+            { await self.replace(\.rediscover, with: self.fetchRediscover) },
+        ]
+        await withTaskGroup(of: Void.self) { group in
+            for refresh in refreshers {
+                group.addTask { await refresh() }
             }
         }
     }
 
-    func loadMostPlayedIfNeeded() async {
-        guard case .idle = mostPlayed else { return }
-        mostPlayed = .loading
-        mostPlayed = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.mostPlayedAlbums(parentId: parentId, limit: 20)
-            }
+    private func replace<Value>(
+        _ section: ReferenceWritableKeyPath<LibraryStore, Loadable<Value>>,
+        with fetch: @escaping () async throws -> Value
+    ) async {
+        guard case .loaded = self[keyPath: section] else { return }
+        guard let fresh = try? await fetch() else { return }
+        self[keyPath: section] = .loaded(fresh)
+    }
+
+    // MARK: - Queries behind the sections
+
+    private func fetchAlbums() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.albums(parentId: parentId, sort: .name).items
         }
     }
 
-    func loadFavoritesIfNeeded() async {
-        guard case .idle = favorites else { return }
-        favorites = .loading
-        favorites = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.favoriteAlbums(parentId: parentId, limit: 20)
-            }
+    private func fetchArtists() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.albumArtists(parentId: parentId).items
         }
     }
 
-    func loadRediscoverIfNeeded() async {
-        guard case .idle = rediscover else { return }
-        rediscover = .loading
-        rediscover = await load {
-            try await self.acrossLibraries { parentId in
-                try await self.client.notPlayedRecently(parentId: parentId, limit: 20)
-            }
+    private func fetchPlaylists() async throws -> [JellyfinItem] {
+        try await client.playlists()
+    }
+
+    private func fetchRecentlyAdded() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.recentlyAdded(parentId: parentId, limit: 20)
+        }
+    }
+
+    private func fetchRecentlyPlayed() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.recentlyPlayedAlbums(parentId: parentId, limit: 20)
+        }
+    }
+
+    private func fetchMostPlayed() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.mostPlayedAlbums(parentId: parentId, limit: 20)
+        }
+    }
+
+    private func fetchFavorites() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.favoriteAlbums(parentId: parentId, limit: 20)
+        }
+    }
+
+    private func fetchRediscover() async throws -> [JellyfinItem] {
+        try await acrossLibraries { parentId in
+            try await self.client.notPlayedRecently(parentId: parentId, limit: 20)
         }
     }
 
     /// Pull to refresh — drops every cache and reloads what's on screen.
     func refresh() async {
+        lastRefresh = Date()
         trackCache.removeAll()
         musicLibraryIds = nil
         albums = .idle
@@ -323,11 +366,12 @@ final class LibraryStore {
     // MARK: - Downloads
 
     /// The store needs a client to build stream URLs, and the client lives here.
-    func download(_ items: [JellyfinItem]) {
+    func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {
         // Written before the transfer starts, not after: offline, the server cannot
         // be asked what a downloaded file contains, so the metadata must already be
         // on disk or the Downloaded screen is a list of identifiers.
         DownloadIndex.shared.record(items)
+        if let collection { DownloadIndex.shared.record(collection) }
         DownloadStore.shared.download(items, client: client)
     }
 

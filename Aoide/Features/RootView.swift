@@ -91,6 +91,7 @@ struct MainTabView: View {
     private enum TabID: Hashable { case home, library, downloads, search }
 
     private let client: JellyfinClient
+    @Environment(\.scenePhase) private var scenePhase
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
     @State private var smartSearch: SmartSearch
@@ -135,6 +136,14 @@ struct MainTabView: View {
             }
         }
         .task { await openToDownloadsIfOffline() }
+        // The op log already syncs on return (see RootView); the Jellyfin caches
+        // did not, so an album added from the desk stayed invisible on the phone
+        // until a pull-to-refresh. The store decides whether it has been long
+        // enough to be worth a request.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await store.refreshIfStale() }
+        }
         .task { await SpotlightIndexer.shared.indexIfNeeded(client: client) }
         .task {
             // Joining needs no button: when someone else on the call starts a
