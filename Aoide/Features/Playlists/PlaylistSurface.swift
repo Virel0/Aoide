@@ -15,8 +15,8 @@ enum PlaylistSurface: String, CaseIterable, Identifiable {
     /// Only the playlists on the server.
     case jellyfin
 
-    /// Shared with the desktop app, which keeps the same preference under the same
-    /// three values so the two agree about what a person wants to see.
+    /// The desktop app keeps the same preference with the same three raw values
+    /// (under its own settings key), so the two describe a person's choice alike.
     static let key = "aoide.playlistSurface"
 
     var id: Self { self }
