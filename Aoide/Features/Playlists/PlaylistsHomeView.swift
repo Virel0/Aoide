@@ -43,6 +43,7 @@ struct PlaylistsHomeView: View {
     @State private var importSummary: LocalPlaylistStore.ImportSummary?
     @State private var isConfirmingDelete = false
     @State private var isBuildingSmart = false
+    @State private var isImportingPlaylist = false
     @State private var errorMessage: String?
     @AppStorage(PlaylistSurface.key) private var surface = PlaylistSurface.both
     /// Shows the kind the preference hides, for this visit only. A preference is a
@@ -120,6 +121,11 @@ struct PlaylistsHomeView: View {
         }
         .navigationBarTitleDisplayMode(folder == nil ? .automatic : .inline)
         .toolbar { toolbar }
+        .sheet(isPresented: $isImportingPlaylist) {
+            PlaylistImportView()
+                .environment(library)
+                .environment(playlists)
+        }
         .task {
             await playlists.reload()
             if folder == nil { await library.loadPlaylistsIfNeeded() }
@@ -516,6 +522,9 @@ struct PlaylistsHomeView: View {
 
                 if folder == nil {
                     Divider()
+                    Button("Import from Spotify…", systemImage: "square.and.arrow.down") {
+                        isImportingPlaylist = true
+                    }
                     Button("Update Song Index", systemImage: "arrow.clockwise") {
                         Task { await SongIndexer.shared.index(library: library) }
                     }

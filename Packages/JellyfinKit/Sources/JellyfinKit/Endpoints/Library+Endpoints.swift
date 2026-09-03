@@ -395,6 +395,22 @@ extension JellyfinClient {
         return try await (artists + others).filter { seen.insert($0.id).inserted }
     }
 
+    /// Songs whose title, artist or album matches a phrase — the candidates an
+    /// imported playlist's track is judged against. Audio only, unlike `search`,
+    /// which is built for a person typing and mixes in albums and artists.
+    public func songs(searching term: String, limit: Int = 15) async throws -> [JellyfinItem] {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return try await items(
+            includeTypes: ["Audio"],
+            parentId: nil,
+            searchTerm: trimmed,
+            sort: .name,
+            direction: .ascending,
+            limit: limit
+        ).items
+    }
+
     // MARK: - Radio
 
     /// Jellyfin's "Instant Mix" — a station seeded from any track, album, or artist.
