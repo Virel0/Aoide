@@ -1,0 +1,9 @@
+// Copy to Config/Local.xcconfig (gitignored) and fill in your own values.
+
+// Your Apple Developer Team ID, for automatic signing. Xcode → Settings →
+// Accounts → your team → the ten-character id.
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Optional. The address the sign-in screen offers on a fresh install, so a
+// handful of people on one server needn't type it. Leave it out to ask.
+AOIDE_DEFAULT_SERVER = https:/$()/jellyfin.example.com

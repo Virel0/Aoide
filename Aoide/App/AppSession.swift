@@ -35,6 +35,11 @@ final class AppSession {
     private(set) var state: State = .loading
     private(set) var client: JellyfinClient?
 
+    /// The address this device last signed in to. Deliberately not among `Keys`:
+    /// signing out clears the session, but the sign-in screen should still offer the
+    /// server somebody is about to type again.
+    static let lastServerAddressKey = "aoide.lastServerAddress"
+
     private enum Keys {
         static let deviceId = "aoide.deviceId"
         static let serverURL = "aoide.serverURL"
@@ -127,6 +132,7 @@ final class AppSession {
             throw SessionError.couldNotStoreCredentials
         }
         UserDefaults.standard.set(serverURL.absoluteString, forKey: Keys.serverURL)
+        UserDefaults.standard.set(serverURL.absoluteString, forKey: Self.lastServerAddressKey)
         UserDefaults.standard.set(credentials.userId, forKey: Keys.userId)
         UserDefaults.standard.set(credentials.username, forKey: Keys.username)
 

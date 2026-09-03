@@ -9,6 +9,11 @@
 		<string>audio</string>
 	</array>
 
+	<!-- Offered on the sign-in screen of a fresh install. Comes from
+	     AOIDE_DEFAULT_SERVER in Config/Local.xcconfig; empty means "ask". -->
+	<key>AoideDefaultServer</key>
+	<string>$(AOIDE_DEFAULT_SERVER)</string>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<!-- CarPlay requires multiple-scene support: the car screen and the phone
@@ -39,7 +44,7 @@
 		</dict>
 	</dict>
 
-	<!-- music.example.net is HTTPS, so we do NOT need a blanket arbitrary-loads
+	<!-- A public server is HTTPS, so we do NOT need a blanket arbitrary-loads
 	     exception — and asking for one invites an App Review question we'd have
 	     no good answer to. `NSAllowsLocalNetworking` alone still permits plain
 	     HTTP to LAN addresses, which is all a self-hosted fallback needs. -->

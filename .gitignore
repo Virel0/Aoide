@@ -20,6 +20,7 @@ Packages/*/.build/
 
 # Secrets — never commit a real team id or server address
 *.local.xcconfig
+Config/Local.xcconfig
 
 # Workflow worktrees, created per agent run.
 .claude/worktrees/

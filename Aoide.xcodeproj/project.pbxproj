@@ -14,6 +14,7 @@
 
 /* Begin PBXFileReference section */
 		100000000000000000000005 /* Aoide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aoide.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		10000000000000000000001A /* Aoide.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Aoide.xcconfig; sourceTree = "<group>"; };
 		100000000000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000019 /* Aoide.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Aoide.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -60,6 +61,7 @@
 		100000000000000000000016 /* Config */ = {
 			isa = PBXGroup;
 			children = (
+				10000000000000000000001A /* Aoide.xcconfig */,
 				100000000000000000000018 /* Info.plist */,
 				100000000000000000000019 /* Aoide.entitlements */,
 			);
@@ -213,6 +215,7 @@
 		};
 		10000000000000000000000E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 10000000000000000000001A /* Aoide.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -242,6 +245,7 @@
 		};
 		10000000000000000000000F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 10000000000000000000001A /* Aoide.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

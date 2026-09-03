@@ -4,9 +4,11 @@ import SwiftUI
 struct LoginView: View {
     @State private var session = AppSession.shared
 
-    /// Pre-filled: this build is for one server and a handful of people, so making
-    /// everyone type an address serves nobody. Still editable.
-    @State private var serverAddress = "https://music.example.net"
+    /// Pre-filled with the server this device last signed in to, or the one the
+    /// build was configured for (`AOIDE_DEFAULT_SERVER` in Config/Local.xcconfig),
+    /// so nobody types an address twice. Nothing is baked into the source: a public
+    /// checkout offers an empty field. Still editable.
+    @State private var serverAddress = Self.suggestedServerAddress
     @State private var username = ""
     @State private var password = ""
     @State private var isConnecting = false
@@ -15,6 +17,14 @@ struct LoginView: View {
     @FocusState private var focusedField: Field?
 
     private enum Field { case server, username, password }
+
+    private static var suggestedServerAddress: String {
+        if let last = UserDefaults.standard.string(forKey: AppSession.lastServerAddressKey), !last.isEmpty {
+            return last
+        }
+        let configured = Bundle.main.object(forInfoDictionaryKey: "AoideDefaultServer") as? String
+        return configured?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
 
     private var canSubmit: Bool {
         !serverAddress.trimmingCharacters(in: .whitespaces).isEmpty

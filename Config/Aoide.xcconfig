@@ -1,0 +1,10 @@
+// Build settings shared by every configuration of the Aoide target.
+//
+// Anything personal — your Apple Team ID, the server address a fresh install
+// should offer — lives in Config/Local.xcconfig, which is gitignored. Copy
+// Config/Local.example.xcconfig to get started. The include is optional so a
+// clean checkout still builds; it just signs with no team and pre-fills nothing.
+#include? "Local.xcconfig"
+
+// AOIDE_DEFAULT_SERVER is deliberately not given a value here: undefined
+// expands to nothing in Info.plist, and nothing means "ask for the address".
