@@ -20,6 +20,7 @@ struct LocalPlaylistDetailView: View {
     @State private var indexer = SongIndexer.shared
     @State private var engine = PlaybackEngine.shared
     @State private var sync = SyncCoordinator.shared
+    @State private var downloads = DownloadStore.shared
 
     @State private var contents = PlaylistContents()
     /// The row this screen believes it is showing. Held apart from `playlist` so a rename
@@ -150,6 +151,16 @@ struct LocalPlaylistDetailView: View {
                     library.addToQueue([item], from: playSource)
                 }
                 Divider()
+                if downloads.state(for: item.id).isPresent {
+                    Button("Remove Download", systemImage: "arrow.down.circle.dotted") {
+                        downloads.remove(item.id)
+                    }
+                } else {
+                    Button("Download", systemImage: "arrow.down.circle") {
+                        library.download([item])
+                    }
+                }
+                Divider()
             }
             if let itemId = track.itemId {
                 Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive) {
@@ -210,6 +221,16 @@ struct LocalPlaylistDetailView: View {
                 onTrailing: { if current.isSmart { isEditingRules = true } else { isEditingDetails = true } }
             )
             .padding(.top, 6)
+
+            // The same control the album page has. A playlist kept on this device
+            // is, if anything, the one most worth having with no signal.
+            CollectionDownloadButton(
+                tracks: contents.playbackOrder,
+                collection: DownloadedCollection(
+                    id: current.id, kind: .playlist, name: current.name, subtitle: nil,
+                    trackIds: contents.playbackOrder.map(\.id)
+                )
+            )
 
             if current.isSmart, let summary = ruleSummary {
                 Text(summary)

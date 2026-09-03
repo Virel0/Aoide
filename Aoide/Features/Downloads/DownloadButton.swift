@@ -9,6 +9,9 @@ import SwiftUI
 /// is, so a half-finished album never looks safe to fly with.
 struct CollectionDownloadButton: View {
     let tracks: [JellyfinItem]
+    /// What these tracks are as a whole, so the Downloads screen can file them
+    /// under it. Nil for a set that is nobody's album or playlist.
+    var collection: DownloadedCollection?
 
     @Environment(LibraryStore.self) private var library
     @State private var downloads = DownloadStore.shared
@@ -28,9 +31,13 @@ struct CollectionDownloadButton: View {
     var body: some View {
         Button {
             if allPresent {
-                for track in audio { downloads.remove(track.id) }
+                if let collection {
+                    DownloadIndex.shared.remove(collection, deletingFilesWith: downloads)
+                } else {
+                    for track in audio { downloads.remove(track.id) }
+                }
             } else {
-                library.download(audio)
+                library.download(audio, in: collection)
             }
         } label: {
             HStack(spacing: 6) {
@@ -43,6 +50,14 @@ struct CollectionDownloadButton: View {
         .clipShape(.capsule)
         .disabled(audio.isEmpty)
         .accessibilityLabel(allPresent ? "Remove download" : "Download")
+        // A complete set is this collection whether or not it was downloaded as one:
+        // tracks fetched one at a time before collections existed, or an album
+        // finished from two different pages, both file themselves here the first
+        // time the page sees every file present.
+        .onChange(of: allPresent, initial: true) { _, complete in
+            guard complete, let collection else { return }
+            DownloadIndex.shared.record(collection)
+        }
     }
 
     private var symbol: String {

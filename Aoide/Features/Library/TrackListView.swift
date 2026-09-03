@@ -213,7 +213,7 @@ struct TrackListView: View {
             }
 
             actionRow
-            CollectionDownloadButton(tracks: tracks)
+            CollectionDownloadButton(tracks: tracks, collection: downloadCollection)
         }
         .padding(.horizontal)
         .padding(.top, 12)
@@ -254,6 +254,23 @@ struct TrackListView: View {
             }
         )
         .padding(.top, 6)
+    }
+
+    /// This page as a thing the Downloads screen can file its songs under.
+    private var downloadCollection: DownloadedCollection {
+        switch source {
+        case .album(let id):
+            DownloadedCollection(
+                id: id, kind: .album, name: title,
+                subtitle: subtitle ?? nonEmptySubtitle,
+                trackIds: tracks.filter { $0.type == .audio }.map(\.id)
+            )
+        case .playlist(let id):
+            DownloadedCollection(
+                id: id, kind: .playlist, name: title, subtitle: nil,
+                trackIds: tracks.filter { $0.type == .audio }.map(\.id)
+            )
+        }
     }
 
     private var nonEmptySubtitle: String? {

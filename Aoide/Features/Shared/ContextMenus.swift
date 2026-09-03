@@ -132,7 +132,12 @@ private struct AlbumContextMenu: ViewModifier {
             Button("Download", systemImage: "arrow.down.circle") {
                 Task {
                     guard let tracks = try? await store.tracks(inAlbum: album.id) else { return }
-                    store.download(tracks)
+                    let audio = tracks.filter { $0.type == .audio }
+                    store.download(audio, in: DownloadedCollection(
+                        id: album.id, kind: .album, name: album.name,
+                        subtitle: album.albumArtist ?? album.artists.first,
+                        trackIds: audio.map(\.id)
+                    ))
                 }
             }
         }
