@@ -99,10 +99,17 @@ struct PlaylistImportView: View {
                         .disabled(importer == nil || isBusy)
                 }
             }
-            Button("Choose a CSV Export…", systemImage: "doc") { isChoosingFile = true }
+            // Exportify signs in to Spotify itself and exports a whole playlist,
+            // including private ones. On the phone the file lands in Files; the
+            // button below reads it from there.
+            Link(destination: URL(string: "https://exportify.net")!) {
+                Label("Export from Spotify with Exportify", systemImage: "safari")
+            }
+            .disabled(importer == nil || isBusy)
+            Button("Choose a CSV File…", systemImage: "doc") { isChoosingFile = true }
                 .disabled(importer == nil || isBusy)
         } footer: {
-            Text("A link reads the playlist's first 100 tracks straight from Spotify — no account needed. For a longer playlist, export it to CSV with a tool like Exportify and choose the file.")
+            Text("A link reads the playlist's first 100 tracks straight from Spotify — no account needed. For a longer playlist, or your own private ones, Exportify (open source) signs in to Spotify and exports it: save the file to Files, then choose it here.")
         }
     }
 
