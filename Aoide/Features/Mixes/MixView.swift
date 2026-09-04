@@ -14,6 +14,7 @@ struct MixView: View {
     @Environment(AppSession.self) private var session
 
     @State private var composer: MixComposer?
+    @State private var indexer = SongIndexer.shared
     @State private var description = ""
     @State private var rules: SmartRules?
     @State private var tracks: [JellyfinItem] = []
@@ -73,7 +74,11 @@ struct MixView: View {
                 } else {
                     Button(action: build) {
                         if isBuilding {
-                            ProgressView().controlSize(.small)
+                            if case .running(let indexed) = indexer.state {
+                                Text("Indexing your library… \(indexed)")
+                            } else {
+                                ProgressView().controlSize(.small)
+                            }
                         } else {
                             Label("Make a mix", systemImage: "wand.and.stars")
                         }
@@ -142,6 +147,11 @@ struct MixView: View {
                 message = "This device has no library store yet."
                 return
             }
+
+            // The rules match against the local song index. Until it has run, that
+            // index holds only what this phone happened to play, and a mix over it
+            // reads as "nothing matched" rather than as what it is: not looked yet.
+            await indexer.indexIfNeeded(library: library)
 
             // The rules are evaluated locally, against the track cache and the play
             // history. No network, which is the whole reason a mix works on a plane.

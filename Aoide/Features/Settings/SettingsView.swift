@@ -83,6 +83,18 @@ struct SettingsView: View {
                 if let report = downloads.lastCheck {
                     LabeledContent("Last check", value: "\(report.checked) checked, \(report.damaged) damaged")
                 }
+                // Says what the files actually are. "Gapless" is only true of the
+                // Apple Lossless ones, and this is how to tell whether the conversion
+                // ever happened.
+                LabeledContent("Formats", value: downloads.formatSummary.isEmpty ? "none" : downloads.formatSummary)
+                if downloads.conversionsPending > 0 {
+                    LabeledContent("Converting", value: "\(downloads.conversionsPending) waiting")
+                }
+                if let problem = downloads.conversionProblem {
+                    Text("Conversion stopped: \(problem)")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
                 Button("Check Downloads", systemImage: "stethoscope") {
                     Task { await downloads.checkFiles() }
                 }

@@ -137,6 +137,7 @@ struct MainTabView: View {
         }
         .task { await openToDownloadsIfOffline() }
         .task { await playlists.ensureBuiltIns() }
+        .task { await SongIndexer.shared.indexIfStale(library: store) }
         // The op log already syncs on return (see RootView); the Jellyfin caches
         // did not, so an album added from the desk stayed invisible on the phone
         // until a pull-to-refresh. The store decides whether it has been long

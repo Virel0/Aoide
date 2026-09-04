@@ -129,6 +129,23 @@ final class SongIndexer {
         await index(library: library)
     }
 
+    /// A week: long enough that the pass is rare, short enough that an album added
+    /// on the server is in the smart playlists' universe by the weekend.
+    static let staleAfter: Millis = 7 * 24 * 60 * 60 * 1000
+
+    /// Runs the pass if it has never run, or not for a week.
+    ///
+    /// The mix screen, the smart playlists and Home's Rediscover shelf all match
+    /// against this cache, and a cache that stopped a month ago silently shrinks
+    /// every one of them to the library as it was. Called at launch, in the
+    /// background, where its requests cost nobody a wait.
+    func indexIfStale(library: LibraryStore, now: Millis = Date().millis) async {
+        guard !isRunning, let store = CurationDatabase.shared else { return }
+        let indexedAt: Millis? = await Task.detached { (try? store.libraryIndexedAt()) ?? nil }.value
+        if let indexedAt, now - indexedAt < Self.staleAfter { return }
+        await index(library: library)
+    }
+
     func index(library: LibraryStore) async {
         guard !isRunning else { return }
         guard let store = CurationDatabase.shared else {

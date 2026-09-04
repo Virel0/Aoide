@@ -63,7 +63,19 @@ final class DownloadStore: NSObject {
 
     /// Set once a converted file failed the player's own check, so the phone does
     /// not spend the afternoon producing files it will then throw away.
-    @ObservationIgnored private var conversionDistrusted = false
+    private(set) var conversionDistrusted = false
+    /// The player's words for why, when it happened.
+    private(set) var conversionProblem: String?
+    /// Converted this session, and still waiting.
+    private(set) var conversionsDone = 0
+    private(set) var conversionsPending = 0
+
+    /// How the downloads stand, format by format, for a settings screen.
+    var formatSummary: String {
+        var counts: [String: Int] = [:]
+        for url in files.values { counts[url.pathExtension.lowercased(), default: 0] += 1 }
+        return counts.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)" }.joined(separator: ", ")
+    }
 
     private override init() {
         super.init()
@@ -305,8 +317,13 @@ final class DownloadStore: NSObject {
     private func convertIfFLAC(_ trackId: String, at url: URL) {
         guard url.pathExtension.lowercased() == "flac", !conversionDistrusted else { return }
         let target = Self.fileURL(for: trackId, extension: "m4a")
+        conversionsPending += 1
         Task(priority: .utility) {
-            guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else { return }
+            defer { conversionsPending -= 1 }
+            guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else {
+                conversionProblem = "The converter could not read this FLAC."
+                return
+            }
             // Adopted only once the player itself says it will open the result. A
             // conversion that reads back fine but will not play is worse than no
             // conversion: the FLAC it replaced was playable.
@@ -315,6 +332,7 @@ final class DownloadStore: NSObject {
                 log.error("Converted file rejected by the player, keeping the FLAC: \(verdict.problem ?? "?", privacy: .public)")
                 try? FileManager.default.removeItem(at: target)
                 conversionDistrusted = true
+                conversionProblem = verdict.problem
                 return
             }
             // Removed while converting: the listener no longer wants either file.
@@ -323,6 +341,7 @@ final class DownloadStore: NSObject {
                 return
             }
             files[trackId] = target
+            conversionsDone += 1
             retire(url)
         }
     }
