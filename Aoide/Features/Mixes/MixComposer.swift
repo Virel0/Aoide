@@ -56,18 +56,36 @@ final class MixComposer {
         }
     }
 
-    /// Rules for a description, or nil when nothing usable came back.
+    /// What a description asked for: rules the store can evaluate, and names the
+    /// library can be searched for.
+    ///
+    /// The names are the half the rules cannot express. "Helldivers 2 session
+    /// music" names a game whose soundtrack may well be in the library; no genre
+    /// rule will find it, but a search for "Helldivers" will. Both halves are kept,
+    /// and the screen unions what each finds.
+    struct Plan {
+        var rules: SmartRules?
+        var names: [String]
+        var isEmpty: Bool { rules == nil && names.isEmpty }
+    }
+
+    /// A plan for a description, or nil when the model produced nothing usable.
     ///
     /// Never throws at the caller: a mix that cannot be described is a screen that says
     /// so, not an error dialog over a music player.
-    func compose(_ description: String) async -> SmartRules? {
+    func compose(_ description: String) async -> Plan? {
         guard readiness == .ready else { return nil }
         await loadGenresIfNeeded()
 
         let session = LanguageModelSession(instructions: instructions)
         do {
             let response = try await session.respond(to: description, generating: DescribedMix.self)
-            return resolve(response.content)
+            let described = response.content
+            let plan = Plan(
+                rules: resolve(described),
+                names: described.names.map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count >= 2 }
+            )
+            return plan.isEmpty ? nil : plan
         } catch {
             log.error("Mix compose failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -93,6 +111,10 @@ final class MixComposer {
         a high play count, or liked. "Something new to me" is a play count of zero.
 
         Decades map to year ranges: "the nineties" is 1990 to 1999.
+
+        When the description names a particular artist, album, band, game, film or \
+        show, put that name in "names" exactly as written; the library will be \
+        searched for it. Do not turn a name into a genre.
 
         Leave a field empty when the description says nothing about it. Guessing \
         produces rules that match nothing, which reads as the feature being broken.
@@ -162,6 +184,11 @@ final class MixComposer {
             rules.append(rule)
         }
 
+        // A description that was only names — "the Helldivers soundtrack" — has no
+        // rules, and "all of nothing" here would be the entire library poured in
+        // beside the search. Rules are only offered when the model set at least one.
+        guard !rules.isEmpty || described.length != nil else { return nil }
+
         // `all` of nothing is the whole library, which is a real mix — "anything, forty
         // tracks". `any` of nothing can only ever be empty, so `SmartRules` refuses it
         // and this never asks for it.
@@ -205,4 +232,7 @@ private struct DescribedMix {
 
     @Guide(description: "How many tracks the mix should hold. Leave empty for a normal-length mix.")
     var length: Int?
+
+    @Guide(description: "Artists, albums, bands, games, films or shows the description names, spelled exactly as written. Empty if it names none.")
+    var names: [String]
 }

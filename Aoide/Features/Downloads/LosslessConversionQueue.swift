@@ -17,13 +17,14 @@ actor LosslessConversionQueue {
     /// Writes `flac` as Apple Lossless at `target`. The converter handles its own
     /// scratch file — see `LosslessConverter.scratchURL`, and why the name matters.
     /// Returns false when the conversion did not happen.
-    func convert(flac: URL, to target: URL) -> Bool {
+    func convert(flac: URL, to target: URL) -> String? {
         do {
             try LosslessConverter.convertFLAC(at: flac, to: target)
-            return true
+            return nil
         } catch {
-            log.error("Couldn't convert \(flac.lastPathComponent, privacy: .public) to Apple Lossless: \(error.localizedDescription, privacy: .public)")
-            return false
+            let reason = "\((error as NSError).localizedDescription) [\((error as NSError).domain) \((error as NSError).code)]"
+            log.error("Couldn't convert \(flac.lastPathComponent, privacy: .public) to Apple Lossless: \(reason, privacy: .public)")
+            return reason
         }
     }
 }

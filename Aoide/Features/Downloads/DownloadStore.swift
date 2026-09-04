@@ -66,6 +66,8 @@ final class DownloadStore: NSObject {
     private(set) var conversionDistrusted = false
     /// The player's words for why, when it happened.
     private(set) var conversionProblem: String?
+    /// Files the converter could not read, by title, with its reason.
+    private(set) var conversionFailures: [String] = []
     /// Converted this session, and still waiting.
     private(set) var conversionsDone = 0
     private(set) var conversionsPending = 0
@@ -323,8 +325,12 @@ final class DownloadStore: NSObject {
             // A queue of hundreds waits its turn on the converter; once one has
             // been refused there is no point in the rest taking theirs.
             guard !conversionDistrusted else { return }
-            guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else {
-                conversionProblem = "The converter could not read this FLAC."
+            if let reason = await LosslessConversionQueue.shared.convert(flac: url, to: target) {
+                // One file the converter cannot read is that file's problem, not
+                // the pipeline's: it stays FLAC and the rest carry on. Named, so
+                // the listener can say which one.
+                let title = DownloadIndex.shared.tracks.first { $0.id == trackId }?.name ?? trackId
+                conversionFailures.append("\(title): \(reason)")
                 return
             }
             // Adopted only once the player itself says it will open the result. A

@@ -95,6 +95,11 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.orange)
                 }
+                ForEach(downloads.conversionFailures, id: \.self) { failure in
+                    Text("Couldn't convert \(failure)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Button("Check Downloads", systemImage: "stethoscope") {
                     Task { await downloads.checkFiles() }
                 }

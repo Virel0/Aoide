@@ -137,11 +137,11 @@ struct MixView: View {
         Task {
             defer { isBuilding = false }
 
-            guard let composed = await composer.compose(description) else {
+            guard let plan = await composer.compose(description) else {
                 message = "Couldn't turn that into a mix. Try describing it another way."
                 return
             }
-            rules = composed
+            rules = plan.rules
 
             guard let store = CurationDatabase.shared else {
                 message = "This device has no library store yet."
@@ -153,25 +153,39 @@ struct MixView: View {
             // reads as "nothing matched" rather than as what it is: not looked yet.
             await indexer.indexIfNeeded(library: library)
 
-            // The rules are evaluated locally, against the track cache and the play
-            // history. No network, which is the whole reason a mix works on a plane.
-            let ids: [String]
-            do {
-                ids = try await Task.detached { try store.evaluate(composed) }.value
-            } catch {
-                message = "Those rules couldn't be evaluated."
-                return
+            guard let client = session.client else { return }
+
+            // Names first: what the description pointed at by name is the point of
+            // the mix, and the rules fill in around it.
+            var ids: [String] = []
+            for name in plan.names {
+                ids.append(contentsOf: await Self.tracks(named: name, client: client, library: library))
             }
 
+            // The rules are evaluated locally, against the track cache and the play
+            // history. No network, which is the whole reason a mix works on a plane.
+            if let composed = plan.rules {
+                do {
+                    ids.append(contentsOf: try await Task.detached { try store.evaluate(composed) }.value)
+                } catch {
+                    message = "Those rules couldn't be evaluated."
+                    return
+                }
+            }
+
+            var seen: Set<String> = []
+            ids = ids.filter { seen.insert($0).inserted }
+
             guard !ids.isEmpty else {
-                message = "Nothing in your library matched that."
+                message = plan.names.isEmpty
+                    ? "Nothing in your library matched that."
+                    : "Nothing in your library mentions \(plan.names.joined(separator: ", "))."
                 return
             }
 
             // Capped before asking the server: a rule set can legitimately match the
             // whole library — "never played" on a fresh install is exactly that — and
             // a mix nobody will reach the end of is not worth the round trips.
-            guard let client = session.client else { return }
             let wanted = Array(ids.prefix(200))
 
             do {
@@ -183,6 +197,26 @@ struct MixView: View {
                 message = "Couldn't reach your server to load the tracks."
             }
         }
+    }
+
+    /// Tracks the library holds under a name: the songs found by it, and every song
+    /// of every album found by it — a soundtrack is an album, not a track title.
+    private static func tracks(named name: String, client: JellyfinClient, library: LibraryStore) async -> [String] {
+        guard let found = try? await client.search(name, limit: 30) else { return [] }
+        var ids: [String] = []
+        for item in found {
+            switch item.type {
+            case .audio:
+                ids.append(item.id)
+            case .musicAlbum:
+                if let tracks = try? await library.tracks(inAlbum: item.id) {
+                    ids.append(contentsOf: tracks.map(\.id))
+                }
+            default:
+                break
+            }
+        }
+        return ids
     }
 
     private func save() {
