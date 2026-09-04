@@ -1,4 +1,5 @@
 import CarPlay
+import JellyfinKit
 import PlaybackKit
 import UIKit
 import os
@@ -16,6 +17,10 @@ final class CarPlayNowPlaying: NSObject {
 
     private let log = Logger(subsystem: "com.example.aoide", category: "carplay")
     private weak var interfaceController: CPInterfaceController?
+    /// For the artist button and the More menu, which push browse screens.
+    weak var browser: CarPlayBrowser?
+    /// Tracks favourited from the car this session, so the button can show it.
+    private var favourited: Set<String> = []
 
     /// Re-applied whenever playback state changes, because the button glyphs encode
     /// shuffle and repeat state and the car has no way to ask for them.
@@ -98,14 +103,87 @@ final class CarPlayNowPlaying: NSObject {
             }
         }
 
-        template.updateNowPlayingButtons([shuffle, repeatButton])
+        // Favourite is one tap: the brief's "love" on Now Playing, and the one
+        // action worth taking while a song is on.
+        let favourite = CPNowPlayingAddToLibraryButton { _ in
+            Task { @MainActor in await CarPlayNowPlaying.shared.favouriteCurrent() }
+        }
+        favourite.isEnabled = engine.currentTrack.map { !favourited.contains($0.id) } ?? false
+
+        let more = CPNowPlayingMoreButton { _ in
+            Task { @MainActor in CarPlayNowPlaying.shared.showMore() }
+        }
+
+        template.updateNowPlayingButtons([shuffle, repeatButton, favourite, more])
 
         // Only offer Up Next when there is something in it — an empty list behind a
         // button is worse than no button on a screen you glance at while driving.
         let upNext = engine.queue.upNext
         template.isUpNextButtonEnabled = !upNext.isEmpty
         template.upNextTitle = upNext.isEmpty ? "" : "Up Next"
-        template.isAlbumArtistButtonEnabled = false
+        // Tapping the artist's name opens their albums.
+        template.isAlbumArtistButtonEnabled = engine.currentTrack != nil
+    }
+
+    // MARK: - Actions on the current track
+
+    private func favouriteCurrent() async {
+        guard let track = PlaybackEngine.shared.currentTrack, let client = AppSession.shared.client else { return }
+        do {
+            _ = try await client.setFavorite(true, itemId: track.id)
+            favourited.insert(track.id)
+            refreshButtons()
+        } catch {
+            log.error("Couldn't favourite from the car: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// The few things worth doing to the song that is on, none of them browsing.
+    private func showMore() {
+        guard let track = PlaybackEngine.shared.currentTrack else { return }
+        var items: [CPListItem] = []
+
+        let station = CPListItem(text: "Start Station", detailText: "More like this", image: UIImage(systemName: "dot.radiowaves.left.and.right"))
+        station.handler = { _, completion in
+            Task { @MainActor in
+                if let client = AppSession.shared.client,
+                   let mix = try? await client.instantMix(seededBy: track.id) {
+                    let wanted = await TasteStore.shared.withoutNotInterested(mix)
+                    let mapped = JellyfinPlaybackBridge.playableTracks(from: wanted, client: client)
+                    if !mapped.tracks.isEmpty {
+                        PlaybackContext.attributing(.carplay) { PlaybackEngine.shared.play(mapped.tracks) }
+                    }
+                }
+                CarPlayNowPlaying.shared.popToNowPlaying()
+                completion()
+            }
+        }
+        items.append(station)
+
+        let notInterested = CPListItem(text: "Not Interested", detailText: "Keep this out of mixes and skip it now", image: UIImage(systemName: "hand.thumbsdown"))
+        notInterested.handler = { _, completion in
+            Task { @MainActor in
+                if let client = AppSession.shared.client, let item = try? await client.items(ids: [track.id]).first {
+                    await TasteStore.shared.setNotInterested(true, on: item)
+                }
+                PlaybackEngine.shared.next()
+                CarPlayNowPlaying.shared.popToNowPlaying()
+                completion()
+            }
+        }
+        items.append(notInterested)
+
+        let template = CPListTemplate(title: track.title, sections: [CPListSection(items: items)])
+        push(template)
+    }
+
+    private func popToNowPlaying() {
+        guard let interfaceController else { return }
+        if interfaceController.templates.contains(where: { $0 === CPNowPlayingTemplate.shared }) {
+            interfaceController.pop(to: CPNowPlayingTemplate.shared, animated: true, completion: nil)
+        } else {
+            present()
+        }
     }
 }
 
@@ -118,6 +196,18 @@ extension CarPlayNowPlaying: @preconcurrency CPNowPlayingTemplateObserver {
     nonisolated func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         Task { @MainActor [weak self] in
             self?.showUpNext()
+        }
+    }
+
+    nonisolated func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+        Task { @MainActor [weak self] in
+            guard let self, let track = PlaybackEngine.shared.currentTrack,
+                  let client = AppSession.shared.client else { return }
+            // The engine holds the artist's name, not the item; one search finds it.
+            let found = (try? await client.search(track.artist, limit: 10)) ?? []
+            guard let artist = found.first(where: { $0.type == .musicArtist && $0.name.caseInsensitiveCompare(track.artist) == .orderedSame })
+                ?? found.first(where: { $0.type == .musicArtist }) else { return }
+            self.browser?.pushArtistAlbums(artist)
         }
     }
 

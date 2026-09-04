@@ -28,6 +28,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
             let browser = CarPlayBrowser()
             self.browser = browser
+            CarPlayNowPlaying.shared.browser = browser
             interfaceController.setRootTemplate(browser.makeRootTemplate(), animated: false, completion: nil)
         }
     }
