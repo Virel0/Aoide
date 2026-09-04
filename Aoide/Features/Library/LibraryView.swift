@@ -26,6 +26,7 @@ struct LibraryView: View {
                         // Above the rest of the library on purpose: a mix is
                         // something you ask for, not something you browse to.
                         categoryRow("Mixes", "wand.and.stars") { MixView() }
+                        categoryRow("Replay", "chart.bar") { ReplayView() }
                         categoryRow("Artists", "music.microphone") { ArtistsListView() }
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
