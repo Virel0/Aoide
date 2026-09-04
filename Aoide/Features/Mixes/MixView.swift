@@ -20,6 +20,8 @@ struct MixView: View {
     @State private var tracks: [JellyfinItem] = []
     @State private var isBuilding = false
     @State private var message: String?
+    /// What the model made of the description, shown so an empty mix is explained.
+    @State private var understood: String?
     @FocusState private var isTyping: Bool
 
     var body: some View {
@@ -27,6 +29,13 @@ struct MixView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Spacing.shelf) {
                     prompt
+
+                    if let understood {
+                        Text("Looked for: \(understood)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .pageMargin()
+                    }
 
                     if let message {
                         Text(message)
@@ -108,6 +117,7 @@ struct MixView: View {
                 tracks = []
                 rules = []
                 message = nil
+                understood = nil
             }
             .buttonStyle(.borderless)
         }
@@ -138,10 +148,13 @@ struct MixView: View {
             defer { isBuilding = false }
 
             guard let plan = await composer.compose(description) else {
-                message = "Couldn't turn that into a mix. Try describing it another way."
+                // The reason, verbatim: "try another way" without saying what went
+                // wrong is what a broken feature says.
+                message = "Couldn't turn that into a mix. \(composer.lastProblem ?? "Try describing it another way.")"
                 return
             }
             rules = plan.rules
+            understood = MixComposer.summary(of: plan)
 
             guard let store = CurationDatabase.shared else {
                 message = "This device has no library store yet."
@@ -217,6 +230,15 @@ struct MixView: View {
             case .musicAlbum:
                 if let tracks = try? await library.tracks(inAlbum: item.id) {
                     ids.append(contentsOf: tracks.map(\.id))
+                }
+            case .musicArtist:
+                // An artist is their albums; a few is plenty for a mix.
+                if let albums = try? await client.albums(byArtist: item.id) {
+                    for album in albums.prefix(6) {
+                        if let tracks = try? await library.tracks(inAlbum: album.id) {
+                            ids.append(contentsOf: tracks.map(\.id))
+                        }
+                    }
                 }
             default:
                 break

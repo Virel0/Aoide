@@ -70,8 +70,13 @@ final class MixComposer {
         /// for the rest. Evaluated separately and unioned by the screen.
         var rules: [SmartRules]
         var names: [String]
+        /// The library genres the mood resolved to, for the screen to say.
+        var genres: [String] = []
         var isEmpty: Bool { rules.isEmpty && names.isEmpty }
     }
+
+    /// Why the last `compose` produced nothing, in the model's words.
+    private(set) var lastProblem: String?
 
     /// A plan for a description, or nil when the model produced nothing usable.
     ///
@@ -85,13 +90,19 @@ final class MixComposer {
         do {
             let response = try await session.respond(to: description, generating: DescribedMix.self)
             let described = response.content
+            let (rules, genres) = resolve(described)
             let plan = Plan(
-                rules: resolve(described),
-                names: described.names.map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count >= 2 }
+                rules: rules,
+                names: described.names.map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.count >= 2 },
+                genres: genres
             )
+            lastProblem = plan.isEmpty
+                ? "The model answered with genres this library doesn't have: \(described.genres.joined(separator: ", "))."
+                : nil
             return plan.isEmpty ? nil : plan
         } catch {
             log.error("Mix compose failed: \(error.localizedDescription, privacy: .public)")
+            lastProblem = error.localizedDescription
             return nil
         }
     }
@@ -144,12 +155,59 @@ final class MixComposer {
     /// Every rule is built through `SmartRule.init`, which refuses an illegal
     /// field/operator pair — so a model that asks for a title in the last six months
     /// loses that clause rather than producing a playlist that is silently empty.
-    private func resolve(_ described: DescribedMix) -> [SmartRules] {
+    /// Library genres that mean what a described genre means.
+    ///
+    /// Word-boundary containment, either way: "rock" takes "Rock", "Hard Rock"
+    /// and "Alternative Rock" but not "Rockabilly"; "alternative rock" takes
+    /// "Rock". Lower-cased, punctuation ignored.
+    static func libraryGenres(matching described: String, in library: [String]) -> [String] {
+        func words(_ text: String) -> [String] {
+            text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        }
+        let wanted = words(described)
+        guard !wanted.isEmpty else { return [] }
+        return library.filter { candidate in
+            let have = words(candidate)
+            guard !have.isEmpty else { return false }
+            return wanted.allSatisfy { have.contains($0) } || have.allSatisfy { wanted.contains($0) }
+        }.sorted()
+    }
+
+    /// One line saying what the model understood, for the screen to show. A mix
+    /// that came back empty is explained by this line or by nothing.
+    static func summary(of plan: Plan) -> String {
+        var parts: [String] = []
+        if !plan.names.isEmpty { parts.append(plan.names.joined(separator: ", ")) }
+        if !plan.genres.isEmpty { parts.append(plan.genres.joined(separator: ", ")) }
+        let extra = plan.rules.first?.rules.filter { $0.field != .genre } ?? []
+        for rule in extra {
+            switch (rule.field, rule.op) {
+            case (.lastPlayed, .notInTheLast): parts.append("not played lately")
+            case (.playCount, .is): parts.append("never played")
+            case (.playCount, .greaterThan): parts.append("well played")
+            case (.liked, _): parts.append("favourites")
+            case (.year, .greaterThan): if case .number(let y) = rule.value { parts.append("after \(y)") }
+            case (.year, .lessThan): if case .number(let y) = rule.value { parts.append("before \(y)") }
+            default: break
+            }
+        }
+        return parts.isEmpty ? "anything" : parts.joined(separator: " · ")
+    }
+
+    private func resolve(_ described: DescribedMix) -> (rules: [SmartRules], genres: [String]) {
         var rules: [SmartRule] = []
 
-        // Discarded unless the library really has it. An invented genre matches
-        // nothing, and a mix of nothing is indistinguishable from a broken one.
-        let genres = described.genres.compactMap { knownGenres[$0.lowercased()] }
+        // Matched to the library's own genres by word: the model's "rock" is the
+        // library's "Rock", "Hard Rock" and "Alternative Rock", its "soundtrack"
+        // is "Video Game Soundtrack". Anything the library does not have in any
+        // spelling is dropped — an invented genre matches nothing, and a mix of
+        // nothing is indistinguishable from a broken one.
+        var genres: [String] = []
+        for described in described.genres {
+            for match in Self.libraryGenres(matching: described, in: Array(knownGenres.values)) where !genres.contains(match) {
+                genres.append(match)
+            }
+        }
 
         if let from = described.fromYear, from > 1860 {
             // `greaterThan` is exclusive, and a listener asking for the nineties means
@@ -196,14 +254,15 @@ final class MixComposer {
         // A description that was only names gets no rules at all, or the entire
         // library would be poured in beside the search.
         if genres.isEmpty {
-            guard !rules.isEmpty || described.length != nil else { return [] }
-            return [try? SmartRules(match: .all, rules: rules, limit: limit)].compactMap { $0 }
+            guard !rules.isEmpty || described.length != nil else { return ([], []) }
+            return ([try? SmartRules(match: .all, rules: rules, limit: limit)].compactMap { $0 }, [])
         }
-        return genres.compactMap { genre in
+        let sets = genres.compactMap { genre -> SmartRules? in
             guard let genreRule = try? SmartRule(field: .genre, op: .is, value: .text(genre)) else { return nil }
             // Each set takes its share, so a three-genre mix is not forty of the first.
             return try? SmartRules(match: .all, rules: [genreRule] + rules, limit: max(10, limit / genres.count + 1))
         }
+        return (sets, genres)
     }
 }
 
