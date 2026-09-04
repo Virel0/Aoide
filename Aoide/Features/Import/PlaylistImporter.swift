@@ -94,6 +94,16 @@ final class PlaylistImporter {
         let total = imported.tracks.count
         phase = .matching(done: 0, total: total)
 
+        // The sidecar first: one request, answered from inside the library by the
+        // same rules this device would apply. A server without it, or one that
+        // fails, falls through to the lookups below without a word — the result is
+        // the same either way, only slower.
+        if let served = await matchOnServer(imported.tracks) {
+            matches = served
+            phase = .finished
+            return
+        }
+
         var results: [Match] = []
         results.reserveCapacity(total)
 
@@ -116,6 +126,34 @@ final class PlaylistImporter {
 
         matches = results
         phase = .finished
+    }
+
+    private func matchOnServer(_ tracks: [ImportedTrack]) async -> [Match]? {
+        guard !tracks.isEmpty else { return [] }
+        let answers: [SidecarMatch?]
+        do {
+            answers = try await client.match(tracks)
+        } catch {
+            if !JellyfinClient.isSidecarAbsent(error) {
+                log.warning("Sidecar match failed, matching here instead: \(error.localizedDescription, privacy: .public)")
+            }
+            return nil
+        }
+        guard answers.count == tracks.count else { return nil }
+
+        // The sidecar names ids; the rows to show and save are fetched by id, a
+        // hundred at a time, which is one request per hundred hits rather than
+        // several per track.
+        let ids = answers.compactMap { $0?.jellyfinId }
+        var byId: [String: JellyfinItem] = [:]
+        for start in stride(from: 0, to: ids.count, by: 100) {
+            let slice = Array(ids[start..<min(start + 100, ids.count)])
+            guard let items = try? await client.items(ids: slice) else { return nil }
+            for item in items { byId[item.id] = item }
+        }
+        return zip(tracks, answers).map { track, answer in
+            Match(track: track, song: answer.flatMap { byId[$0.jellyfinId] })
+        }
     }
 
     /// The library's best answer for one track, or nil.

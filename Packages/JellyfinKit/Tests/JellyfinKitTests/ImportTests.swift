@@ -204,3 +204,29 @@ struct PlaylistCSVTests {
         }
     }
 }
+
+@Suite("Sidecar match wire form")
+struct SidecarMatchTests {
+    @Test("sends the imported track exactly as the sidecar reads it")
+    func body() throws {
+        let track = ImportedTrack(title: "Karma Police", artists: ["Radiohead"], album: nil, durationMs: 264_000, isrc: nil)
+        let data = try JellyfinClient.matchBody([track])
+        let rows = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(rows.count == 1)
+        #expect(rows[0]["title"] as? String == "Karma Police")
+        #expect(rows[0]["artists"] as? [String] == ["Radiohead"])
+        #expect(rows[0]["durationMs"] as? Int == 264_000)
+        // Absent, not null-as-string: the sidecar's fields are optional.
+        #expect(rows[0]["album"] == nil || rows[0]["album"] is NSNull)
+    }
+
+    @Test("reads a response with a null where the library had nothing")
+    func response() throws {
+        let json = #"{"results":[{"jellyfinId":"j1","confidence":0.97,"titleScore":1,"artistScore":1,"durationScore":0.8,"title":"Karma Police","artists":["Radiohead"],"album":"OK Computer","durationMs":270000},null],"matched":1,"librarySize":1234}"#
+        let response = try JSONDecoder().decode(SidecarMatchResponse.self, from: Data(json.utf8))
+        #expect(response.results.count == 2)
+        #expect(response.results[0]?.jellyfinId == "j1")
+        #expect(response.results[1] == nil)
+        #expect(response.matched == 1)
+    }
+}
