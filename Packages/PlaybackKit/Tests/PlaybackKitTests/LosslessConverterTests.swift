@@ -125,6 +125,16 @@ struct LosslessConverterTests {
         }
     }
 
+    @Test("the scratch name keeps the container's extension, and is recognisable afterwards")
+    func scratchNaming() {
+        let destination = URL(fileURLWithPath: "/tmp/Downloads/abc123.m4a")
+        let scratch = LosslessConverter.scratchURL(for: destination)
+        #expect(scratch.pathExtension == "m4a", "the writer picks the container from this")
+        #expect(scratch.lastPathComponent == "abc123.converting.m4a")
+        #expect(LosslessConverter.isScratch(scratch))
+        #expect(!LosslessConverter.isScratch(destination))
+    }
+
     @Test("bit depth is read from the format flags, defaulting to sixteen")
     func bitDepth() {
         var description = AudioStreamBasicDescription()

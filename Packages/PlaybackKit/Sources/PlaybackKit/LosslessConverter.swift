@@ -22,10 +22,41 @@ public enum LosslessConverter {
     /// passes; small enough that memory stays a few megabytes.
     private static let framesPerPass: AVAudioFrameCount = 65_536
 
+    /// Where the file is written before it earns the real name.
+    ///
+    /// The extension has to stay `.m4a`: `AVAudioFile` chooses the *container*
+    /// from the extension it is asked to write, so a scratch file called
+    /// `x.m4a.converting` is not an MPEG-4 file at all, whatever it is renamed to
+    /// afterwards — the player then refuses it as "file format not recognized".
+    /// That is exactly what happened; hence the marker sits before the extension.
+    public static func scratchURL(for destination: URL) -> URL {
+        destination.deletingPathExtension()
+            .appendingPathExtension("converting")
+            .appendingPathExtension(destination.pathExtension)
+    }
+
+    /// Whether a file is a conversion the app was interrupted in the middle of.
+    public static func isScratch(_ url: URL) -> Bool {
+        url.deletingPathExtension().pathExtension == "converting"
+    }
+
     /// Converts `source` into an Apple Lossless `.m4a` at `destination`, replacing
-    /// anything already there. Synchronous and CPU-bound: call it off the main
-    /// actor.
+    /// anything already there. Written to a scratch name first and moved into
+    /// place whole, so a crash mid-write can never leave a half file wearing the
+    /// real one's name. Synchronous and CPU-bound: call it off the main actor.
     public static func convertFLAC(at source: URL, to destination: URL) throws {
+        let scratch = scratchURL(for: destination)
+        do {
+            try write(source, to: scratch)
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: scratch, to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: scratch)
+            throw error
+        }
+    }
+
+    private static func write(_ source: URL, to destination: URL) throws {
         let probe = try AVAudioFile(forReading: source)
         let description = probe.fileFormat.streamDescription.pointee
         guard description.mFormatID == kAudioFormatFLAC else { throw Failure.notFLAC }

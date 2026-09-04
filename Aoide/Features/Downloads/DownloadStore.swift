@@ -233,7 +233,7 @@ final class DownloadStore: NSObject {
         for url in contents {
             // A conversion the app was killed in the middle of. Its real file, if
             // any, is a sibling; this one is incomplete and wears the wrong name.
-            if url.pathExtension == "converting" {
+            if LosslessConverter.isScratch(url) || url.pathExtension == "converting" {
                 try? FileManager.default.removeItem(at: url)
                 continue
             }
@@ -320,6 +320,9 @@ final class DownloadStore: NSObject {
         conversionsPending += 1
         Task(priority: .utility) {
             defer { conversionsPending -= 1 }
+            // A queue of hundreds waits its turn on the converter; once one has
+            // been refused there is no point in the rest taking theirs.
+            guard !conversionDistrusted else { return }
             guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else {
                 conversionProblem = "The converter could not read this FLAC."
                 return

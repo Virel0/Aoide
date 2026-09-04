@@ -14,18 +14,14 @@ actor LosslessConversionQueue {
 
     private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
 
-    /// Writes `flac` as Apple Lossless at `target`, via a scratch name so a crash
-    /// mid-write can never leave a half file wearing the real one's name.
-    /// Returns false, having cleaned up, when the conversion did not happen.
+    /// Writes `flac` as Apple Lossless at `target`. The converter handles its own
+    /// scratch file — see `LosslessConverter.scratchURL`, and why the name matters.
+    /// Returns false when the conversion did not happen.
     func convert(flac: URL, to target: URL) -> Bool {
-        let scratch = target.appendingPathExtension("converting")
         do {
-            try LosslessConverter.convertFLAC(at: flac, to: scratch)
-            try? FileManager.default.removeItem(at: target)
-            try FileManager.default.moveItem(at: scratch, to: target)
+            try LosslessConverter.convertFLAC(at: flac, to: target)
             return true
         } catch {
-            try? FileManager.default.removeItem(at: scratch)
             log.error("Couldn't convert \(flac.lastPathComponent, privacy: .public) to Apple Lossless: \(error.localizedDescription, privacy: .public)")
             return false
         }
