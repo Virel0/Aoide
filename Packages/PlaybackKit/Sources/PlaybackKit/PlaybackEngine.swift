@@ -135,6 +135,10 @@ public final class PlaybackEngine {
     /// The pending retry per entry, so a deliberate action can cancel it.
     private var retryTasks: [UUID: Task<Void, Never>] = [:]
 
+    /// The last track given up on and why, for a screen to show. Cleared when a
+    /// track next loads, so it describes the current trouble and not history.
+    public private(set) var lastFailure: PlaybackFailure?
+
     /// How far ahead of the playhead to buffer, in seconds.
     ///
     /// Long enough to hold a whole track: once a song has started over cellular it
@@ -677,7 +681,11 @@ public final class PlaybackEngine {
         let status = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status
             let assetDuration = item.duration.validDuration
-            let errorMessage = item.error?.localizedDescription
+            // The description alone is "The operation couldn't be completed"; the
+            // domain and code are what name the cause.
+            let errorMessage = (item.error as NSError?).map { error in
+                "\(error.localizedDescription) [\(error.domain) \(error.code)]"
+            }
             let key = ObjectIdentifier(item)
             Task { @MainActor [weak self] in
                 self?.handleStatus(status, key: key, assetDuration: assetDuration, error: errorMessage)
@@ -713,6 +721,7 @@ public final class PlaybackEngine {
             if let assetDuration { assetDurations[key] = assetDuration }
             if let entryId = entryForItem[key] { loadFailures[entryId] = nil }
             guard isCurrent else { return }
+            lastFailure = nil
             if let assetDuration { duration = assetDuration }
 
             // Ask again. `play()` is called the instant the items are inserted,
@@ -731,8 +740,17 @@ public final class PlaybackEngine {
             let message = error ?? "This track couldn't be played."
             // Read the entry id BEFORE releasing, which clears the mapping.
             guard let entryId = entryForItem[key] else { return }
-            let failures = (loadFailures[entryId] ?? 0) + 1
+            let track = queue.entries.first { $0.id == entryId }?.track
+            // A file on this device does not come back after a wait. Retrying it
+            // is thirty seconds of a spinner over a missing file; give up now,
+            // remember why, and let the screen say so.
+            let isLocal = track?.streamURL.isFileURL ?? false
+            let failures = isLocal ? Int.max : (loadFailures[entryId] ?? 0) + 1
             loadFailures[entryId] = failures
+            if isLocal, let track {
+                lastFailure = PlaybackFailure(trackTitle: track.title, message: message)
+                log.error("Local file failed: \(track.title, privacy: .public): \(message, privacy: .public)")
+            }
 
             if isCurrent {
                 if let delay = LoadRetryPolicy.delay(afterFailures: failures, whileQueued: false) {
@@ -752,17 +770,22 @@ public final class PlaybackEngine {
                 // the music — take it out of the window so the boundary doesn't
                 // stall on it, and put it back once the delay has passed. Dropping
                 // it outright is what used to make songs vanish on a walk.
-                let delay = LoadRetryPolicy.delay(afterFailures: failures, whileQueued: true) ?? .seconds(16)
-                log.warning("Queued track failed to load (\(failures)), retrying in \(delay.seconds)s: \(message, privacy: .public)")
-
-                coolingEntries.insert(entryId)
+                if isLocal {
+                    failedEntries.insert(entryId)
+                } else {
+                    coolingEntries.insert(entryId)
+                }
                 if let item = player.items().first(where: { ObjectIdentifier($0) == key }) {
                     player.remove(item)
                 }
                 enqueued.removeAll { $0 == key }
                 release(key: key)
                 syncPlayer()
-                scheduleRetry(of: entryId, after: delay)
+                if !isLocal {
+                    let delay = LoadRetryPolicy.delay(afterFailures: failures, whileQueued: true) ?? .seconds(16)
+                    log.warning("Queued track failed to load (\(failures)), retrying in \(delay.seconds)s: \(message, privacy: .public)")
+                    scheduleRetry(of: entryId, after: delay)
+                }
             }
 
         default:

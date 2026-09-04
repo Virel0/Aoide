@@ -18,7 +18,8 @@ import Foundation
 ///
 /// Noise words: feat, ft, featuring, with, remaster, remastered, remix, mix,
 /// version, edit, live, mono, stereo, deluxe, anniversary, bonus, explicit,
-/// clean, radio, single, demo, acoustic, instrumental, from, original, edition.
+/// clean, radio, single, demo, acoustic, instrumental, from, original, edition,
+/// extended, reissue.
 ///
 /// Scores (0…1), each from the two normalised strings' word sets:
 /// - equal → 1; one's words all inside the other's → 0.9; otherwise the Jaccard
@@ -61,7 +62,7 @@ public enum TrackMatcher {
         "feat", "ft", "featuring", "with", "remaster", "remastered", "remix", "mix",
         "version", "edit", "live", "mono", "stereo", "deluxe", "anniversary", "bonus",
         "explicit", "clean", "radio", "single", "demo", "acoustic", "instrumental",
-        "from", "original", "edition",
+        "from", "original", "edition", "extended", "reissue",
     ]
 
     public static func verdict(for track: ImportedTrack, against candidate: Candidate) -> Verdict {

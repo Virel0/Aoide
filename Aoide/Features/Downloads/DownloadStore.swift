@@ -57,6 +57,14 @@ final class DownloadStore: NSObject {
     /// still named them. See `retire(_:)`.
     @ObservationIgnored private var retiredFiles: Set<URL> = []
 
+    /// Tracks whose file was found unplayable and removed. See `checkFiles()`.
+    private(set) var damaged: Set<String> = []
+    private(set) var lastCheck: CheckReport?
+
+    /// Set once a converted file failed the player's own check, so the phone does
+    /// not spend the afternoon producing files it will then throw away.
+    @ObservationIgnored private var conversionDistrusted = false
+
     private override init() {
         super.init()
         rebuildStateFromDisk()
@@ -168,6 +176,7 @@ final class DownloadStore: NSObject {
         if let url = files[trackId] { try? FileManager.default.removeItem(at: url) }
         files[trackId] = nil
         states[trackId] = .absent
+        damaged.remove(trackId)
         OfflineAssets.shared.remove(trackId: trackId)
     }
 
@@ -241,9 +250,12 @@ final class DownloadStore: NSObject {
             recovered += 1
         }
         log.info("Found \(recovered, privacy: .public) downloaded tracks on disk")
-        if !pendingFLAC.isEmpty {
-            log.info("Converting \(pendingFLAC.count, privacy: .public) FLAC downloads to Apple Lossless")
-            for (trackId, url) in pendingFLAC { convertIfFLAC(trackId, at: url) }
+        // Every file is asked whether it will play before conversion is allowed to
+        // touch anything, so a damaged file is found and disowned, not converted.
+        Task(priority: .utility) {
+            let report = await checkFiles()
+            log.info("Checked \(report.checked, privacy: .public) downloads, \(report.damaged, privacy: .public) damaged")
+            for (trackId, url) in pendingFLAC where files[trackId] == url { convertIfFLAC(trackId, at: url) }
         }
     }
 
@@ -277,6 +289,7 @@ final class DownloadStore: NSObject {
         }
         files[trackId] = destination
         states[trackId] = .downloaded
+        damaged.remove(trackId)
         convertIfFLAC(trackId, at: destination)
     }
 
@@ -290,10 +303,20 @@ final class DownloadStore: NSObject {
     /// this — the row already says downloaded, and the next play uses whichever
     /// file is there. See ``LosslessConverter``.
     private func convertIfFLAC(_ trackId: String, at url: URL) {
-        guard url.pathExtension.lowercased() == "flac" else { return }
+        guard url.pathExtension.lowercased() == "flac", !conversionDistrusted else { return }
         let target = Self.fileURL(for: trackId, extension: "m4a")
         Task(priority: .utility) {
             guard await LosslessConversionQueue.shared.convert(flac: url, to: target) else { return }
+            // Adopted only once the player itself says it will open the result. A
+            // conversion that reads back fine but will not play is worse than no
+            // conversion: the FLAC it replaced was playable.
+            let verdict = await Self.isPlayable(target)
+            guard verdict.ok else {
+                log.error("Converted file rejected by the player, keeping the FLAC: \(verdict.problem ?? "?", privacy: .public)")
+                try? FileManager.default.removeItem(at: target)
+                conversionDistrusted = true
+                return
+            }
             // Removed while converting: the listener no longer wants either file.
             guard files[trackId] == url else {
                 try? FileManager.default.removeItem(at: target)
@@ -396,5 +419,60 @@ private extension URL {
         let parts = pathComponents
         guard let index = parts.firstIndex(of: "Audio"), parts.count > index + 1 else { return nil }
         return parts[index + 1]
+    }
+}
+
+// MARK: - Checking the files
+
+import AVFoundation
+
+extension DownloadStore {
+    /// What a pass over the files on disk found.
+    struct CheckReport: Equatable {
+        var checked = 0
+        var damaged = 0
+        /// The player's own words for the first damaged file, for a screen to show.
+        var firstProblem: String?
+    }
+
+    /// Whether the player will have this file — the same question `AVPlayer`
+    /// asks, answered before anything is queued.
+    nonisolated static func isPlayable(_ url: URL) async -> (ok: Bool, problem: String?) {
+        let asset = AVURLAsset(url: url)
+        do {
+            let (playable, tracks) = try await asset.load(.isPlayable, .tracks)
+            guard playable else { return (false, "not playable") }
+            guard tracks.contains(where: { $0.mediaType == .audio }) else { return (false, "no audio track") }
+            return (true, nil)
+        } catch {
+            let nsError = error as NSError
+            return (false, "\(nsError.localizedDescription) [\(nsError.domain) \(nsError.code)]")
+        }
+    }
+
+    /// Checks every downloaded file, one at a time, and disowns the ones the player
+    /// cannot open — they are deleted and their tracks marked so the Downloads
+    /// screen can offer to fetch them again.
+    ///
+    /// Exists because a file can be on disk, the right size, and still unplayable,
+    /// and nothing else in the app can tell the difference between that and a
+    /// good one until it is too late.
+    @discardableResult
+    func checkFiles() async -> CheckReport {
+        var report = CheckReport()
+        for (trackId, url) in files.sorted(by: { $0.key < $1.key }) {
+            let verdict = await Self.isPlayable(url)
+            report.checked += 1
+            guard !verdict.ok else { continue }
+            report.damaged += 1
+            if report.firstProblem == nil { report.firstProblem = verdict.problem }
+            log.error("Damaged download \(url.lastPathComponent, privacy: .public): \(verdict.problem ?? "?", privacy: .public)")
+            try? FileManager.default.removeItem(at: url)
+            files[trackId] = nil
+            states[trackId] = .failed("This download can't be played. Download it again.")
+            damaged.insert(trackId)
+        }
+        lastCheck = report
+        return report
     }
 }

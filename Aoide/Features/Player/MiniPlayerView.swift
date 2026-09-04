@@ -22,7 +22,14 @@ struct MiniPlayerView: View {
                     Text(track.title)
                         .font(.subheadline)
                         .lineLimit(1)
-                    if !track.artist.isEmpty {
+                    if let failure = engine.lastFailure {
+                        // The player's reason, verbatim. Vague reassurance here
+                        // would hide the one line that says what is wrong.
+                        Text("Couldn't play \(failure.trackTitle): \(failure.message)")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    } else if !track.artist.isEmpty {
                         Text(track.artist)
                             .font(.caption2)
                             .foregroundStyle(.secondary)

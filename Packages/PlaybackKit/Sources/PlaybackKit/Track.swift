@@ -63,6 +63,12 @@ public enum RepeatMode: String, CaseIterable, Sendable {
     case one
 }
 
+/// A track the engine gave up on, and the reason in the player's own words.
+public struct PlaybackFailure: Equatable, Sendable {
+    public let trackTitle: String
+    public let message: String
+}
+
 public enum PlaybackState: Equatable, Sendable {
     case idle
     case buffering

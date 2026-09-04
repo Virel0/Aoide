@@ -79,6 +79,12 @@ struct SettingsView: View {
                     fromByteCount: downloads.diskUsage() + OfflineAssets.shared.diskUsage(),
                     countStyle: .file
                 ))
+                if let report = downloads.lastCheck {
+                    LabeledContent("Last check", value: "\(report.checked) checked, \(report.damaged) damaged")
+                }
+                Button("Check Downloads", systemImage: "stethoscope") {
+                    Task { await downloads.checkFiles() }
+                }
                 if downloads.downloadedCount > 0 {
                     Button("Remove All Downloads", role: .destructive) {
                         downloads.removeAll()

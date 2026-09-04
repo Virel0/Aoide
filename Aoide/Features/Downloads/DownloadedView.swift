@@ -55,6 +55,7 @@ struct DownloadedView: View {
                 }
             } else {
                 List {
+                    damagedBanner
                     if !playlists.isEmpty {
                         Section("Playlists") {
                             ForEach(playlists) { collectionRow($0) }
@@ -120,6 +121,36 @@ struct DownloadedView: View {
         // worth remembering; pruned here so the record cannot come back as an
         // empty row after the next download.
         .task { index.prune(keeping: presentIds) }
+    }
+
+    /// Files the player refused, found by the launch check. Named rather than
+    /// silently dropped: a download that vanishes is a mystery, one that says why
+    /// it went and offers to come back is a fixed problem.
+    @ViewBuilder
+    private var damagedBanner: some View {
+        let damaged = index.tracks.filter { downloads.damaged.contains($0.id) }
+        if !damaged.isEmpty {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        "\(damaged.count) download\(damaged.count == 1 ? "" : "s") couldn't be played and \(damaged.count == 1 ? "was" : "were") removed.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.footnote)
+                    if let problem = downloads.lastCheck?.firstProblem {
+                        Text(problem)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Download Again", systemImage: "arrow.down.circle") {
+                        store.download(damaged)
+                    }
+                    .buttonStyle(.bordered)
+                    .clipShape(.capsule)
+                }
+                .listRowSeparator(.hidden)
+            }
+        }
     }
 
     private func collectionRow(_ collection: DownloadedCollection) -> some View {
