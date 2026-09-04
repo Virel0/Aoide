@@ -16,6 +16,8 @@ public struct Track: Identifiable, Hashable, Sendable {
     public let artworkURL: URL?
     /// Track number, used only for display.
     public let trackNumber: Int?
+    /// Where the sound is, when the file has been measured. See ``SilenceBounds``.
+    public let sound: SilenceBounds?
 
     public init(
         id: String,
@@ -25,7 +27,8 @@ public struct Track: Identifiable, Hashable, Sendable {
         duration: Duration?,
         streamURL: URL,
         artworkURL: URL? = nil,
-        trackNumber: Int? = nil
+        trackNumber: Int? = nil,
+        sound: SilenceBounds? = nil
     ) {
         self.id = id
         self.title = title
@@ -35,6 +38,7 @@ public struct Track: Identifiable, Hashable, Sendable {
         self.streamURL = streamURL
         self.artworkURL = artworkURL
         self.trackNumber = trackNumber
+        self.sound = sound
     }
 
     /// Two entries for the same song in one queue must stay distinguishable —

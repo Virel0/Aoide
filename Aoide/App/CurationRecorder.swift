@@ -273,7 +273,11 @@ actor CurationRecorder: PlaybackReporter {
                 cacheRow: PlaybackContext.cacheRow(for: track, at: now),
                 // The engine's duration is the decoded one, and it is only about this
                 // track while this track is the one playing.
+                // With a trailing silence trimmed, the sound's end is the end the
+                // listener reached; measuring completion against the file's full
+                // length would call every such play unfinished.
                 durationMs: (isCurrent ? engine.duration : track.duration)
+                    .map { full in track.sound.map { min(full, $0.soundEnd) } ?? full }
                     .map { Int(($0.seconds * 1000).rounded()) },
                 queue: Queue(
                     // `UIDevice.current.name` is what the resume prompt on another device

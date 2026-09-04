@@ -541,6 +541,16 @@ public final class PlaybackEngine {
     private func makeItem(for track: Track, entryId: UUID) -> AVPlayerItem {
         let item = AVPlayerItem(url: track.streamURL)
         item.preferredForwardBufferDuration = Self.forwardBufferSeconds
+        // Play only where the sound is. The end point is the item's end as far as
+        // the player is concerned, so the handover to the next item is the same
+        // stall-free advance as reaching the file's own end; the start is a seek
+        // made while the item is still queued, so it is loaded from there.
+        if let sound = track.sound {
+            item.forwardPlaybackEndTime = sound.soundEnd.cmTime
+            if sound.soundStart > .zero {
+                item.seek(to: sound.soundStart.cmTime, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: nil)
+            }
+        }
         let key = ObjectIdentifier(item)
         entryForItem[key] = entryId
         itemObservations[key] = observations(for: item)

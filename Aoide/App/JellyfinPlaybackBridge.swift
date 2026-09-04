@@ -101,8 +101,12 @@ enum JellyfinPlaybackBridge {
         // point of downloading: in a car with no signal the stream URL would simply
         // fail, and the local file is also gapless where a transcode would not be.
         let source: URL
+        var sound: SilenceBounds?
         if let local = DownloadStore.localURLIfPresent(for: item.id) {
             source = local
+            // Only for downloads: the phone can only measure what it holds. A
+            // streamed track plays whole until the server can say where its sound is.
+            if TrimSilencePreference.isOn { sound = SilenceIndex.shared.bounds(for: item.id) }
         } else if let streamURL = try? client.streamURL(for: item.id, quality: quality) {
             source = streamURL
         } else {
@@ -117,7 +121,8 @@ enum JellyfinPlaybackBridge {
             duration: item.duration,
             streamURL: source,
             artworkURL: client.artworkURL(for: item, maxWidth: Design.ArtworkWidth.player),
-            trackNumber: item.indexNumber
+            trackNumber: item.indexNumber,
+            sound: sound
         )
     }
 }

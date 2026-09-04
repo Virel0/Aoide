@@ -64,9 +64,13 @@ final class MixComposer {
     /// rule will find it, but a search for "Helldivers" will. Both halves are kept,
     /// and the screen unions what each finds.
     struct Plan {
-        var rules: SmartRules?
+        /// One rule set per genre the mood implied, each carrying the shared
+        /// history rules — because a rule set has one match mode, and "rock or
+        /// metal, and not played in months" needs *or* for the genres and *and*
+        /// for the rest. Evaluated separately and unioned by the screen.
+        var rules: [SmartRules]
         var names: [String]
-        var isEmpty: Bool { rules == nil && names.isEmpty }
+        var isEmpty: Bool { rules.isEmpty && names.isEmpty }
     }
 
     /// A plan for a description, or nil when the model produced nothing usable.
@@ -114,7 +118,12 @@ final class MixComposer {
 
         When the description names a particular artist, album, band, game, film or \
         show, put that name in "names" exactly as written; the library will be \
-        searched for it. Do not turn a name into a genre.
+        searched for it. Then ALSO describe the mood that thing implies, using \
+        genres from the list: a war game or an action film implies driving genres \
+        (rock, metal, electronic, soundtrack); a study session, a farming or \
+        building game implies calm ones (lo-fi, ambient, jazz, classical, folk). \
+        Someone naming a game wants music that fits playing it, not only its \
+        soundtrack. Prefer two or three genres to one.
 
         Leave a field empty when the description says nothing about it. Guessing \
         produces rules that match nothing, which reads as the feature being broken.
@@ -135,17 +144,12 @@ final class MixComposer {
     /// Every rule is built through `SmartRule.init`, which refuses an illegal
     /// field/operator pair — so a model that asks for a title in the last six months
     /// loses that clause rather than producing a playlist that is silently empty.
-    private func resolve(_ described: DescribedMix) -> SmartRules? {
+    private func resolve(_ described: DescribedMix) -> [SmartRules] {
         var rules: [SmartRule] = []
 
-        for name in described.genres {
-            // Discarded unless the library really has it. An invented genre matches
-            // nothing, and a mix of nothing is indistinguishable from a broken one.
-            guard let genre = knownGenres[name.lowercased()] else { continue }
-            if let rule = try? SmartRule(field: .genre, op: .is, value: .text(genre)) {
-                rules.append(rule)
-            }
-        }
+        // Discarded unless the library really has it. An invented genre matches
+        // nothing, and a mix of nothing is indistinguishable from a broken one.
+        let genres = described.genres.compactMap { knownGenres[$0.lowercased()] }
 
         if let from = described.fromYear, from > 1860 {
             // `greaterThan` is exclusive, and a listener asking for the nineties means
@@ -184,19 +188,22 @@ final class MixComposer {
             rules.append(rule)
         }
 
-        // A description that was only names — "the Helldivers soundtrack" — has no
-        // rules, and "all of nothing" here would be the entire library poured in
-        // beside the search. Rules are only offered when the model set at least one.
-        guard !rules.isEmpty || described.length != nil else { return nil }
+        let limit = max(10, min(described.length ?? 40, 200))
 
-        // `all` of nothing is the whole library, which is a real mix — "anything, forty
-        // tracks". `any` of nothing can only ever be empty, so `SmartRules` refuses it
-        // and this never asks for it.
-        return try? SmartRules(
-            match: .all,
-            rules: rules,
-            limit: max(10, min(described.length ?? 40, 200))
-        )
+        // One rule set per genre, each with the shared rules; genres are *or*, the
+        // rest *and*. With no genre, one set of the shared rules — "all of nothing"
+        // being the whole library, which is a real mix: "anything, forty tracks".
+        // A description that was only names gets no rules at all, or the entire
+        // library would be poured in beside the search.
+        if genres.isEmpty {
+            guard !rules.isEmpty || described.length != nil else { return [] }
+            return [try? SmartRules(match: .all, rules: rules, limit: limit)].compactMap { $0 }
+        }
+        return genres.compactMap { genre in
+            guard let genreRule = try? SmartRule(field: .genre, op: .is, value: .text(genre)) else { return nil }
+            // Each set takes its share, so a three-genre mix is not forty of the first.
+            return try? SmartRules(match: .all, rules: [genreRule] + rules, limit: max(10, limit / genres.count + 1))
+        }
     }
 }
 

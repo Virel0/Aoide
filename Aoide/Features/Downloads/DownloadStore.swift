@@ -191,6 +191,7 @@ final class DownloadStore: NSObject {
         files[trackId] = nil
         states[trackId] = .absent
         damaged.remove(trackId)
+        SilenceIndex.shared.remove(trackId)
         OfflineAssets.shared.remove(trackId: trackId)
     }
 
@@ -200,6 +201,7 @@ final class DownloadStore: NSObject {
         files = [:]
         states = states.mapValues { _ in .absent }
         OfflineAssets.shared.removeAll()
+        SilenceIndex.shared.removeAll()
     }
 
     // MARK: - Accounting
@@ -270,6 +272,9 @@ final class DownloadStore: NSObject {
             let report = await checkFiles()
             log.info("Checked \(report.checked, privacy: .public) downloads, \(report.damaged, privacy: .public) damaged")
             for (trackId, url) in pendingFLAC where files[trackId] == url { convertIfFLAC(trackId, at: url) }
+            // Files from before silence was measured, in the same queue behind the
+            // conversions.
+            for (trackId, url) in files.sorted(by: { $0.key < $1.key }) { measureSilenceIfNeeded(trackId, at: url) }
         }
     }
 
@@ -305,6 +310,21 @@ final class DownloadStore: NSObject {
         states[trackId] = .downloaded
         damaged.remove(trackId)
         convertIfFLAC(trackId, at: destination)
+        measureSilenceIfNeeded(trackId, at: destination)
+    }
+
+    // MARK: - Silence
+
+    /// Finds where the sound starts and stops in a downloaded file, once per track.
+    /// The measurement is the same for the FLAC and its converted copy.
+    private func measureSilenceIfNeeded(_ trackId: String, at url: URL) {
+        guard !SilenceIndex.shared.isMeasured(trackId) else { return }
+        Task(priority: .utility) {
+            let found = await LosslessConversionQueue.shared.measureSilence(in: url)
+            // Removed while measuring: nothing to remember.
+            guard files[trackId] != nil else { return }
+            SilenceIndex.shared.record(found, for: trackId)
+        }
     }
 
     // MARK: - Gapless

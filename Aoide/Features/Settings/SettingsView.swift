@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var isConfirmingSignOut = false
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
     @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
+    @AppStorage(TrimSilencePreference.key) private var trimSilence = true
+    @State private var silence = SilenceIndex.shared
     @State private var siri = SiriAuthorization.shared
     @State private var downloads = DownloadStore.shared
 
@@ -116,10 +118,12 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Gapless Playback", isOn: .constant(true))
-                    .disabled(true)
+                Toggle("Trim Silence", isOn: $trimSilence)
+                LabeledContent("Measured", value: "\(silence.measuredCount) of \(downloads.downloadedCount) downloads")
+            } header: {
+                Text("Gapless")
             } footer: {
-                Text("Tracks run straight into each other. Downloads are converted to Apple Lossless on this phone, because Apple's FLAC decoder pads the end of a file and leaves about 57ms between tracks. Streaming still plays the server's FLAC, so albums you want gapless are worth downloading.")
+                Text("Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks play whole.")
             }
 
             Section {

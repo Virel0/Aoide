@@ -14,6 +14,17 @@ actor LosslessConversionQueue {
 
     private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
 
+    /// Where the sound is in a file, or nil when there is nothing to trim or the
+    /// file could not be read. Serial with the conversions, for the same reason.
+    func measureSilence(in url: URL) -> SilenceBounds? {
+        do {
+            return try SilenceBounds.analyze(url)
+        } catch {
+            log.error("Couldn't measure \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     /// Writes `flac` as Apple Lossless at `target`. The converter handles its own
     /// scratch file — see `LosslessConverter.scratchURL`, and why the name matters.
     /// Returns false when the conversion did not happen.

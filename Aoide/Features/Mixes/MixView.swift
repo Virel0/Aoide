@@ -16,7 +16,7 @@ struct MixView: View {
     @State private var composer: MixComposer?
     @State private var indexer = SongIndexer.shared
     @State private var description = ""
-    @State private var rules: SmartRules?
+    @State private var rules: [SmartRules] = []
     @State private var tracks: [JellyfinItem] = []
     @State private var isBuilding = false
     @State private var message: String?
@@ -106,7 +106,7 @@ struct MixView: View {
 
             Button("Discard") {
                 tracks = []
-                rules = nil
+                rules = []
                 message = nil
             }
             .buttonStyle(.borderless)
@@ -164,13 +164,19 @@ struct MixView: View {
 
             // The rules are evaluated locally, against the track cache and the play
             // history. No network, which is the whole reason a mix works on a plane.
-            if let composed = plan.rules {
+            // One list per rule set, dealt out in turns so three genres arrive
+            // shuffled together rather than in three blocks.
+            var lists: [[String]] = []
+            for composed in plan.rules {
                 do {
-                    ids.append(contentsOf: try await Task.detached { try store.evaluate(composed) }.value)
+                    lists.append(try await Task.detached { try store.evaluate(composed) }.value)
                 } catch {
                     message = "Those rules couldn't be evaluated."
                     return
                 }
+            }
+            for round in 0..<(lists.map(\.count).max() ?? 0) {
+                for list in lists where round < list.count { ids.append(list[round]) }
             }
 
             var seen: Set<String> = []
@@ -220,14 +226,21 @@ struct MixView: View {
     }
 
     private func save() {
-        guard let rules else { return }
         let name = String(description.trimmed.prefix(60))
 
         Task {
-            // Saved as rules, not as the tracks it happened to pick today. A mix
-            // frozen to a track list stops being the thing that was described.
-            if await playlists.createSmartPlaylist(name: name, rules: rules) != nil {
-                message = "Saved. It re-runs every time you open it."
+            // Saved as rules where one rule set describes it, so it re-runs every
+            // time it is opened. A mix drawn from several genres or from names is
+            // more than one rule set can say, and is saved as the songs it found.
+            if rules.count == 1, let only = rules.first {
+                if await playlists.createSmartPlaylist(name: name, rules: only) != nil {
+                    message = "Saved. It re-runs every time you open it."
+                } else {
+                    message = "Couldn't save that mix."
+                }
+            } else if let created = await playlists.createPlaylist(name: name) {
+                let added = await playlists.add(tracks, to: created)
+                message = "Saved \(added) songs as a playlist."
             } else {
                 message = "Couldn't save that mix."
             }
