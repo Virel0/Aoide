@@ -13,6 +13,9 @@ final class SilenceIndex {
     private(set) var bounds: [String: SilenceBounds] = [:]
     /// Tracks measured and found to need no trimming, so they are not measured again.
     private(set) var untrimmed: Set<String> = []
+    /// What the server has measured, for tracks this phone streams. `nil` inside
+    /// means the server looked and found nothing to trim.
+    private(set) var fromServer: [String: SilenceBounds?] = [:]
 
     @ObservationIgnored private let url: URL = {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -22,12 +25,14 @@ final class SilenceIndex {
     private struct Saved: Codable {
         var bounds: [String: SilenceBounds]
         var untrimmed: [String]
+        var fromServer: [String: SilenceBounds?]? = nil
     }
 
     private init() {
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
             bounds = saved.bounds
             untrimmed = Set(saved.untrimmed)
+            fromServer = saved.fromServer ?? [:]
         }
     }
 
@@ -35,10 +40,24 @@ final class SilenceIndex {
         bounds[trackId] != nil || untrimmed.contains(trackId)
     }
 
-    func bounds(for trackId: String) -> SilenceBounds? { bounds[trackId] }
+    /// This phone's own measurement first, then the server's.
+    func bounds(for trackId: String) -> SilenceBounds? {
+        if let own = bounds[trackId] { return own }
+        if untrimmed.contains(trackId) { return nil }
+        return fromServer[trackId] ?? nil
+    }
+
+    func isKnownFromServer(_ trackId: String) -> Bool { fromServer[trackId] != nil }
 
     func record(_ found: SilenceBounds?, for trackId: String) {
         if let found { bounds[trackId] = found; untrimmed.remove(trackId) } else { bounds[trackId] = nil; untrimmed.insert(trackId) }
+        save()
+        // The server can serve this without decoding the file itself.
+        SoundBoundsSync.shared.upload(found, for: trackId)
+    }
+
+    func recordFromServer(_ found: SilenceBounds?, for trackId: String) {
+        fromServer[trackId] = .some(found)
         save()
     }
 
@@ -55,9 +74,10 @@ final class SilenceIndex {
     }
 
     var measuredCount: Int { bounds.count + untrimmed.count }
+    var serverCount: Int { fromServer.count }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(Saved(bounds: bounds, untrimmed: Array(untrimmed))) else { return }
+        guard let data = try? JSONEncoder().encode(Saved(bounds: bounds, untrimmed: Array(untrimmed), fromServer: fromServer)) else { return }
         try? data.write(to: url, options: .atomic)
     }
 }

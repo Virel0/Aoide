@@ -135,6 +135,11 @@ public final class PlaybackEngine {
     /// The pending retry per entry, so a deliberate action can cancel it.
     private var retryTasks: [UUID: Task<Void, Never>] = [:]
 
+    /// Asked, at the moment an item is made, for bounds a track did not carry —
+    /// the app's cache of what the server has measured, which may have arrived
+    /// after the queue was built. Main-actor, synchronous: a lookup, never a fetch.
+    public var soundResolver: ((Track) -> SilenceBounds?)?
+
     /// The last track given up on and why, for a screen to show. Cleared when a
     /// track next loads, so it describes the current trouble and not history.
     public private(set) var lastFailure: PlaybackFailure?
@@ -545,7 +550,7 @@ public final class PlaybackEngine {
         // the player is concerned, so the handover to the next item is the same
         // stall-free advance as reaching the file's own end; the start is a seek
         // made while the item is still queued, so it is loaded from there.
-        if let sound = track.sound {
+        if let sound = track.sound ?? soundResolver?(track) {
             item.forwardPlaybackEndTime = sound.soundEnd.cmTime
             if sound.soundStart > .zero {
                 item.seek(to: sound.soundStart.cmTime, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: nil)

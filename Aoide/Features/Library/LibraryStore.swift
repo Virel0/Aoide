@@ -370,6 +370,10 @@ final class LibraryStore {
     /// Every queue change passes through here, so this is where that is checked.
     private func queueDidChange() {
         DownloadStore.shared.sweepRetired()
+        // Bounds for what is queued, so a streamed track is trimmed like a
+        // downloaded one. Answers land before the engine makes the item, most of
+        // the time; the first track of a fresh queue may play whole once.
+        SoundBoundsSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
     }
 
     func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {
@@ -553,6 +557,7 @@ final class LibraryStore {
         PlaybackContext.attributing(source) {
             PlaybackEngine.shared.playNext(tracks)
         }
+        queueDidChange()
     }
 
     func addToQueue(_ items: [JellyfinItem], from source: PlaySource = .unknown) {
@@ -560,6 +565,7 @@ final class LibraryStore {
         PlaybackContext.attributing(source) {
             PlaybackEngine.shared.addToQueue(tracks)
         }
+        queueDidChange()
     }
 
     // MARK: - Helpers

@@ -119,11 +119,11 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Trim Silence", isOn: $trimSilence)
-                LabeledContent("Measured", value: "\(silence.measuredCount) of \(downloads.downloadedCount) downloads")
+                LabeledContent("Measured", value: "\(silence.measuredCount) of \(downloads.downloadedCount) downloads, \(silence.serverCount) from the server")
             } header: {
                 Text("Gapless")
             } footer: {
-                Text("Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks play whole.")
+                Text("Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks are trimmed with measurements from your server, which this phone also sends its own to.")
             }
 
             Section {

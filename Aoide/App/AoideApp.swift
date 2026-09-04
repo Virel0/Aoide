@@ -1,4 +1,5 @@
 import Intents
+import PlaybackKit
 import SwiftUI
 
 @main
@@ -27,6 +28,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             // would go unrecorded.
             CurationDatabase.open()
             AppSession.shared.restore()
+        // Bounds that arrive after a queue was built — the server's answer for a
+        // streamed track — are read at the moment the player makes the item.
+        PlaybackEngine.shared.soundResolver = { track in
+            TrimSilencePreference.isOn ? SilenceIndex.shared.bounds(for: track.id) : nil
+        }
         }
         return true
     }

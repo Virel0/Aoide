@@ -28,6 +28,22 @@ public extension JellyfinClient {
         return try await send(request, path: Self.pushPath)
     }
 
+    /// `GET /aoide/sound-bounds?ids=…`: where the sound starts and stops in each
+    /// track the server has measured. At most 200 ids per call.
+    func soundBounds(ids: [String]) async throws -> Data {
+        let query = [URLQueryItem(name: "ids", value: ids.joined(separator: ","))]
+        return try await send(request("GET", path: Self.soundBoundsPath, query: query), path: Self.soundBoundsPath)
+    }
+
+    /// `POST /aoide/sound-bounds`: this device's own measurements, so the server
+    /// can serve them without decoding. The body is already-encoded JSON.
+    func postSoundBounds(body: Data) async throws -> Data {
+        var request = request("POST", path: Self.soundBoundsPath)
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return try await send(request, path: Self.soundBoundsPath)
+    }
+
     /// `GET /aoide/sync/status`: what the server is and what it will take.
     func syncStatus() async throws -> Data {
         try await send(request("GET", path: Self.statusPath), path: Self.statusPath)
@@ -73,5 +89,6 @@ public extension JellyfinClient {
 
     private static var pushPath: String { "aoide/sync/push" }
     private static var statusPath: String { "aoide/sync/status" }
+    private static var soundBoundsPath: String { "aoide/sound-bounds" }
     private static var pullPath: String { "aoide/sync/pull" }
 }
