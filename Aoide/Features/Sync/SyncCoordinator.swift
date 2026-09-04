@@ -157,6 +157,7 @@ final class SyncCoordinator {
         engine = SyncEngine(
             store: store,
             transport: transport,
+            capabilities: transport,
             images: transport,
             imageBytes: PlaylistImageStore.shared,
             onPhaseChange: Self.publishPhase

@@ -66,6 +66,13 @@ actor CurationRecorder: PlaybackReporter {
             log.error("Couldn't cache \(track.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
 
+        // "Don't count this" means exactly that: no event is opened, so nothing is
+        // there to count later. History already recorded stays.
+        if (try? snapshot.store.flags(for: track.id))?.dontCount == true {
+            log.info("Not counting a play of \(track.title, privacy: .public): flagged")
+            return
+        }
+
         do {
             let event = try snapshot.store.beginPlay(
                 jellyfinId: track.id,

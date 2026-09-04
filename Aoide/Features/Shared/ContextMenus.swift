@@ -43,6 +43,10 @@ private struct TrackContextMenu: ViewModifier {
 
             Divider()
 
+            TasteFlagButtons(track: track)
+
+            Divider()
+
             Button(
                 track.userData?.isFavorite == true ? "Remove from Favourites" : "Favourite",
                 systemImage: track.userData?.isFavorite == true ? "heart.slash" : "heart"

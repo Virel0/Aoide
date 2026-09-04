@@ -127,6 +127,7 @@ struct SyncQuarantineView: View {
         case .like: "favourite"
         case .playEvent: "listening history"
         case .queueState: "queue"
+        case .trackFlags: "taste flag"
         case nil: "\u{201C}\(entity)\u{201D}"
         }
     }

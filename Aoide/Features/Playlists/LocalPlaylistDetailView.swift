@@ -151,6 +151,8 @@ struct LocalPlaylistDetailView: View {
                     library.addToQueue([item], from: playSource)
                 }
                 Divider()
+                TasteFlagButtons(track: item)
+                Divider()
                 if downloads.state(for: item.id).isPresent {
                     Button("Remove Download", systemImage: "arrow.down.circle.dotted") {
                         downloads.remove(item.id)

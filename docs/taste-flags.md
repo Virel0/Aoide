@@ -1,6 +1,6 @@
 # Taste flags: "not interested" and "don't count this"
 
-*Proposed 2026-09-04 by the app chat. Needs the sidecar's agreement before either client ships it.*
+*Proposed 2026-09-04 by the app chat. Agreed the same day: the sidecar accepts `track_flags` as of 1.9.0.0 and advertises `acceptedEntities` in `/aoide/sync/status`. Both clients hold `track_flags` ops locally — neither pushed nor quarantined — until that list names the entity, so either deployment order is safe.*
 
 ## Why
 
@@ -16,7 +16,7 @@ Two flags, per track, synced like a like:
 | flag | meaning | effect |
 |---|---|---|
 | `notInterested` | never offer this to me | excluded from mixes, stations, smart-playlist *results* and shuffle weighting; still playable and still in ordinary playlists |
-| `dontCount` | a play of this is not a fact about my taste | new play events for it are not recorded at all; existing history is untouched |
+| `dontCount` | a play of this is not a fact about my taste | new play events for it are not recorded at all; existing history is untouched — including plays another device recorded before it saw the flag, which is why evaluation reads the flag rather than trusting the events never to have existed |
 
 ## Wire form
 

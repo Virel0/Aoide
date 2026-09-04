@@ -16,6 +16,7 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
     case like
     case playEvent
     case queueState
+    case trackFlags
 
     // `track` is absent on purpose, and its absence is the enforcement rather than a
     // rule written down somewhere. The track cache is per-device — every device
@@ -36,7 +37,19 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
         case .like: "likes"
         case .playEvent: "play_events"
         case .queueState: "queue_state"
+        case .trackFlags: "track_flags"
         }
+    }
+
+    /// Entities a server may not know yet.
+    ///
+    /// The sidecar's entity list is an allow-list and an unknown name is refused,
+    /// which by the contract would quarantine the op — real user data lost to a
+    /// deployment order. Ops for these are held locally instead until the server
+    /// advertises the entity in `/aoide/sync/status`. Everything older than the
+    /// advertisement itself is assumed accepted.
+    public var needsServerSupport: Bool {
+        self == .trackFlags
     }
 
     public init?(localTable: String) {

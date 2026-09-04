@@ -92,6 +92,7 @@ struct InboundApplier {
         case .folder: try mergeFolder(op, in: db)
         case .playlistItem: try mergeItem(op, in: db)
         case .like: try mergeLike(op, in: db)
+        case .trackFlags: try mergeTrackFlags(op, in: db)
         case .queueState: try mergeQueue(op, in: db)
         case .playEvent: try appendEvent(op, operation: operation, in: db)
         }
@@ -174,6 +175,28 @@ struct InboundApplier {
             }
             _ = try Like.deleteOne(db, key: clash.id)
             report.supersededLikes += 1
+        }
+        try row.save(db)
+        report.applied += 1
+    }
+
+    /// Per-field like a playlist, deduped by track like a like: two devices that
+    /// each minted a row for the same track keep the newer row, and within one row
+    /// each flag keeps its own latest write.
+    private mutating func mergeTrackFlags(_ op: PulledOp, in db: Database) throws {
+        let existing = try TrackFlags.fetchOne(db, key: op.entityId)
+        guard let row = try fieldMergedWinner(TrackFlags.self, op, existing: existing, in: db) else { return }
+
+        let clash = try TrackFlags.filter(Column("jellyfinId") == row.jellyfinId).fetchOne(db)
+        if let clash, clash.id != row.id {
+            guard Self.incomingWins(
+                incoming: (row.updatedAt, row.originDevice),
+                existing: (clash.updatedAt, clash.originDevice)
+            ) else {
+                report.ignoredStale += 1
+                return
+            }
+            _ = try TrackFlags.deleteOne(db, key: clash.id)
         }
         try row.save(db)
         report.applied += 1

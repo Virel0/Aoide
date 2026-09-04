@@ -244,6 +244,21 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v8") { db in
+            // Taste flags. See `TrackFlags` for why they are not columns on `like`.
+            try db.create(table: "trackFlags") { t in
+                t.primaryKey("id", .text)
+                t.column("jellyfinId", .text).notNull().unique()
+                t.column("contentKey", .text).notNull()
+                t.column("notInterested", .boolean).notNull().defaults(to: false)
+                t.column("dontCount", .boolean).notNull().defaults(to: false)
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+                t.column("fieldUpdatedAt", .text)
+            }
+        }
+
         return migrator
     }
 }

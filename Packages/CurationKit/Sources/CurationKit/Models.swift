@@ -255,6 +255,59 @@ public struct Like: Codable, FetchableRecord, PersistableRecord, Syncable, Hasha
     }
 }
 
+// MARK: - Taste flags
+
+/// What a listener has said about a track beyond liking it: "never offer this to
+/// me", and "a play of this is not a fact about my taste".
+///
+/// Its own row rather than fields on `Like`, because a like set on one device and
+/// a flag set on another at the same moment must both survive — `Like` merges
+/// whole-row, and this merges per field, like a playlist. One row per track; the
+/// unique index on `jellyfinId` is what the merge dedupes on.
+public struct TrackFlags: Codable, FetchableRecord, PersistableRecord, Syncable, FieldStamped, Hashable, Sendable {
+    public static let databaseTableName = "trackFlags"
+
+    public var id: String
+    public var jellyfinId: String
+    public var contentKey: String
+    /// Excluded from mixes, stations, smart-playlist results and shuffle. Still
+    /// playable, still in ordinary playlists.
+    public var notInterested: Bool
+    /// New plays are not recorded. Existing history — including a play another
+    /// device recorded before it saw this flag — is untouched; evaluation reads the
+    /// flag rather than trusting the events never to have existed.
+    public var dontCount: Bool
+    public var updatedAt: Millis
+    public var deleted: Bool
+    public var originDevice: String
+    public var fieldUpdatedAt: FieldStamps?
+
+    public init(
+        id: String = UUID().uuidString,
+        jellyfinId: String,
+        contentKey: String,
+        notInterested: Bool = false,
+        dontCount: Bool = false,
+        updatedAt: Millis,
+        deleted: Bool = false,
+        originDevice: String,
+        fieldUpdatedAt: FieldStamps? = nil
+    ) {
+        self.id = id
+        self.jellyfinId = jellyfinId
+        self.contentKey = contentKey
+        self.notInterested = notInterested
+        self.dontCount = dontCount
+        self.updatedAt = updatedAt
+        self.deleted = deleted
+        self.originDevice = originDevice
+        self.fieldUpdatedAt = fieldUpdatedAt
+    }
+
+    /// A row with neither flag set says nothing; it is deleted rather than kept.
+    public var isEmpty: Bool { !notInterested && !dontCount }
+}
+
 // MARK: - History
 
 /// Where a play was started from, so recaps can say "mostly from playlists" and

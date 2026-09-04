@@ -28,6 +28,11 @@ public extension JellyfinClient {
         return try await send(request, path: Self.pushPath)
     }
 
+    /// `GET /aoide/sync/status`: what the server is and what it will take.
+    func syncStatus() async throws -> Data {
+        try await send(request("GET", path: Self.statusPath), path: Self.statusPath)
+    }
+
     /// `GET /aoide/sync/pull`.
     ///
     /// `since` is always sent, as zero on a device that has never synced.
@@ -67,5 +72,6 @@ public extension JellyfinClient {
     }
 
     private static var pushPath: String { "aoide/sync/push" }
+    private static var statusPath: String { "aoide/sync/status" }
     private static var pullPath: String { "aoide/sync/pull" }
 }

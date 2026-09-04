@@ -42,6 +42,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                NavigationLink("Hidden from Mixes") { TasteFlagsView() }
             } header: {
                 Text("Playlists")
             } footer: {

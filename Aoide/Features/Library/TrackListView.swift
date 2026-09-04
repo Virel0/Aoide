@@ -162,6 +162,10 @@ struct TrackListView: View {
 
             Divider()
 
+            TasteFlagButtons(track: track)
+
+            Divider()
+
             // This menu was missing a download entry entirely, which is why single
             // songs looked undownloadable: the only per-track affordance lived on a
             // different menu used by other screens.

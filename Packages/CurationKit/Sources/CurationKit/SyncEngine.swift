@@ -82,6 +82,9 @@ public enum SyncPhase: Hashable, Sendable {
 public actor SyncEngine {
     private let store: CurationStore
     private let transport: any SyncTransport
+    private let capabilities: (any SyncCapabilityTransport)?
+    /// Local table names whose ops are being held. See `SyncEntity.needsServerSupport`.
+    public private(set) var heldEntities: Set<String> = []
     /// Both optional: a sidecar without the image endpoints still syncs everything
     /// else, and covers simply stay on the device that chose them.
     private let images: (any SyncImageTransport)?
@@ -98,6 +101,7 @@ public actor SyncEngine {
     public init(
         store: CurationStore,
         transport: any SyncTransport,
+        capabilities: (any SyncCapabilityTransport)? = nil,
         images: (any SyncImageTransport)? = nil,
         imageBytes: (any ImageByteSource)? = nil,
         policy: SyncPolicy = .default,
@@ -106,6 +110,7 @@ public actor SyncEngine {
     ) {
         self.store = store
         self.transport = transport
+        self.capabilities = capabilities
         self.images = images
         self.imageBytes = imageBytes
         self.policy = policy
@@ -136,6 +141,7 @@ public actor SyncEngine {
             // leaves every other device with a cover it can never fetch, and nothing
             // afterwards notices — the playlist row is perfectly valid.
             let uploaded = try await uploadPendingImages()
+            heldEntities = await entitiesToHold()
             var report = try await pushPending()
             report.imagesUploaded = uploaded
             report.absorb(try await pullAndApply())
@@ -149,6 +155,20 @@ public actor SyncEngine {
     }
 
     // MARK: - Push
+
+    /// Which local tables must wait for the server.
+    ///
+    /// Asked once per sync. No capability transport, or one that cannot answer,
+    /// holds every entity that needs support — the safe direction: a held op
+    /// waits, a refused op is quarantined.
+    private func entitiesToHold() async -> Set<String> {
+        let needing = SyncEntity.allCases.filter(\.needsServerSupport)
+        guard !needing.isEmpty else { return [] }
+        guard let capabilities, let accepted = try? await capabilities.acceptedEntities() else {
+            return Set(needing.map(\.localTable))
+        }
+        return Set(needing.filter { !accepted.contains($0.wireName) }.map(\.localTable))
+    }
 
     /// Finds which op the server chokes on by halving the batch, and quarantines it.
     ///
@@ -231,7 +251,7 @@ public actor SyncEngine {
         var lastExchange = (accepted: 0, rejected: 0, unmatched: 0)
 
         while true {
-            let pending = try store.pendingOps(limit: policy.pushBatchSize)
+            let pending = try store.pendingOps(limit: policy.pushBatchSize, holding: heldEntities)
             guard !pending.isEmpty else { break }
 
             // A batch identical to the last one means the round trip accepted

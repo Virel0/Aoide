@@ -13,7 +13,7 @@ import JellyfinKit
 /// produces a *new* client rather than mutating this one, so a transport can never
 /// find its credentials changed underneath a request in flight. It is thrown away and
 /// rebuilt at every sign-in instead.
-struct JellyfinSyncTransport: SyncTransport, SyncImageTransport {
+struct JellyfinSyncTransport: SyncTransport, SyncImageTransport, SyncCapabilityTransport {
     private let client: JellyfinClient
 
     init(client: JellyfinClient) {
@@ -29,6 +29,15 @@ struct JellyfinSyncTransport: SyncTransport, SyncImageTransport {
         // server's own words exist.
         await SyncDiagnostics.shared.recordPush(sent: request.ops.count, reply: data)
         return try Self.decoder().decode(PushResponse.self, from: data)
+    }
+
+    /// The entities the server lists in its status. An older sidecar that lists
+    /// none is read as "nothing new is accepted", which holds only the entities
+    /// that need support; everything older is sent as it always was.
+    func acceptedEntities() async throws -> Set<String> {
+        struct Status: Decodable { var acceptedEntities: [String]? }
+        let data = try await Self.translatingStatus { try await client.syncStatus() }
+        return Set((try Self.decoder().decode(Status.self, from: data)).acceptedEntities ?? [])
     }
 
     func pull(since cursor: PullCursor?, limit: Int) async throws -> PullResponse {

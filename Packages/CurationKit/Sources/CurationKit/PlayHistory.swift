@@ -523,7 +523,7 @@ public extension CurationStore {
             """, arguments: [from, to]) ?? 0
     }
 
-    private static func placeholders(_ count: Int) -> String {
+    static func placeholders(_ count: Int) -> String {
         Array(repeating: "?", count: count).joined(separator: ",")
     }
 }

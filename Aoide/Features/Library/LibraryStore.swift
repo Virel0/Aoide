@@ -416,10 +416,11 @@ final class LibraryStore {
                     limit: limit
                 ).items
             }
-            guard !tracks.isEmpty else { return }
+            let wanted = await TasteStore.shared.withoutNotInterested(tracks)
+            guard !wanted.isEmpty else { return }
             // The one true `.shuffle`: a queue with no album, playlist or search behind
             // it, assembled because the listener asked for anything at all.
-            play(tracks, from: .shuffle)
+            play(wanted, from: .shuffle)
         } catch {
             log.error("Could not shuffle library: \(error.localizedDescription, privacy: .public)")
         }
@@ -433,7 +434,7 @@ final class LibraryStore {
 
     func startStation(seededById id: String, named name: String, artworkItemId: String?) async {
         do {
-            let mix = try await client.instantMix(seededBy: id)
+            let mix = await TasteStore.shared.withoutNotInterested(try await client.instantMix(seededBy: id))
             // Left `.unknown`: a station is none of the sources the schema has a word
             // for, and filing it under the nearest one would put songs nobody chose
             // into the recap's "you played this album a lot".

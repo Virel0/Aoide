@@ -158,9 +158,13 @@ public final class CurationStore: Sendable {
     // MARK: - Sync plumbing
 
     /// Ops waiting to be pushed, oldest first.
-    public func pendingOps(limit: Int = 500) throws -> [Op] {
+    public func pendingOps(limit: Int = 500, holding held: Set<String> = []) throws -> [Op] {
         try dbQueue.read { db in
-            try Op.filter(Column("synced") == false)
+            var request = Op.filter(Column("synced") == false)
+            // Held entities stay in the queue untouched — neither pushed nor
+            // quarantined — and never block what is behind them.
+            if !held.isEmpty { request = request.filter(!held.contains(Column("entity"))) }
+            return try request
                 .order(Column("createdAt"))
                 .limit(limit)
                 .fetchAll(db)

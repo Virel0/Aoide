@@ -482,7 +482,8 @@ struct SmartQuery: Sendable {
         FROM track t
         LEFT JOIN history h ON h.jellyfinId = t.jellyfinId
         LEFT JOIN "like" l ON l.jellyfinId = t.jellyfinId AND l.deleted = 0
-        WHERE \(filter)
+        LEFT JOIN trackFlags f ON f.jellyfinId = t.jellyfinId AND f.deleted = 0
+        WHERE COALESCE(f.notInterested, 0) = 0 AND (\(filter))
         ORDER BY \(try Self.order(rules.sort))
         \(tail)
         """

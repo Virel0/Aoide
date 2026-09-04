@@ -369,6 +369,15 @@ public protocol ImageByteSource: Sendable {
     func store(_ data: Data, hash: String) async
 }
 
+/// What the server says it will take.
+///
+/// `/aoide/sync/status` advertises `acceptedEntities`; an entity this build knows
+/// but the server does not yet is held rather than pushed, so a client shipped
+/// before its server never has real data refused and quarantined.
+public protocol SyncCapabilityTransport: Sendable {
+    func acceptedEntities() async throws -> Set<String>
+}
+
 public protocol SyncTransport: Sendable {
     func push(_ request: PushRequest) async throws -> PushResponse
 
