@@ -1,6 +1,6 @@
 # Sound bounds: where each track's sound starts and stops
 
-*Proposed 2026-09-04 by the app chat. Built and shipped on iOS for downloaded
+*Proposed 2026-09-04 from the client side. Built and shipped on iOS for downloaded
 files; this asks the sidecar to provide the same for streamed tracks, so the
 desktop (which never holds a file) and the phone (for anything not downloaded)
 can trim the same silence.*

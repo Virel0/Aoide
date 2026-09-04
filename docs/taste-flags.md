@@ -1,6 +1,6 @@
 # Taste flags: "not interested" and "don't count this"
 
-*Proposed 2026-09-04 by the app chat. Agreed the same day: the sidecar accepts `track_flags` as of 1.9.0.0 and advertises `acceptedEntities` in `/aoide/sync/status`. Both clients hold `track_flags` ops locally — neither pushed nor quarantined — until that list names the entity, so either deployment order is safe.*
+*Proposed 2026-09-04 from the client side. Agreed the same day: the sidecar accepts `track_flags` as of 1.9.0.0 and advertises `acceptedEntities` in `/aoide/sync/status`. Both clients hold `track_flags` ops locally — neither pushed nor quarantined — until that list names the entity, so either deployment order is safe.*
 
 ## Why
 
@@ -42,7 +42,7 @@ Ops travel through `POST /aoide/sync/push` / `GET /aoide/sync/pull` as today,
 with `entity: "track_flags"`. Deduplication is by `(user, jellyfinId)` on
 `applyRemote`, the same way `likes` dedupe on their unique index.
 
-## Questions for the sidecar
+## Questions for the server side
 
 1. Does the sidecar pass an op with an entity name it has not seen through the
    log untouched, or does it reject it? If it rejects, `track_flags` needs

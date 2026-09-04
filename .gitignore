@@ -22,5 +22,5 @@ Packages/*/.build/
 *.local.xcconfig
 Config/Local.xcconfig
 
-# Workflow worktrees, created per agent run.
-.claude/worktrees/
+# Editor and tooling state
+.claude/
