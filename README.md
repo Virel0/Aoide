@@ -38,7 +38,7 @@ and a play at the desk counts on the phone.
 ## Requirements
 
 - iPhone on iOS 26 or later. Mixes and sentence search need Apple Intelligence.
-- A Jellyfin server, 10.10 or later.
+- A Jellyfin server. Developed against 10.11; older 10.x releases may work but are untested.
 - The Aoide sidecar plugin on that server, for sync, taste flags, Spotify-import
   matching and silence measurement. Without it the app still plays music and
   keeps playlists locally.
