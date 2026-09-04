@@ -227,6 +227,12 @@ public final class PlaybackEngine {
         }
     }
 
+    /// Clears what comes next; the current track plays on.
+    public func clearUpNext() {
+        queue.clearUpNext()
+        syncPlayer()
+    }
+
     public func clearQueue() {
         stopReportingCurrent()
         forgetLoadFailures()

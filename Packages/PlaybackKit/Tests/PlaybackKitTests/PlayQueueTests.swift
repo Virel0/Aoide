@@ -338,3 +338,39 @@ struct EditingTests {
         #expect(queue.titles == ["a", "d", "b", "c"])
     }
 }
+
+@Suite("Clearing up next")
+struct ClearUpNextTests {
+    private func tracks(_ names: String...) -> [Track] {
+        names.map { Track(id: $0, title: $0, artist: "a", album: "b", duration: .seconds(1), streamURL: URL(string: "https://x/\($0)")!) }
+    }
+
+    @Test("keeps the current track and everything before it")
+    func keepsCurrentAndHistory() {
+        var queue = PlayQueue()
+        queue.load(tracks("a", "b", "c", "d"), startingAt: 1)
+        queue.clearUpNext()
+        #expect(queue.entries.map(\.track.id) == ["a", "b"])
+        #expect(queue.current?.track.id == "b")
+        #expect(queue.upNext.isEmpty)
+    }
+
+    @Test("under shuffle, the original order forgets the same tracks")
+    func shuffled() {
+        var queue = PlayQueue()
+        queue.load(tracks("a", "b", "c", "d", "e"), startingAt: 0, shuffled: true)
+        let current = queue.current?.track.id
+        queue.clearUpNext()
+        #expect(queue.upNext.isEmpty)
+        queue.setShuffled(false)
+        // Un-shuffling reveals the original order, which must hold no track that was cleared.
+        #expect(queue.entries.map(\.track.id) == [current])
+    }
+
+    @Test("an empty queue is left alone")
+    func empty() {
+        var queue = PlayQueue()
+        queue.clearUpNext()
+        #expect(queue.isEmpty)
+    }
+}

@@ -131,6 +131,7 @@ struct TrackListView: View {
         .contentShape(.rect)
         .onTapGesture {
             store.play(tracks, startingAt: index, from: source.playSource)
+            remember()
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -241,8 +242,8 @@ struct TrackListView: View {
             isEnabled: !tracks.isEmpty,
             // Shuffle is still the album (or the playlist): it says how these tracks
             // are being played, not where they came from.
-            onLeading: { store.play(tracks, shuffled: true, from: source.playSource) },
-            onPlay: { store.play(tracks, from: source.playSource) },
+            onLeading: { store.play(tracks, shuffled: true, from: source.playSource); remember() },
+            onPlay: { store.play(tracks, from: source.playSource); remember() },
             onTrailing: {
                 // Drive from local intent and adopt what the server confirms.
                 // Deriving the new value from `artworkItem.userData` read a snapshot
@@ -254,6 +255,20 @@ struct TrackListView: View {
             }
         )
         .padding(.top, 6)
+    }
+
+    /// This page as a thing Home can offer to resume.
+    private func remember() {
+        let kind: RecentContext.Kind
+        let id: String
+        switch source {
+        case .album(let albumId): kind = .album; id = albumId
+        case .playlist(let playlistId): kind = .jellyfinPlaylist; id = playlistId
+        }
+        store.remember(RecentContext(
+            kind: kind, id: id, name: title, subtitle: subtitle ?? nonEmptySubtitle,
+            artworkItemId: artworkItem.id, lastOpened: Date().millis
+        ))
     }
 
     /// This page as a thing the Downloads screen can file its songs under.

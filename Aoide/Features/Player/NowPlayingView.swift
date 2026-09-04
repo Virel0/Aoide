@@ -254,6 +254,15 @@ struct QueueView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+                // The same rules as the desktop's queue: reorder, remove, clear
+                // what's next. Clearing leaves the playing track alone.
+                if !engine.queue.upNext.isEmpty {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Clear Up Next", systemImage: "xmark.circle", role: .destructive) {
+                            engine.clearUpNext()
+                        }
+                    }
+                }
             }
         }
     }

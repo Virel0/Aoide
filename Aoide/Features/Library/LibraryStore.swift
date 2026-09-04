@@ -389,6 +389,11 @@ final class LibraryStore {
         // played, not where it came from, and `.shuffle` is reserved for a queue the
         // app assembled with no collection behind it at all.
         play(tracks, shuffled: shuffled, from: .album)
+        remember(RecentContext(
+            kind: .album, id: album.id, name: album.name,
+            subtitle: album.albumArtist ?? album.artists.first, artworkItemId: album.id,
+            lastOpened: Date().millis
+        ))
     }
 
     func queueAlbum(_ album: JellyfinItem, next: Bool) async {
@@ -423,15 +428,29 @@ final class LibraryStore {
     /// Jellyfin's Instant Mix — a station seeded from any track, album or artist.
     /// The closest thing a personal library has to Apple Music's radio.
     func startStation(seededBy item: JellyfinItem) async {
+        await startStation(seededById: item.id, named: item.name, artworkItemId: item.id)
+    }
+
+    func startStation(seededById id: String, named name: String, artworkItemId: String?) async {
         do {
-            let mix = try await client.instantMix(seededBy: item.id)
+            let mix = try await client.instantMix(seededBy: id)
             // Left `.unknown`: a station is none of the sources the schema has a word
             // for, and filing it under the nearest one would put songs nobody chose
             // into the recap's "you played this album a lot".
             play(mix)
+            remember(RecentContext(kind: .station, id: id, name: "\(name) Station", artworkItemId: artworkItemId, lastOpened: Date().millis))
         } catch {
             log.error("Could not start station: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Notes something the listener started a session from, for Home to offer again.
+    func remember(_ context: RecentContext) {
+        RecentContextStore.shared.remember(context)
+    }
+
+    func items(ids: [String]) async throws -> [JellyfinItem] {
+        try await client.items(ids: ids)
     }
 
     /// Flips the favourite flag on the server. Favourites are the one piece of

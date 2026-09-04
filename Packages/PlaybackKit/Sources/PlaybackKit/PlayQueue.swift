@@ -126,6 +126,17 @@ public struct PlayQueue: Sendable {
         position = nil
     }
 
+    /// Drops everything after the current track, which keeps playing.
+    ///
+    /// The queue's "now" is left alone: clearing is about what comes next, and a
+    /// clear that also stopped the music would be the one thing nobody meant.
+    public mutating func clearUpNext() {
+        guard let position else { return }
+        let kept = Set(entries.prefix(position + 1).map(\.id))
+        entries.removeAll { !kept.contains($0.id) }
+        unshuffledEntries?.removeAll { !kept.contains($0.id) }
+    }
+
     // MARK: - Movement
 
     /// The current track finished on its own.

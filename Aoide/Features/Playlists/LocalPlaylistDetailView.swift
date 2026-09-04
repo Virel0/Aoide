@@ -175,6 +175,17 @@ struct LocalPlaylistDetailView: View {
     private func play(from track: PlaylistTrack) {
         guard let index = contents.playbackIndex(of: track) else { return }
         library.play(contents.playbackOrder, startingAt: index, from: playSource)
+        remember()
+    }
+
+    /// This playlist as a thing Home can offer to resume.
+    private func remember() {
+        library.remember(RecentContext(
+            kind: .localPlaylist, id: current.id, name: current.name,
+            subtitle: current.isSmart ? "Smart playlist" : nil,
+            artworkItemId: current.artworkItemId ?? contents.playbackOrder.first?.albumId,
+            lastOpened: Date().millis
+        ))
     }
 
     // MARK: - Header
@@ -216,8 +227,8 @@ struct LocalPlaylistDetailView: View {
                 trailingLabel: current.isSmart ? "Edit Rules" : "Edit Details",
                 trailingFills: false,
                 isEnabled: !contents.playbackOrder.isEmpty,
-                onLeading: { library.play(contents.playbackOrder, shuffled: true, from: playSource) },
-                onPlay: { library.play(contents.playbackOrder, from: playSource) },
+                onLeading: { library.play(contents.playbackOrder, shuffled: true, from: playSource); remember() },
+                onPlay: { library.play(contents.playbackOrder, from: playSource); remember() },
                 onTrailing: { if current.isSmart { isEditingRules = true } else { isEditingDetails = true } }
             )
             .padding(.top, 6)

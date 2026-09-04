@@ -223,6 +223,21 @@ final class LocalPlaylistStore {
     /// without writing, so the rules reach disk only through `record` — the one path that
     /// also writes the op a rule change has to sync as.
     @discardableResult
+    /// Creates the built-in smart playlists this library does not have yet.
+    ///
+    /// Under fixed ids, so the desk creating the same ones ends in one row each, not
+    /// two; and only where no row has ever existed, so one that was deleted stays
+    /// deleted everywhere. Safe to call at every launch.
+    func ensureBuiltIns() async {
+        await run("set up the built-in playlists") { store in
+            for built in BuiltInPlaylist.allCases where !(try store.playlistRowExists(built.id)) {
+                let list = try store.createPlaylist(name: built.name, notes: built.notes, id: built.id)
+                try store.record(list.settingSmartRules(built.rules))
+            }
+        }
+        await reload()
+    }
+
     func createSmartPlaylist(name: String, rules: SmartRules, folderId: String? = nil) async -> Playlist? {
         let created: Playlist? = await run("create that playlist") { store in
             let list = try store.createPlaylist(name: name, folderId: folderId)

@@ -111,16 +111,28 @@ public extension CurationStore {
         return row?.deleted == true ? nil : row
     }
 
+    /// Whether a row with this id has ever existed here, deleted or not.
+    ///
+    /// For the built-ins: one that was deleted must stay deleted, and creating it
+    /// again under the same id would undelete it on every device.
+    func playlistRowExists(_ id: String) throws -> Bool {
+        try read { db in try Playlist.fetchOne(db, key: id) } != nil
+    }
+
     @discardableResult
     func createPlaylist(
         name: String,
         folderId: String? = nil,
         notes: String? = nil,
+        id: String? = nil,
         now: Millis = Date().millis
     ) throws -> Playlist {
         if let folderId { try requireFolder(folderId) }
         return try record(
             Playlist(
+                // A caller-chosen id is for the built-ins, which every device
+                // creates under the same id so they merge rather than duplicate.
+                id: id ?? UUID().uuidString,
                 name: name,
                 notes: notes,
                 folderId: folderId,

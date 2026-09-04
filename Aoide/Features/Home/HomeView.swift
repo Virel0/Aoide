@@ -14,6 +14,8 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Design.Spacing.shelf) {
+                    ResumeGrid()
+
                     if let hero = heroAlbum {
                         HeroCard(album: hero.album, eyebrow: hero.reason)
                     }
