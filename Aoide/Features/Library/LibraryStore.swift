@@ -366,6 +366,12 @@ final class LibraryStore {
     // MARK: - Downloads
 
     /// The store needs a client to build stream URLs, and the client lives here.
+    /// Files superseded by a converted copy are deleted once no queue names them.
+    /// Every queue change passes through here, so this is where that is checked.
+    private func queueDidChange() {
+        DownloadStore.shared.sweepRetired()
+    }
+
     func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {
         // Written before the transfer starts, not after: offline, the server cannot
         // be asked what a downloaded file contains, so the metadata must already be
@@ -518,6 +524,7 @@ final class LibraryStore {
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
         PlaybackContext.attributing(source) {
             PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
+            queueDidChange()
         }
     }
 

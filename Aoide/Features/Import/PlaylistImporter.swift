@@ -125,17 +125,22 @@ final class PlaylistImporter {
     /// throws: a search that fails is a track reported missing, which is the
     /// honest answer from here.
     private nonisolated static func lookUp(_ track: ImportedTrack, client: JellyfinClient) async -> JellyfinItem? {
-        let term = TrackMatcher.normalize(track.title)
-        guard !term.isEmpty else { return nil }
-        guard let items = try? await client.songs(searching: String(term.prefix(60))) else { return nil }
+        // Asked in the title's own spelling first, then wider. See `searchTerms`.
+        for term in TrackMatcher.searchTerms(for: track.title) {
+            guard let items = try? await client.songs(searching: String(term.prefix(60)), limit: 40),
+                  !items.isEmpty else { continue }
 
-        let candidates = items.map { item in
-            TrackMatcher.Candidate(
-                title: item.name,
-                artists: item.artists + (item.albumArtist.map { [$0] } ?? []),
-                durationMs: item.duration.map { Int($0.seconds * 1000) }
-            )
+            let candidates = items.map { item in
+                TrackMatcher.Candidate(
+                    title: item.name,
+                    artists: item.artists + (item.albumArtist.map { [$0] } ?? []),
+                    durationMs: item.duration.map { Int($0.seconds * 1000) }
+                )
+            }
+            if let index = TrackMatcher.best(for: track, among: candidates) {
+                return items[index]
+            }
         }
-        return TrackMatcher.best(for: track, among: candidates).map { items[$0] }
+        return nil
     }
 }

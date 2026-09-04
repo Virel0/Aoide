@@ -53,6 +53,10 @@ final class DownloadStore: NSObject {
     /// Maps a live task back to the track it is fetching.
     @ObservationIgnored private var trackForTask: [Int: String] = [:]
 
+    /// FLAC files replaced by a converted copy but not yet deleted, because a queue
+    /// still named them. See `retire(_:)`.
+    @ObservationIgnored private var retiredFiles: Set<URL> = []
+
     private override init() {
         super.init()
         rebuildStateFromDisk()
@@ -296,7 +300,29 @@ final class DownloadStore: NSObject {
                 return
             }
             files[trackId] = target
+            retire(url)
+        }
+    }
+
+    /// Deletes a superseded file — unless something is still going to play it.
+    ///
+    /// A queue is built with each track's file URL baked in, and the player opens
+    /// a queued file only when it gets near it. Deleting the FLAC the moment its
+    /// ALAC copy landed pulled the floor out from under every queued track that
+    /// named it: they failed one after another, which looked like the downloads
+    /// had vanished. So a file still named by the queue waits, and is swept the
+    /// next time a conversion finishes, a queue is loaded, or the app launches.
+    private func retire(_ url: URL) {
+        retiredFiles.insert(url)
+        sweepRetired()
+    }
+
+    func sweepRetired() {
+        guard !retiredFiles.isEmpty else { return }
+        let inUse = Set(PlaybackEngine.shared.queue.entries.map(\.track.streamURL))
+        for url in retiredFiles where !inUse.contains(url) {
             try? FileManager.default.removeItem(at: url)
+            retiredFiles.remove(url)
         }
     }
 

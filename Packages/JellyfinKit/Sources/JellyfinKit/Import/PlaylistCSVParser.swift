@@ -20,7 +20,10 @@ public enum PlaylistCSVParser {
     private static let isrcHeaders = ["isrc"]
 
     public static func parse(_ text: String, name: String) throws -> ImportedPlaylist {
-        let rows = CSV.rows(from: text).filter { !$0.allSatisfy(\.isEmpty) }
+        // Some exporters lead with a byte-order mark, which would glue itself to
+        // the first header and hide it from the aliases.
+        let clean = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+        let rows = CSV.rows(from: clean).filter { !$0.allSatisfy(\.isEmpty) }
         guard let header = rows.first else { throw Failure.empty }
 
         let columns = header.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }

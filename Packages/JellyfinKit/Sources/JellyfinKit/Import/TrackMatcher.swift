@@ -110,6 +110,44 @@ public enum TrackMatcher {
         return bestIndex
     }
 
+    // MARK: - What to ask the server
+
+    /// Phrases to search the library with, most specific first.
+    ///
+    /// The server matches names as typed, so it must be asked in the title's own
+    /// spelling: the *normalised* form — "don t stop me now" — matches nothing,
+    /// which is how an import once reported a library's own songs as missing.
+    /// The search widens step by step: the title as given; the title with the
+    /// noise stripped but punctuation intact ("Karma Police - Remastered 2009" →
+    /// "Karma Police"); the normalised words; and finally the single longest word,
+    /// for the case where the two sides spell punctuation differently. The matcher
+    /// judges whatever comes back, so a wide net costs nothing but a request.
+    public static func searchTerms(for title: String) -> [String] {
+        var terms: [String] = []
+        func add(_ term: String) {
+            let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !terms.contains(trimmed) else { return }
+            terms.append(trimmed)
+        }
+        add(title)
+        add(stripNoise(title))
+        let normalized = normalize(title)
+        add(normalized)
+        if let longest = normalized.split(separator: " ").max(by: { $0.count < $1.count }),
+           longest.count >= 4 {
+            add(String(longest))
+        }
+        return terms
+    }
+
+    /// The title without its noise groups and suffix, spelling otherwise untouched.
+    public static func stripNoise(_ title: String) -> String {
+        var s = stripNoisyGroups(title, open: "(", close: ")")
+        s = stripNoisyGroups(s, open: "[", close: "]")
+        s = stripNoisySuffix(s)
+        return s.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+    }
+
     // MARK: - Specification
 
     public static func normalize(_ text: String) -> String {
@@ -143,7 +181,7 @@ public enum TrackMatcher {
     }
 
     private static func containsNoise(_ text: Substring) -> Bool {
-        text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .contains { noiseWords.contains(String($0)) }
     }
 

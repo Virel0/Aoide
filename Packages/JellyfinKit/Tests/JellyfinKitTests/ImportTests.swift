@@ -85,6 +85,16 @@ struct TrackMatcherTests {
         #expect(TrackMatcher.normalize(input) == expected)
     }
 
+    @Test("search terms start with the title as spelled and widen from there", arguments: [
+        ("Don't Stop Me Now - 2011 Mix", ["Don't Stop Me Now - 2011 Mix", "Don't Stop Me Now", "don t stop me now", "stop"]),
+        ("Karma Police", ["Karma Police", "karma police", "police"]),
+        ("Crazy in Love (feat. Jay-Z)", ["Crazy in Love (feat. Jay-Z)", "Crazy in Love", "crazy in love", "crazy"]),
+        ("Hey", ["Hey", "hey"]),
+    ])
+    func searchTerms(_ title: String, _ expected: [String]) {
+        #expect(TrackMatcher.searchTerms(for: title) == expected)
+    }
+
     @Test("best picks the highest-scoring accepted candidate, not the first")
     func best() {
         let track = ImportedTrack(title: "Karma Police", artists: ["Radiohead"], durationMs: 264_000)
@@ -179,6 +189,12 @@ struct PlaylistCSVTests {
         let csv = "Title,Artist,Album,Duration\r\nKarma Police,Radiohead,OK Computer,4:24\r\n"
         let playlist = try PlaylistCSVParser.parse(csv, name: "x")
         #expect(playlist.tracks == [ImportedTrack(title: "Karma Police", artists: ["Radiohead"], album: "OK Computer", durationMs: 264_000)])
+    }
+
+    @Test("a byte-order mark does not hide the first header")
+    func bom() throws {
+        let playlist = try PlaylistCSVParser.parse("\u{FEFF}Title,Artist\nKarma Police,Radiohead\n", name: "x")
+        #expect(playlist.tracks.map(\.title) == ["Karma Police"])
     }
 
     @Test("refuses a file with no title column")
