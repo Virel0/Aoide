@@ -86,10 +86,31 @@ final class MixComposer {
         guard readiness == .ready else { return nil }
         await loadGenresIfNeeded()
 
-        let session = LanguageModelSession(instructions: instructions)
+        // The on-device model's window is small. A long genre list is the usual
+        // reason the prompt stops fitting, so it is retried with fewer genres and
+        // then with none, rather than failing on a library that happens to be
+        // richly tagged.
+        var described: DescribedMix?
+        var lastError: (any Error)?
+        for genreLimit in [80, 30, 0] {
+            let session = LanguageModelSession(instructions: instructions(genreLimit: genreLimit))
+            do {
+                described = try await session.respond(to: description, generating: DescribedMix.self).content
+                break
+            } catch let error as LanguageModelSession.GenerationError {
+                lastError = error
+                if case .exceededContextWindowSize = error {
+                    log.warning("Mix prompt too long with \(genreLimit) genres; retrying smaller")
+                    continue
+                }
+                break
+            } catch {
+                lastError = error
+                break
+            }
+        }
         do {
-            let response = try await session.respond(to: description, generating: DescribedMix.self)
-            let described = response.content
+            guard let described else { throw lastError ?? CancellationError() }
             let (rules, genres) = resolve(described)
             let plan = Plan(
                 rules: rules,
@@ -116,7 +137,7 @@ final class MixComposer {
         )
     }
 
-    private var instructions: String {
+    private func instructions(genreLimit: Int) -> String {
         var text = """
         You turn a description of a mood into rules for selecting music from a personal \
         library. You never choose songs; the rules do.
@@ -140,11 +161,14 @@ final class MixComposer {
         produces rules that match nothing, which reads as the feature being broken.
         """
 
-        if !knownGenres.isEmpty {
-            // Capped for the same reason as search: the instruction shares a context
-            // window with the description, and a library with hundreds of genres would
-            // crowd out the rules above, which matter more.
-            let list = knownGenres.values.sorted().prefix(80).joined(separator: ", ")
+        if !knownGenres.isEmpty, genreLimit > 0 {
+            // Capped: the instruction shares a context window with the description,
+            // and a library with hundreds of genres would crowd out the rules above,
+            // which matter more. Long names are the costly ones, so they go last.
+            let list = knownGenres.values
+                .sorted { ($0.count, $0) < ($1.count, $1) }
+                .prefix(genreLimit)
+                .joined(separator: ", ")
             text += "\n\nUse only these genres, exactly as spelled, or none: \(list)."
         }
         return text

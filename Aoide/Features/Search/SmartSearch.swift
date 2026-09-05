@@ -74,17 +74,29 @@ final class SmartSearch {
         guard readiness == .ready else { return nil }
         await loadGenresIfNeeded()
 
-        let session = LanguageModelSession(instructions: instructions)
-        do {
-            let response = try await session.respond(to: text, generating: ParsedQuery.self)
-            return resolve(response.content)
-        } catch {
-            log.error("Smart search parse failed: \(error.localizedDescription, privacy: .public)")
-            return nil
+        // The on-device model's window is small; a long genre list is what stops a
+        // prompt fitting, so it is retried with fewer genres, then with none.
+        for genreLimit in [80, 30, 0] {
+            let session = LanguageModelSession(instructions: instructions(genreLimit: genreLimit))
+            do {
+                let response = try await session.respond(to: text, generating: ParsedQuery.self)
+                return resolve(response.content)
+            } catch let error as LanguageModelSession.GenerationError {
+                if case .exceededContextWindowSize = error {
+                    log.warning("Search prompt too long with \(genreLimit) genres; retrying smaller")
+                    continue
+                }
+                log.error("Smart search parse failed: \(error.localizedDescription, privacy: .public)")
+                return nil
+            } catch {
+                log.error("Smart search parse failed: \(error.localizedDescription, privacy: .public)")
+                return nil
+            }
         }
+        return nil
     }
 
-    private var instructions: String {
+    private func instructions(genreLimit: Int) -> String {
         var text = """
         You convert a listener's description of music into search filters for their \
         personal music library. Extract only what the description actually states or \
@@ -102,7 +114,10 @@ final class SmartSearch {
             // Capped: the whole instruction shares the model's context window with the
             // prompt, and a library with hundreds of genres would crowd out the rules
             // above — which matter more than exhaustive coverage of the tail.
-            let list = knownGenres.values.sorted().prefix(80).joined(separator: ", ")
+            let list = knownGenres.values
+                .sorted { ($0.count, $0) < ($1.count, $1) }
+                .prefix(genreLimit)
+                .joined(separator: ", ")
             text += "\n\nUse only these genres, exactly as spelled, or none: \(list)."
         }
         return text
