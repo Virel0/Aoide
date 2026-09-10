@@ -151,6 +151,31 @@ struct DJTransitionTests {
         #expect(full.bars == 16)
     }
 
+    @Test("Records that clash get the short mix, not the long one")
+    func clashingKeysShortenTheMix() throws {
+        // 3B against 10B: seven steps apart on the wheel, which is two keys with
+        // little in common held against each other for however long the mix runs.
+        let clashing = try #require(DJPlanner.plan(
+            outgoing: record(bpm: 128, key: "3B"),
+            incoming: record(bpm: 128, key: "10B")
+        ))
+        #expect(clashing.bars == DJPlanner.minimumBars)
+        #expect(!clashing.isKeyCompatible)
+
+        // Neighbours keep the full sixteen.
+        let related = try #require(DJPlanner.plan(
+            outgoing: record(bpm: 128, key: "8A"),
+            incoming: record(bpm: 128, key: "9A")
+        ))
+        #expect(related.bars == DJPlanner.preferredBars)
+
+        // And an unmeasured key is not a clash — most of a library has no key at
+        // all, and shortening every mix on that basis would be shortening every
+        // mix.
+        let unmeasured = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
+        #expect(unmeasured.bars == DJPlanner.preferredBars)
+    }
+
     @Test("Both ends are put on the grid, whatever the mix points say")
     func snapsToDownbeats() throws {
         // A mix-out point half a beat off its own grid — which the server does
@@ -197,33 +222,65 @@ struct DJTransitionTests {
 
 @Suite("What each deck does across a mix")
 struct DJAutomationTests {
-    @Test("Volume holds a constant power, as a crossfade does")
-    func volume() {
-        for step in 0...16 {
-            let progress = Double(step) / 16
-            let out = DJAutomation.outgoingGain(progress: progress)
-            let into = DJAutomation.incomingGain(progress: progress)
-            #expect(abs(out * out + into * into - 1) < 1e-9)
+    private func linear(_ db: Double) -> Double { pow(10, db / 20) }
+
+    @Test("Neither fader moves while the low end is still deciding")
+    func fadersHoldUntilTheSwap() {
+        // The record carrying the bass is the record in front; turning it down
+        // before it hands the bass over is turning the mix down, which is the
+        // defect this replaced.
+        for step in 0...5 {
+            let progress = Double(step) / 5 * DJAutomation.swapPoint
+            #expect(DJAutomation.outgoingGain(progress: progress) == 1)
+        }
+        // And the incoming record is at full within about a bar of arriving.
+        #expect(DJAutomation.incomingGain(progress: 0) == 0)
+        #expect(DJAutomation.incomingGain(progress: DJAutomation.entryWidth) == 1)
+        #expect(DJAutomation.incomingGain(progress: 0.5) == 1)
+    }
+
+    @Test("The outgoing record leaves after the bass does, not before")
+    func outgoingLeavesLast() {
+        #expect(DJAutomation.outgoingGain(progress: 0.5) == 1)
+        #expect(DJAutomation.outgoingGain(progress: 0.75) < 1)
+        #expect(DJAutomation.outgoingGain(progress: 0.75) > 0)
+        #expect(abs(DJAutomation.outgoingGain(progress: 1)) < 1e-9)
+        // Monotonic: a fade that goes back up is a fade somebody hears.
+        var previous = 1.0
+        for step in 0...20 {
+            let gain = DJAutomation.outgoingGain(progress: Double(step) / 20)
+            #expect(gain <= previous + 1e-12)
+            previous = gain
         }
     }
 
-    @Test("The bass swaps rather than fading, and only one record has it")
-    func bassSwaps() {
-        // Early: the outgoing record has the low end to itself.
-        #expect(DJAutomation.outgoingBassDb(progress: 0.1) == 0)
-        #expect(DJAutomation.incomingBassDb(progress: 0.1) == DJAutomation.bassCutDb)
+    @Test("The bass swaps at constant power, not at constant decibels")
+    func bassSwapsWithoutAHole() {
+        // Two shelves meeting halfway down their travel are twelve decibels down
+        // each, and twelve down on both records at once is the hole that measured
+        // four and a half decibels in a rendered mix. Meeting at −3 keeps the low
+        // end's power flat across the crossing.
+        let middle = DJAutomation.swapPoint
+        #expect(abs(DJAutomation.outgoingBassDb(progress: middle) - -3.0103) < 0.01)
+        #expect(abs(DJAutomation.incomingBassDb(progress: middle) - -3.0103) < 0.01)
 
-        // Late: it has changed hands.
-        #expect(DJAutomation.outgoingBassDb(progress: 0.9) == DJAutomation.bassCutDb)
-        #expect(DJAutomation.incomingBassDb(progress: 0.9) == 0)
-
-        // And at every point in between, one of them is holding it: the two cuts
-        // always sum to one cut, so the low end is never doubled and never gone.
         for step in 0...40 {
             let progress = Double(step) / 40
-            let total = DJAutomation.outgoingBassDb(progress: progress) + DJAutomation.incomingBassDb(progress: progress)
-            #expect(abs(total - DJAutomation.bassCutDb) < 1e-9)
+            let out = linear(DJAutomation.outgoingBassDb(progress: progress))
+            let into = linear(DJAutomation.incomingBassDb(progress: progress))
+            let power = out * out + into * into
+            // Away from the swap one record is at full and the other is at the
+            // floor, which is a hair over one; through it the two sum to one.
+            #expect(power > 0.99 && power < 1.02, "low-end power \(power) at \(progress)")
         }
+    }
+
+    @Test("Either side of the swap, one record has the low end and one does not")
+    func bassBelongsToOne() {
+        #expect(DJAutomation.outgoingBassDb(progress: 0.1) == 0)
+        #expect(DJAutomation.incomingBassDb(progress: 0.1) == DJAutomation.bassCutDb)
+        #expect(DJAutomation.outgoingBassDb(progress: 0.9) == DJAutomation.bassCutDb)
+        #expect(DJAutomation.incomingBassDb(progress: 0.9) == 0)
     }
 
     @Test("The swap happens in the middle, where the downbeat is")
@@ -238,5 +295,7 @@ struct DJAutomationTests {
         #expect(DJAutomation.ramp(-1) == 0)
         #expect(DJAutomation.ramp(2) == 1)
         #expect(DJAutomation.ramp(.nan) == 0)
+        #expect(DJAutomation.outgoingGain(progress: .nan) == 1)
+        #expect(DJAutomation.incomingGain(progress: .nan) == 0)
     }
 }

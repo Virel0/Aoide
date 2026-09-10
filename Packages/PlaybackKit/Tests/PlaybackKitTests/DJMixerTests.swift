@@ -70,6 +70,7 @@ struct DJMixerTests {
         let rendered = try mixer.renderOffline(seconds: 3)
         let times = clickTimes(in: rendered)
         #expect(times.count == 3)
+        print("units report \(mixer.latency * 1000)ms of latency")
 
         // Every click is a constant 1.1ms late, which is the varispeed unit and
         // the shelf: both decks run through the same two, so the offset is

@@ -21,11 +21,18 @@ import Foundation
 /// player → varispeed → low shelf ─┘
 /// ```
 ///
-/// **Varispeed rather than time-pitch, deliberately.** `AVAudioUnitTimePitch`
-/// holds the pitch while changing the speed and is audibly artefacted above 1.0.
-/// Varispeed simply resamples, so speed and pitch move together — which is what a
-/// turntable's pitch fader does, and at the ±6% a mix ever asks for it is how
-/// records have been mixed since 1975.
+/// **Time-pitch rather than varispeed**, which reverses an earlier decision here
+/// and is worth explaining. Varispeed resamples, so speed and pitch move together
+/// — a turntable's pitch fader, and the authentic thing. But authenticity is not
+/// the goal: bending 170 BPM down to 164 is 3.7%, which takes the incoming record
+/// **62 cents flat**, most of a semitone. Against a record in another key that is
+/// simply out of tune, and a mix of two records out of tune with each other is
+/// the thing a listener calls bad without being able to name.
+///
+/// So the bend preserves pitch. Apple's own AutoMix time-stretches for the same
+/// reason. The cost is a processing latency, which is measured rather than
+/// assumed — see ``latency`` — and is identical on both decks, so it cancels
+/// between them and only matters when handing a record over from the player.
 ///
 /// Deliberately free of `AVAudioSession` and of anything iOS-only, so the whole
 /// thing can be rendered offline on a Mac and measured. See `DJMixerTests`.
@@ -42,7 +49,7 @@ public final class DJMixer {
 
     private final class Deck {
         let player = AVAudioPlayerNode()
-        let speed = AVAudioUnitVarispeed()
+        let speed = AVAudioUnitTimePitch()
         let shelf = AVAudioUnitEQ(numberOfBands: 1)
         var file: AVAudioFile?
         /// Whether this deck is meant to be sounding, as distinct from whether it
@@ -51,6 +58,9 @@ public final class DJMixer {
         var isRunning = false
 
         init() {
+            // Pitch held while the speed moves. `.varispeed` would be the other
+            // choice and is the one this used to make.
+            speed.pitch = 0
             let band = shelf.bands[0]
             band.filterType = .lowShelf
             band.frequency = DJMixer.bassShelfHz
@@ -102,6 +112,12 @@ public final class DJMixer {
 
     public func start() throws {
         try engine.start()
+        // Ask each node for buffers before anything needs them. A player node
+        // that starts cold reads its first blocks on the render thread's
+        // deadline, which is the one place work cannot be late.
+        for deck in decks.values where deck.file != nil {
+            deck.player.prepare(withFrameCount: 8_192)
+        }
     }
 
     public func stop() {
@@ -157,17 +173,42 @@ public final class DJMixer {
 
     // MARK: - The controls a mix moves
 
+    /// Every setter here refuses to write a value the unit already has.
+    ///
+    /// The automation runs sixty times a second and mostly asks for what is
+    /// already set — the rate in particular is constant for a whole mix. Writing
+    /// an audio unit's parameter is not free and is not always a no-op, so the
+    /// cheapest way to avoid whatever it costs is not to do it.
+    /// What the units add between a scheduled start and a sound.
+    ///
+    /// Constant, identical on both decks, and therefore invisible inside a mix —
+    /// but it is real, and handing a record over from the ordinary player has to
+    /// account for it or the two are that far apart at the crossing.
+    public var latency: Double {
+        guard let deck = decks[.a] else { return 0 }
+        return deck.speed.auAudioUnit.latency + deck.shelf.auAudioUnit.latency
+    }
+
     public func setRate(_ rate: Double, on side: Side) {
-        decks[side]?.speed.rate = Float(max(0.25, min(4, rate)))
+        guard let deck = decks[side] else { return }
+        let wanted = Float(max(0.25, min(4, rate)))
+        guard abs(deck.speed.rate - wanted) > 0.0001 else { return }
+        deck.speed.rate = wanted
     }
 
     public func setVolume(_ volume: Double, on side: Side) {
-        decks[side]?.player.volume = Float(max(0, min(1, volume)))
+        guard let deck = decks[side] else { return }
+        let wanted = Float(max(0, min(1, volume)))
+        guard abs(deck.player.volume - wanted) > 0.0005 else { return }
+        deck.player.volume = wanted
     }
 
     /// Decibels on the low shelf: 0 leaves the bass alone, negative takes it out.
     public func setBassDb(_ db: Double, on side: Side) {
-        decks[side]?.shelf.bands[0].gain = Float(max(-96, min(24, db)))
+        guard let deck = decks[side] else { return }
+        let wanted = Float(max(-96, min(24, db)))
+        guard abs(deck.shelf.bands[0].gain - wanted) > 0.01 else { return }
+        deck.shelf.bands[0].gain = wanted
     }
 
     /// Whether a deck is meant to be sounding. The end of a mix has to leave the

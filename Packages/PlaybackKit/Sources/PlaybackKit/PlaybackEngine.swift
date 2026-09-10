@@ -975,9 +975,12 @@ public final class PlaybackEngine {
 
         do {
             try mixer.start()
+            // The units' own latency comes off the content position: the deck
+            // is booked for a moment, and what reaches the speaker at that
+            // moment left the file that much earlier.
             try session.start(
                 item,
-                from: elapsed.seconds + Self.takeoverLead,
+                from: elapsed.seconds + Self.takeoverLead - mixer.latency,
                 at: djClock(),
                 inSeconds: Self.takeoverLead
             )
@@ -1114,10 +1117,12 @@ public final class PlaybackEngine {
 
     private func startDJTimer() {
         djTimer?.invalidate()
-        // Twenty a second: each step of the fade is a fraction of a decibel, and
-        // the decks' own alignment does not depend on this timer at all — it was
-        // settled when the mix was booked.
-        djTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        djLastTick = nil
+        // Sixty a second. The decks' own alignment does not depend on this timer
+        // — that was settled when the mix was booked — but every step it misses
+        // is a step of the fade taken in one jump instead of two, and a shelf
+        // moved twenty-four decibels in a few jumps is a click.
+        djTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.djTick() }
         }
     }
@@ -1139,9 +1144,20 @@ public final class PlaybackEngine {
         player.volume = 1
     }
 
+    /// When the automation last ran, so a stalled main thread can be named
+    /// rather than guessed at.
+    private var djLastTick: Double?
+
     private func djTick() {
         guard let session = djSession, let entryId = djEntryId else { return }
         let now = djClock()
+
+        // A mix is the one thing here that sounds wrong when the main thread is
+        // busy, and "it crackled" is not a report anybody can act on. This is.
+        if let last = djLastTick, now - last > 0.2, session.phase == .mixing {
+            log.warning("The mix automation was \((now - last) * 1000, privacy: .public)ms late")
+        }
+        djLastTick = now
 
         if let moment = takeover {
             runTakeover(moment, at: now)

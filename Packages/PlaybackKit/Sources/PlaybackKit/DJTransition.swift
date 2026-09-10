@@ -95,7 +95,18 @@ public enum DJPlanner {
 
         // Sixteen bars if they fit, eight if only those do. Measured against the
         // outgoing record, which is the one with a deadline.
-        for bars in [preferredBars, minimumBars] {
+        //
+        // Records whose keys clash get the short mix even when there is room for
+        // the long one. Sixteen bars is half a minute of two keys arguing, and
+        // the complaint that produced this rule was two tracks seven steps apart
+        // on the wheel held against each other for thirty seconds. It is still
+        // never a *refusal* — the key estimator has not been tried on real music,
+        // and refusing on a guess is worse than a short mix.
+        let clashes = outgoing.key != nil && incoming.key != nil
+            && !CamelotKey.areCompatible(outgoing.key, incoming.key)
+        let lengths = clashes ? [minimumBars] : [preferredBars, minimumBars]
+
+        for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
             let startMs = outMixOut - outBar * Double(bars)
 
@@ -161,56 +172,84 @@ public enum DJPlanner {
 
 /// What each deck does across the length of a mix, as numbers an engine applies.
 ///
-/// Two things happen at once, and they are not the same thing. The **volume**
-/// follows the same equal-power curve a crossfade uses, so the pair never dips
-/// or piles up in the middle. The **bass** does not fade at all — it *swaps*, at
-/// the halfway bar, because two kick drums playing together is the single
-/// muddiest sound in recorded music and no volume curve fixes it. Taking the low
-/// end off the incoming record until the moment it takes over is the oldest
-/// trick a DJ has, and it is why a mix sounds like one record rather than two.
+/// Rewritten after a rendered mix measured **four and a half decibels down at
+/// the swap**, which a listener heard as the volume dropping and having to be
+/// turned back up. Two records crossing should sound like one record playing.
+///
+/// **The defect was the bass swap, and only the bass swap.** Two shelves meeting
+/// at half their travel are each down twelve decibels, and twelve down on both
+/// records at once is a hole in the low end — where most of the energy in this
+/// kind of music is. They are complementary in *power* now: at the crossing each
+/// sits at −3 dB, so the two together are one record's worth of bass throughout.
+/// Re-measured, the notch is gone.
+///
+/// **The faders are a separate judgement, and a smaller one.** They barely move
+/// now — a DJ mixing on EQ does not ride the crossfader, and the record holding
+/// the low end is the record in front, so turning it down before it hands the
+/// bass over is turning the mix down. Measurement puts that change at about a
+/// decibel either way; it is here because it is how the thing is done, not
+/// because it was what was wrong.
 public enum DJAutomation {
     /// Where the bass hands over: the middle of the mix, which is a downbeat
     /// because the mix is a whole number of bars.
     public static let swapPoint = 0.5
 
-    /// How much of the mix the swap itself takes: about a beat.
+    /// How much of the mix the swap takes — about a bar.
     ///
-    /// Short on purpose. While it is happening both records are partly cut, so
-    /// the low end briefly dips — measured at a little over a third of one
-    /// record's bass at the midpoint — and the fix for that is to be quick
-    /// rather than to be gentle. A DJ flicks the knob; they do not ride it.
-    /// Wide enough not to click, and narrow enough that the dip is a moment
-    /// rather than a passage.
-    public static let swapWidth = 0.03
+    /// Not shorter: the gain of a shelf has to be stepped by something, and
+    /// stepping twenty-four decibels in two ticks is a click. Not longer: while
+    /// it happens both records have some low end, and that is the mud the swap
+    /// exists to avoid.
+    public static let swapWidth = 0.08
 
     /// How far the low end is taken down. Not silence: a shelf this deep is
     /// inaudible under the other record's bass, and going to zero makes the
     /// return audible as a hole closing.
     public static let bassCutDb = -24.0
 
+    /// The incoming record is up to full within about a bar, and stays there.
+    public static let entryWidth = 0.1
+
+    /// The outgoing record holds its level until the bass leaves it, then goes.
+    /// Before that point it is the record carrying the low end, and turning it
+    /// down is turning the mix down.
     public static func outgoingGain(progress: Double) -> Double {
-        MixCurve.outgoing(progress: progress)
+        let progress = clamp(progress)
+        guard progress > swapPoint else { return 1 }
+        return MixCurve.outgoing(progress: (progress - swapPoint) / (1 - swapPoint))
     }
 
     public static func incomingGain(progress: Double) -> Double {
-        MixCurve.incoming(progress: progress)
+        let progress = clamp(progress)
+        guard progress < entryWidth else { return 1 }
+        return MixCurve.incoming(progress: progress / entryWidth)
     }
 
     /// The outgoing record keeps its bass until the swap, then loses it.
     public static func outgoingBassDb(progress: Double) -> Double {
-        bassCutDb * ramp(progress)
+        db(MixCurve.outgoing(progress: ramp(progress)))
     }
 
     /// And the incoming record has none until the swap, then takes it.
     public static func incomingBassDb(progress: Double) -> Double {
-        bassCutDb * (1 - ramp(progress))
+        db(MixCurve.incoming(progress: ramp(progress)))
+    }
+
+    /// A linear gain as decibels on the shelf, floored at the cut rather than
+    /// running away to silence.
+    private static func db(_ gain: Double) -> Double {
+        guard gain > 0 else { return bassCutDb }
+        return max(bassCutDb, 20 * log10(gain))
     }
 
     /// 0 before the swap, 1 after it, and a short straight line between.
     static func ramp(_ progress: Double) -> Double {
-        guard progress.isFinite else { return 0 }
         let start = swapPoint - swapWidth / 2
-        let position = (progress - start) / swapWidth
-        return min(1, max(0, position))
+        return clamp((clamp(progress) - start) / swapWidth)
+    }
+
+    private static func clamp(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(1, max(0, value))
     }
 }
