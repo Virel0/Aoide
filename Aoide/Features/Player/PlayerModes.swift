@@ -115,3 +115,45 @@ struct ModeChipLabel: View {
             .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
     }
 }
+
+
+/// What Auto DJ is doing, said out loud above the scrubber.
+///
+/// A mix and a long crossfade look identical from a scrubber, and the difference
+/// is the entire feature — so the player says which it is, the way Apple Music's
+/// own does. It also answers the question people actually have, which is not
+/// "is it mixing" but "is it *going* to": a mix is booked half a minute before
+/// anybody hears it, and that half minute is when somebody wonders.
+///
+/// Nothing at all when Auto DJ is off, or when this record simply is not one to
+/// mix — a badge that says "no" on every track is a badge nobody reads.
+struct MixBadge: View {
+    let state: PlaybackEngine.MixState
+
+    var body: some View {
+        switch state {
+        case .off, .ready:
+            EmptyView()
+        case .booked(let bars):
+            label("Mix ready · \(bars) bars", symbol: "slider.horizontal.3", isLive: false)
+        case .mixing(let bars):
+            label("Mixing · \(bars) bars", symbol: "slider.horizontal.3", isLive: true)
+        }
+    }
+
+    private func label(_ title: String, symbol: String, isLive: Bool) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(isLive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background {
+                Capsule().fill(isLive ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(.quaternary))
+            }
+            .padding(.bottom, 6)
+            // A mix is a fifteen- or thirty-second event; appearing without a
+            // transition reads as a glitch.
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .animation(.easeInOut(duration: 0.25), value: isLive)
+    }
+}

@@ -140,6 +140,7 @@ struct SettingsView: View {
                     .onChange(of: albumLock) { PlaybackEngine.shared.isAlbumLocked = albumLock }
                 Toggle("Auto DJ", isOn: $autoDJ)
                     .onChange(of: autoDJ) { PlaybackEngine.shared.isAutoDJing = autoDJ }
+                NavigationLink("What Can Be Mixed") { MixableView() }
                 Toggle("Infinity", isOn: Binding(get: { infinity.isOn }, set: { infinity.setOn($0) }))
             } header: {
                 Text("Playback")

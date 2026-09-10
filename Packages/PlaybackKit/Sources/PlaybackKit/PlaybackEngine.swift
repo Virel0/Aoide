@@ -185,6 +185,24 @@ public final class PlaybackEngine {
     /// can be left on without ruining the albums that were sequenced.
     public var isAlbumLocked = true
 
+    /// What Auto DJ is doing right now, for a screen to show.
+    ///
+    /// A listener cannot tell a mix from a long crossfade by looking at a
+    /// scrubber, and the difference is the whole feature — so the player says
+    /// so, the way Apple's own does. `booked` also answers the question people
+    /// actually have, which is not "is it mixing" but "is it *going* to".
+    public enum MixState: Equatable, Sendable {
+        case off
+        /// The decks have this record but nothing is planned after it.
+        case ready
+        /// A mix into the next record is booked, and this is how long it will be.
+        case booked(bars: Int)
+        /// Two records are playing.
+        case mixing(bars: Int)
+    }
+
+    public private(set) var mixState: MixState = .off
+
     /// Auto DJ: whether tracks that can be mixed are mixed.
     ///
     /// A different thing from ``isCrossfading`` and a stricter one. A crossfade
@@ -957,6 +975,8 @@ public final class PlaybackEngine {
 
         djEntryId = entryId
         djScheduledEntryId = nil
+        bookedBars = nil
+        mixState = .ready
         duration = item.sound.map { $0.soundEnd } ?? track.duration
         elapsed = .zero
         lastReportedSecond = -1
@@ -1007,6 +1027,8 @@ public final class PlaybackEngine {
         djMixer = nil
         djEntryId = nil
         djScheduledEntryId = nil
+        bookedBars = nil
+        mixState = .off
     }
 
     private func djTick() {
@@ -1025,12 +1047,22 @@ public final class PlaybackEngine {
         elapsed = .seconds(session.position(at: now))
         bookMixIfDue(at: now)
 
+        let bars = bookedBars
+        switch (session.phase, bars) {
+        case (.mixing, let bars?): mixState = .mixing(bars: bars)
+        case (_, let bars?): mixState = .booked(bars: bars)
+        default: mixState = .ready
+        }
+
         let whole = Int(elapsed.seconds)
         if whole % 10 == 0, whole != lastReportedSecond {
             lastReportedSecond = whole
             report { await $0.playbackDidProgress($1, position: $2, isPaused: !self.state.isPlaying) }
         }
     }
+
+    /// How many bars the booked mix runs for, if one is booked.
+    private var bookedBars: Int?
 
     /// Books the mix into the next record, once it is close enough to be worth
     /// opening a second file for.
@@ -1040,6 +1072,7 @@ public final class PlaybackEngine {
 
         guard window.count == 2, window[1].entryId != window[0].entryId else {
             djScheduledEntryId = nil
+            bookedBars = nil
             return
         }
         let next = window[1]
@@ -1047,6 +1080,7 @@ public final class PlaybackEngine {
         // coming any more.
         if let booked = djScheduledEntryId, booked != next.entryId {
             djScheduledEntryId = nil
+            bookedBars = nil
         }
         guard djScheduledEntryId == nil, !session.hasScheduledMix else { return }
         guard let track = queue.currentTrack,
@@ -1058,6 +1092,7 @@ public final class PlaybackEngine {
         do {
             try session.schedule(transition, into: item, at: now)
             djScheduledEntryId = next.entryId
+            bookedBars = transition.bars
             log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
         } catch {
             log.warning("Couldn't book a mix: \(error.localizedDescription, privacy: .public)")
@@ -1070,6 +1105,7 @@ public final class PlaybackEngine {
         _ = queue.jump(to: entryId)
         djEntryId = entryId
         djScheduledEntryId = nil
+        bookedBars = nil
         lastReportedSecond = -1
         if let track = queue.currentTrack {
             duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration

@@ -34,6 +34,7 @@ struct NowPlayingView: View {
                 Spacer(minLength: 16)
 
                 titleBlock(track)
+                MixBadge(state: engine.mixState)
                 scrubber
                 transportControls
                 secondaryControls
