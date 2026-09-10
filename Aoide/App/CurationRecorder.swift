@@ -78,6 +78,7 @@ actor CurationRecorder: PlaybackReporter {
                 jellyfinId: track.id,
                 contentKey: row.contentKey,
                 source: snapshot.source,
+                activity: snapshot.activity,
                 at: snapshot.now
             )
             openPlay = OpenPlay(
@@ -251,6 +252,9 @@ actor CurationRecorder: PlaybackReporter {
 
         let store: CurationStore
         let source: PlaySource
+        /// What the listener said they were doing, read with everything else so
+        /// the whole snapshot describes one moment.
+        let activity: Activity?
         let cacheRow: TrackRef
         let durationMs: Int?
         let queue: Queue
@@ -270,6 +274,7 @@ actor CurationRecorder: PlaybackReporter {
             return Snapshot(
                 store: store,
                 source: PlaybackContext.source(of: track),
+                activity: ActivityStore.shared.current,
                 cacheRow: PlaybackContext.cacheRow(for: track, at: now),
                 // The engine's duration is the decoded one, and it is only about this
                 // track while this track is the one playing.

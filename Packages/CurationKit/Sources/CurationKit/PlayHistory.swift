@@ -108,6 +108,7 @@ public extension CurationStore {
         jellyfinId: String,
         contentKey: String,
         source: PlaySource = .unknown,
+        activity: Activity? = nil,
         at now: Millis = Date().millis
     ) throws -> PlayEvent {
         try append(PlayEvent(
@@ -116,8 +117,50 @@ public extension CurationStore {
             startedAt: now,
             msPlayed: 0,
             source: source,
+            // Recorded from the moment the listen began. A session that ends
+            // mid-track leaves that track tagged as what it was started during,
+            // which is the honest answer and the one a later query wants.
+            activity: activity,
             originDevice: deviceId
         ))
+    }
+
+    /// Finish counts split by what the listener was doing.
+    ///
+    /// The reason the tag exists: "the tracks I finish while gaming" is a
+    /// question no music server can answer and this one can.
+    func finishCounts(byActivity jellyfinIds: [String]) throws -> [Activity: FinishCounts] {
+        guard !jellyfinIds.isEmpty else { return [:] }
+        let rows: [(String, FinishCounts)] = try read { db in
+            var found: [(String, FinishCounts)] = []
+            for chunk in stride(from: 0, to: jellyfinIds.count, by: HistorySQL.maxParameters) {
+                let ids = Array(jellyfinIds[chunk..<min(chunk + HistorySQL.maxParameters, jellyfinIds.count)])
+                let fetched = try Row.fetchAll(db, sql: """
+                    SELECT activity,
+                           COUNT(*) AS starts,
+                           SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) AS completed
+                    FROM playEvent
+                    WHERE endedAt IS NOT NULL
+                      AND (completed = 1 OR skipped = 1)
+                      AND activity IS NOT NULL
+                      AND jellyfinId IN (\(Self.placeholders(ids.count)))
+                    GROUP BY activity
+                    """, arguments: StatementArguments(ids))
+                for row in fetched {
+                    let raw: String? = row["activity"]
+                    guard let raw else { continue }
+                    found.append((raw, FinishCounts(starts: row["starts"], completed: row["completed"])))
+                }
+            }
+            return found
+        }
+        var byActivity: [Activity: FinishCounts] = [:]
+        for (raw, counts) in rows {
+            // A word written by a newer build is dropped rather than guessed at.
+            guard let activity = Activity.parse(raw) else { continue }
+            byActivity[activity] = (byActivity[activity] ?? FinishCounts()) + counts
+        }
+        return byActivity
     }
 
     /// Closes a play, classifying it and amending the event `beginPlay` wrote.

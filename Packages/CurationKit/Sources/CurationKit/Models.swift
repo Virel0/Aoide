@@ -329,6 +329,8 @@ public struct PlayEvent: Codable, FetchableRecord, PersistableRecord, Hashable, 
     public var completed: Bool
     public var skipped: Bool
     public var source: String?
+    /// What the listener was doing when this began. See ``Activity``.
+    public var activity: String?
     public var originDevice: String
 
     public init(
@@ -341,6 +343,7 @@ public struct PlayEvent: Codable, FetchableRecord, PersistableRecord, Hashable, 
         completed: Bool = false,
         skipped: Bool = false,
         source: PlaySource = .unknown,
+        activity: Activity? = nil,
         originDevice: String
     ) {
         self.id = id
@@ -352,6 +355,7 @@ public struct PlayEvent: Codable, FetchableRecord, PersistableRecord, Hashable, 
         self.completed = completed
         self.skipped = skipped
         self.source = source.rawValue
+        self.activity = activity?.rawValue
         self.originDevice = originDevice
     }
 }

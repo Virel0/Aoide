@@ -641,3 +641,59 @@ struct FinishRateTests {
         #expect(try store.finishRate(jellyfinIds: []) == nil)
     }
 }
+
+@Suite("Activity tags")
+struct ActivityTests {
+    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
+
+    @Test("the set is closed, and anything outside it is dropped")
+    func closedSet() {
+        #expect(Activity.parse("gaming") == .gaming)
+        #expect(Activity.parse(nil) == nil)
+        // A word written by a build that knows more than this one.
+        #expect(Activity.parse("dancing") == nil)
+        #expect(Activity.parse("") == nil)
+        #expect(Activity.parse("Gaming") == nil, "the raw value is exact")
+        #expect(Set(Activity.allCases.map(\.rawValue)) == ["gaming", "focus", "chores", "commute"])
+    }
+
+    @Test("a listen carries what was set when it began")
+    func recordedAtBegin() throws {
+        let store = try store()
+        let event = try store.beginPlay(jellyfinId: "t1", contentKey: "k", activity: .gaming)
+        #expect(event.activity == "gaming")
+
+        // Changing the tag afterwards must not rewrite a listen already under way.
+        _ = try store.finishPlay(event, msPlayed: 200_000, trackDurationMs: 200_000, endedAt: Date().millis)
+        let stored = try store.read { db in try PlayEvent.fetchOne(db, key: event.id) }
+        #expect(stored?.activity == "gaming")
+    }
+
+    @Test("an untagged listen stays untagged rather than being guessed at")
+    func untagged() throws {
+        let store = try store()
+        let event = try store.beginPlay(jellyfinId: "t1", contentKey: "k")
+        #expect(event.activity == nil)
+    }
+
+    @Test("finish counts split by activity, ignoring untagged listens")
+    func splitByActivity() throws {
+        let store = try store()
+        for (activity, completed) in [(Activity.gaming, true), (.gaming, true), (.gaming, false), (.focus, false)] {
+            let event = try store.beginPlay(jellyfinId: "t1", contentKey: "k", activity: activity)
+            _ = try store.finishPlay(
+                event,
+                msPlayed: completed ? 200_000 : 3_000,
+                trackDurationMs: 200_000,
+                endedAt: Date().millis
+            )
+        }
+        let untagged = try store.beginPlay(jellyfinId: "t1", contentKey: "k")
+        _ = try store.finishPlay(untagged, msPlayed: 200_000, trackDurationMs: 200_000, endedAt: Date().millis)
+
+        let split = try store.finishCounts(byActivity: ["t1"])
+        #expect(split[.gaming] == FinishCounts(starts: 3, completed: 2))
+        #expect(split[.focus] == FinishCounts(starts: 1, completed: 0))
+        #expect(split.count == 2, "the untagged listen belongs to no activity")
+    }
+}

@@ -64,12 +64,23 @@ struct NowPlayingView: View {
         }
     }
 
+    /// The grab handle, with the activity chip parked in the corner beside it.
+    ///
+    /// Not down among the transport controls: the chip grows a word when it is set,
+    /// which would shove shuffle and repeat around every time it changed, and this
+    /// is something you set once and then want to *see* — not a control you reach
+    /// for mid-song.
     private var grabber: some View {
         Capsule()
             .fill(.secondary.opacity(0.5))
             .frame(width: 36, height: 5)
             .padding(.top, 8)
             .padding(.bottom, 4)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                ActivityButton()
+                    .padding(.trailing, 20)
+            }
     }
 
     private func titleBlock(_ track: Track) -> some View {

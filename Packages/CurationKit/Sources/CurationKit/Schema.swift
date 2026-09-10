@@ -259,6 +259,15 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v9") { db in
+            // What the listener was doing. See `Activity` for why it is a closed
+            // set. Nullable and never backfilled: everything recorded before
+            // this existed is honestly untagged rather than guessed at.
+            try db.alter(table: "playEvent") { t in
+                t.add(column: "activity", .text)
+            }
+        }
+
         return migrator
     }
 }
