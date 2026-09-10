@@ -263,3 +263,35 @@ renders click tracks and finds the clicks:
 
 The constant 1.1 ms is worth knowing and not worth fixing: both decks run through
 the same two units, so it is common to them and cancels in a mix.
+
+
+## In the app
+
+**Auto DJ is a toggle beside Crossfade and Infinity**, off by default, and it
+only ever concerns records this device holds: the decks read files, and a mix
+that might stall halfway is not a mix. Grids are fetched for downloaded tracks
+in the queue, alongside the sound bounds and the loudness the app already asks
+for.
+
+**The decks are chosen when a record starts, and not revisited.** They cannot
+take over a record already playing — two engines cannot be joined
+sample-accurately mid-track — so the question is asked at the only moment it can
+be answered, and the answer is yes only when the *next* record is already
+mixable. Playing on the decks buys nothing otherwise.
+
+While the decks have it, the queue player is emptied rather than left idle, and
+every path that would fill it is closed: a window rebuilt behind the decks would
+press play on a second copy of the queue.
+
+**A mix moving the queue on is the same event as a track change.** When the
+incoming record becomes audible, the queue jumps to it, the listen is opened,
+and the lock screen changes — so what the phone says is playing is what is
+loudest, rather than what started first.
+
+**Two things an `AVAudioEngine` needs that a player does not.** An interruption
+tears the engine down, so a phone call ends with it stopped and it has to be
+started again rather than merely resumed. And the engine stops itself when the
+hardware underneath changes — a different output, a different sample rate — so
+plugging in headphones mid-record restarts the decks where the session says the
+record had reached. Both failures end the same way if they cannot be recovered:
+the record is handed back to the ordinary player, which knows how to complain.

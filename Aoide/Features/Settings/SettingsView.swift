@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(TrimSilencePreference.key) private var trimSilence = true
     @AppStorage(CrossfadePreference.key) private var crossfade = false
     @AppStorage(AlbumLockPreference.key) private var albumLock = true
+    @AppStorage(AutoDJPreference.key) private var autoDJ = false
     @State private var infinity = InfinityQueue.shared
     @AppStorage(LoudnessPreference.key) private var loudnessNormalisation = true
     @State private var analysis = AudioAnalysisSync.shared
@@ -137,11 +138,13 @@ struct SettingsView: View {
                     .onChange(of: crossfade) { PlaybackEngine.shared.isCrossfading = crossfade }
                 Toggle("Keep Albums Whole", isOn: $albumLock)
                     .onChange(of: albumLock) { PlaybackEngine.shared.isAlbumLocked = albumLock }
+                Toggle("Auto DJ", isOn: $autoDJ)
+                    .onChange(of: autoDJ) { PlaybackEngine.shared.isAutoDJing = autoDJ }
                 Toggle("Infinity", isOn: Binding(get: { infinity.isOn }, set: { infinity.setOn($0) }))
             } header: {
                 Text("Playback")
             } footer: {
-                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Infinity keeps the queue going when it runs out, choosing from what you have been listening to.")
+                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Auto DJ goes further than a crossfade where it can: two downloaded tracks your server has measured the beats of, close enough in tempo to bend one into the other, are mixed — beat-matched, sixteen bars, with the bass handed over halfway. Most pairs do not qualify and simply crossfade instead. Infinity keeps the queue going when it runs out, choosing from what you have been listening to.")
             }
 
             Section {

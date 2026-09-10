@@ -42,6 +42,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         PlaybackEngine.shared.isCrossfading = CrossfadePreference.isOn
         PlaybackEngine.shared.isAlbumLocked = AlbumLockPreference.isOn
+
+        // Auto DJ only ever touches records this device holds: the decks read
+        // files, and a mix that might stall halfway is not a mix.
+        PlaybackEngine.shared.isAutoDJing = AutoDJPreference.isOn
+        PlaybackEngine.shared.localFileResolver = { track in
+            DownloadStore.localURLIfPresent(for: track.id)
+        }
+        PlaybackEngine.shared.beatGridResolver = { track in
+            BeatGridSync.shared.grid(for: track.id)
+        }
         }
         return true
     }

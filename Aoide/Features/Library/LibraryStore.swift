@@ -376,6 +376,7 @@ final class LibraryStore {
         let queued = PlaybackEngine.shared.queue.entries.map(\.track.id)
         SoundBoundsSync.shared.prefetch(ids: queued)
         AudioAnalysisSync.shared.prefetch(ids: queued)
+        BeatGridSync.shared.prefetch(ids: queued)
     }
 
     func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {

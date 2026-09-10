@@ -15,6 +15,7 @@ import SwiftUI
 /// is not a thing anybody notices.
 struct PlayerModesRow: View {
     @AppStorage(CrossfadePreference.key) private var crossfade = false
+    @AppStorage(AutoDJPreference.key) private var autoDJ = false
     @State private var infinity = InfinityQueue.shared
     @State private var activities = ActivityStore.shared
 
@@ -27,6 +28,18 @@ struct PlayerModesRow: View {
             ) {
                 crossfade.toggle()
                 PlaybackEngine.shared.isCrossfading = crossfade
+            }
+
+            ModeChip(
+                title: "Auto DJ",
+                symbol: "slider.horizontal.3",
+                isOn: autoDJ
+            ) {
+                autoDJ.toggle()
+                PlaybackEngine.shared.isAutoDJing = autoDJ
+                if autoDJ {
+                    BeatGridSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+                }
             }
 
             ModeChip(

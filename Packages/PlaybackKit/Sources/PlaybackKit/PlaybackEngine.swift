@@ -185,6 +185,43 @@ public final class PlaybackEngine {
     /// can be left on without ruining the albums that were sequenced.
     public var isAlbumLocked = true
 
+    /// Auto DJ: whether tracks that can be mixed are mixed.
+    ///
+    /// A different thing from ``isCrossfading`` and a stricter one. A crossfade
+    /// applies to any pair; a mix needs both records on this device, both
+    /// gridded by the server, both steady enough to lock to, and tempi close
+    /// enough to bend one into the other. When any of that is missing — which is
+    /// most of the time — the pair crossfades, and that is the design.
+    public var isAutoDJing = false
+
+    /// Where a track's file is, when this device holds it. Streamed tracks
+    /// cannot be mixed: `AVAudioFile` reads from disk, and a mix that might
+    /// stall halfway is not a mix.
+    public var localFileResolver: ((Track) -> URL?)?
+
+    /// Where a track's beats are, as the server measured them.
+    public var beatGridResolver: ((Track) -> BeatGrid?)?
+
+    /// The decks, made only if Auto DJ is ever turned on: an idle
+    /// `AVAudioEngine` is a running audio graph, and there is no reason for one
+    /// on a device whose owner never asked for this.
+    private var djSession: DJSession?
+    private var djMixer: DJMixer?
+    /// Drives the automation and the queue while a mix is on the decks.
+    private var djTimer: Timer?
+    /// The entry the decks are playing, which is how a queue change is noticed.
+    private var djEntryId: UUID?
+    /// The entry a mix has been booked into, so the same one is not booked twice
+    /// and a changed queue can cancel it.
+    private var djScheduledEntryId: UUID?
+
+    /// How long before a mix the incoming record is put on the other deck.
+    ///
+    /// Longer than a blend's twelve seconds because more has to be true: a file
+    /// opened, a grid read, and a plan made — and because a mix booked late is a
+    /// mix that does not happen, where a blend booked late merely becomes a cut.
+    private static let djLead = Duration.seconds(30)
+
     /// The blend being prepared or performed, if any.
     private var blend: Blend?
 
@@ -365,6 +402,20 @@ public final class PlaybackEngine {
         // no-op on the ordinary path.
         activateSession()
 
+        if isUsingDecks {
+            intendsToPlay = true
+            djSession?.resume()
+            state = .playing
+            updateNowPlayingInfo()
+            if let track = queue.currentTrack, reportedStartFor != track.id {
+                reportedStartFor = track.id
+                let reporter = reporter
+                Task { await reporter?.playbackDidStart(track) }
+            }
+            report { await $0.playbackDidProgress($1, position: $2, isPaused: false) }
+            return
+        }
+
         // Rebuild whenever what's loaded is unusable, not only when it's missing.
         // AVQueuePlayer does not advance past a failed item, so without this a
         // retry called `play()` on a dead item and the UI claimed to be playing
@@ -399,6 +450,13 @@ public final class PlaybackEngine {
 
     public func pause() {
         intendsToPlay = false
+        if isUsingDecks {
+            djSession?.pause()
+            state = .paused
+            updateNowPlayingInfo()
+            report { await $0.playbackDidProgress($1, position: $2, isPaused: true) }
+            return
+        }
         player.pause()
         // A blend in flight is two decks playing; pausing one of them would leave
         // half a crossfade audible.
@@ -489,6 +547,19 @@ public final class PlaybackEngine {
         // The fade was scheduled against the clock the listener has just moved.
         cancelBlend()
         let clamped = max(.zero, min(position, duration ?? position))
+
+        if isUsingDecks {
+            // A mix booked against where the record *was* is abandoned by the
+            // session; the tick will book another if the new position still has
+            // one ahead of it.
+            djScheduledEntryId = nil
+            try? djSession?.seek(to: clamped.seconds, at: djClock())
+            elapsed = clamped
+            updateNowPlayingInfo()
+            report { await $0.playbackDidProgress($1, position: $2, isPaused: !self.state.isPlaying) }
+            return
+        }
+
         player.seek(
             to: clamped.cmTime,
             toleranceBefore: Self.seekTolerance,
@@ -542,6 +613,20 @@ public final class PlaybackEngine {
         // because there the failed entry sits behind the head and stays filtered.
         if let id = queue.current?.id { forgetLoadFailures(of: id) }
 
+        // The one moment the decks can take a record: at its beginning. See
+        // `shouldUseDecks`.
+        if shouldUseDecks(), let entryId = queue.current?.id {
+            startOnDecks(track, entryId: entryId, autoplay: autoplay)
+            return
+        }
+        stopDecks()
+
+        beginOnPlayer(track, autoplay: autoplay)
+    }
+
+    /// The ordinary path: the queue player, the render window, everything this
+    /// engine has always done.
+    private func beginOnPlayer(_ track: Track, autoplay: Bool) {
         applyLoudness(for: track)
 
         elapsed = .zero
@@ -612,6 +697,7 @@ public final class PlaybackEngine {
     /// Called when the queue runs out.
     private func finishPlayback() {
         cancelBlend(resync: false)
+        stopDecks()
         player.pause()
         player.removeAllItems()
         releaseAllItems()
@@ -662,6 +748,11 @@ public final class PlaybackEngine {
     /// Keeping every mutation behind one function is what stops the player's queue
     /// and ``PlayQueue`` becoming two competing sources of truth.
     private func syncPlayer() {
+        // The decks own playback while they have it. Filling the player's window
+        // here would start a second copy of the queue playing underneath them —
+        // and `rebuildWindow` would press play on it.
+        guard !isUsingDecks else { return }
+
         let desired = desiredWindow()
 
         guard !desired.isEmpty else {
@@ -776,6 +867,7 @@ public final class PlaybackEngine {
     /// observer hasn't run and nothing else will attribute it correctly.
     @discardableResult
     private func reconcileWithPlayer() -> Bool {
+        guard !isUsingDecks else { return false }
         guard
             let item = player.currentItem,
             let entryId = entryForItem[ObjectIdentifier(item)],
@@ -786,6 +878,206 @@ public final class PlaybackEngine {
         _ = queue.jump(to: entryId)
         elapsed = .zero
         return true
+    }
+
+    // MARK: - Auto DJ
+
+    /// Whether the record now playing should be played on the decks rather than
+    /// through the player.
+    ///
+    /// Decided when a track begins and not revisited, because the decks cannot
+    /// take over a record already playing: two engines cannot be joined
+    /// sample-accurately mid-track, and a mix of a record we do not control the
+    /// clock of is not a mix. So the question is asked once, at the only moment
+    /// it can be answered — and the answer is yes only when the *next* record is
+    /// already mixable, since playing on the decks buys nothing otherwise.
+    private func shouldUseDecks() -> Bool {
+        guard isAutoDJing else { return false }
+        guard let track = queue.currentTrack, djItem(for: track) != nil else { return false }
+        let window = queue.renderWindow(count: 2)
+        guard window.count == 2, window[1].entryId != window[0].entryId else { return false }
+        return plannedMix(from: track, to: window[1].track, position: .zero) != nil
+    }
+
+    /// Everything the decks need about a track, or nothing if it cannot be one.
+    private func djItem(for track: Track) -> DJItem? {
+        guard let url = localFileResolver?(track) else { return nil }
+        return DJItem(
+            url: url,
+            sound: track.sound ?? soundResolver?(track),
+            gainDb: loudnessResolver?(track),
+            grid: beatGridResolver?(track)
+        )
+    }
+
+    /// The mix from one record into another, if there is one.
+    private func plannedMix(from outgoing: Track, to incoming: Track, position: Duration) -> DJTransition? {
+        guard isAutoDJing,
+              let outgoingGrid = beatGridResolver?(outgoing),
+              let incomingGrid = beatGridResolver?(incoming),
+              localFileResolver?(incoming) != nil
+        else { return nil }
+        // Nothing may be booked behind the playhead, and the booking itself needs
+        // a moment: the file has to be opened and the deck spun up.
+        return DJPlanner.plan(
+            outgoing: outgoingGrid,
+            incoming: incomingGrid,
+            notBeforeMs: position.seconds * 1000 + 1_000
+        )
+    }
+
+    /// Starts a record on the decks.
+    private func startOnDecks(_ track: Track, entryId: UUID, autoplay: Bool) {
+        let mixer = djMixer ?? DJMixer()
+        djMixer = mixer
+        let session = djSession ?? DJSession(mixer: mixer)
+        djSession = session
+        session.onTrackEnded = { [weak self] in
+            // The record finished with nothing mixed in behind it, which is the
+            // ordinary end of a track and not a failure of anything.
+            self?.next()
+        }
+
+        guard let item = djItem(for: track) else {
+            beginOnPlayer(track, autoplay: autoplay)
+            return
+        }
+
+        do {
+            try mixer.start()
+            try session.start(item, at: djClock())
+        } catch {
+            // A file that will not open is a file the player should try instead;
+            // it knows how to fail out loud, and this does not.
+            log.error("Couldn't put \(track.title, privacy: .public) on the decks: \(error.localizedDescription, privacy: .public)")
+            djSession = nil
+            beginOnPlayer(track, autoplay: autoplay)
+            return
+        }
+
+        djEntryId = entryId
+        djScheduledEntryId = nil
+        duration = item.sound.map { $0.soundEnd } ?? track.duration
+        elapsed = .zero
+        lastReportedSecond = -1
+        intendsToPlay = autoplay
+        state = autoplay ? .playing : .paused
+        if !autoplay { session.pause() }
+
+        // The player is not merely idle while the decks have it — it is emptied,
+        // so nothing of the old queue is left buffered behind a record it is not
+        // playing.
+        player.pause()
+        player.removeAllItems()
+        releaseAllItems()
+        enqueued = []
+
+        updateNowPlayingInfo()
+        reportedStartFor = track.id
+        let reporter = reporter
+        Task { await reporter?.playbackDidStart(track) }
+
+        startDJTimer()
+    }
+
+    /// The decks' own clock, in seconds. Only advances when audio does.
+    private func djClock() -> Double {
+        guard let time = djMixer?.renderTime, time.sampleRate > 0 else { return 0 }
+        return Double(time.sampleTime) / time.sampleRate
+    }
+
+    private var isUsingDecks: Bool { djSession != nil && djEntryId != nil }
+
+    private func startDJTimer() {
+        djTimer?.invalidate()
+        // Twenty a second: each step of the fade is a fraction of a decibel, and
+        // the decks' own alignment does not depend on this timer at all — it was
+        // settled when the mix was booked.
+        djTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.djTick() }
+        }
+    }
+
+    private func stopDecks() {
+        djTimer?.invalidate()
+        djTimer = nil
+        djSession?.stop()
+        djSession = nil
+        djMixer?.stop()
+        djMixer = nil
+        djEntryId = nil
+        djScheduledEntryId = nil
+    }
+
+    private func djTick() {
+        guard let session = djSession, let entryId = djEntryId else { return }
+        let now = djClock()
+        session.update(at: now)
+
+        // A mix that has begun means the queue has moved: the record the listener
+        // is hearing arrive is the next one, and everything that reads the queue
+        // — the lock screen, the car, the history — has to agree.
+        if session.phase == .mixing, let scheduled = djScheduledEntryId, scheduled != entryId {
+            adoptMixedTrack(scheduled)
+            return
+        }
+
+        elapsed = .seconds(session.position(at: now))
+        bookMixIfDue(at: now)
+
+        let whole = Int(elapsed.seconds)
+        if whole % 10 == 0, whole != lastReportedSecond {
+            lastReportedSecond = whole
+            report { await $0.playbackDidProgress($1, position: $2, isPaused: !self.state.isPlaying) }
+        }
+    }
+
+    /// Books the mix into the next record, once it is close enough to be worth
+    /// opening a second file for.
+    private func bookMixIfDue(at now: Double) {
+        guard let session = djSession, session.phase == .playing, state.isPlaying else { return }
+        let window = queue.renderWindow(count: 2)
+
+        guard window.count == 2, window[1].entryId != window[0].entryId else {
+            djScheduledEntryId = nil
+            return
+        }
+        let next = window[1]
+        // The queue moved under a booking: the record booked is not the one
+        // coming any more.
+        if let booked = djScheduledEntryId, booked != next.entryId {
+            djScheduledEntryId = nil
+        }
+        guard djScheduledEntryId == nil, !session.hasScheduledMix else { return }
+        guard let track = queue.currentTrack,
+              let transition = plannedMix(from: track, to: next.track, position: elapsed),
+              let item = djItem(for: next.track)
+        else { return }
+        guard transition.outgoingStartMs - elapsed.seconds * 1000 <= Self.djLead.seconds * 1000 else { return }
+
+        do {
+            try session.schedule(transition, into: item, at: now)
+            djScheduledEntryId = next.entryId
+            log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
+        } catch {
+            log.warning("Couldn't book a mix: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// The queue catches up with what the decks are already playing.
+    private func adoptMixedTrack(_ entryId: UUID) {
+        stopReportingCurrent()
+        _ = queue.jump(to: entryId)
+        djEntryId = entryId
+        djScheduledEntryId = nil
+        lastReportedSecond = -1
+        if let track = queue.currentTrack {
+            duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
+            updateNowPlayingInfo()
+            reportedStartFor = track.id
+            let reporter = reporter
+            Task { await reporter?.playbackDidStart(track) }
+        }
     }
 
     // MARK: - Crossfade
@@ -1412,7 +1704,9 @@ public final class PlaybackEngine {
             // glyph from this, and anything computed from intent can disagree with
             // whether audio is actually moving — which showed as a play triangle
             // over a running track.
-            MPNowPlayingInfoPropertyPlaybackRate: Double(player.rate),
+            MPNowPlayingInfoPropertyPlaybackRate: isUsingDecks
+                ? (state.isPlaying ? 1 : 0)
+                : Double(player.rate),
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyIsLiveStream: false,
@@ -1523,6 +1817,21 @@ public final class PlaybackEngine {
             }
         }
 
+        // An AVAudioEngine stops itself when the hardware underneath it changes —
+        // a different output, a different sample rate — and does not start again
+        // on its own. Nothing else in this file needs to know, because nothing
+        // else is an engine; without it, plugging in headphones mid-mix is
+        // silence until the next track.
+        center.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.restartDecksAfterConfigurationChange()
+            }
+        }
+
         // Headphones unplugged, Bluetooth disconnected, leaving the car.
         center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
@@ -1544,6 +1853,10 @@ public final class PlaybackEngine {
             // Read before pausing, which clears it.
             wasPlayingWhenInterrupted = state.isPlaying || intendsToPlay
             pause()
+            // The system tears the engine down under an interruption, so what is
+            // resumed later has to be a *started* engine. Stopping it here makes
+            // that explicit rather than leaving a graph that looks alive.
+            if isUsingDecks { djMixer?.stop() }
         case .ended:
             // The session is ours again only once we say so; `resume()` does it
             // too, but the flag may say not to resume and the next deliberate tap
@@ -1557,9 +1870,44 @@ public final class PlaybackEngine {
             )
             log.info("Interruption ended: system says resume=\(systemSaysResume, privacy: .public), was playing=\(self.wasPlayingWhenInterrupted, privacy: .public), resuming=\(resuming, privacy: .public)")
             wasPlayingWhenInterrupted = false
+            if isUsingDecks {
+                do {
+                    try djMixer?.start()
+                } catch {
+                    // Silence is the one outcome worth avoiding: hand the record
+                    // back to the player, which knows how to complain.
+                    log.error("Couldn't restart the decks after an interruption: \(error.localizedDescription, privacy: .public)")
+                    let wasPlaying = resuming
+                    stopDecks()
+                    if let track = queue.currentTrack { beginOnPlayer(track, autoplay: wasPlaying) }
+                    return
+                }
+            }
             if resuming { resume() }
         @unknown default:
             break
+        }
+    }
+
+    /// Puts the decks back together after the hardware changed underneath them.
+    ///
+    /// A record cannot be resumed exactly where it was through a restart, so it
+    /// is restarted from where the session says it had reached — which is the
+    /// same thing the listener would expect from a device they just plugged in.
+    private func restartDecksAfterConfigurationChange() {
+        guard isUsingDecks, let session = djSession, let mixer = djMixer else { return }
+        let position = session.position(at: djClock())
+        let wasPlaying = state.isPlaying
+        log.info("The output changed under the decks; restarting at \(position, privacy: .public)s")
+        do {
+            mixer.stop()
+            try mixer.start()
+            try session.seek(to: position, at: djClock())
+            if !wasPlaying { session.pause() }
+        } catch {
+            log.error("Couldn't restart the decks: \(error.localizedDescription, privacy: .public)")
+            stopDecks()
+            if let track = queue.currentTrack { beginOnPlayer(track, autoplay: wasPlaying) }
         }
     }
 
