@@ -37,8 +37,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             AudioAnalysisSync.shared.gainDb(for: track.id)
         }
         // Tempo decides only how long a crossfade should be. See MixPlanner.
-        PlaybackEngine.shared.bpmResolver = { track in
-            AudioAnalysisSync.shared.bpm(for: track.id)
+        PlaybackEngine.shared.tempoResolver = { track in
+            AudioAnalysisSync.shared.tempo(for: track.id)
         }
         PlaybackEngine.shared.isCrossfading = CrossfadePreference.isOn
         PlaybackEngine.shared.isAlbumLocked = AlbumLockPreference.isOn

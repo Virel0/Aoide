@@ -152,3 +152,33 @@ struct MixCurveTests {
         #expect(MixCurve.incoming(progress: .nan) == 0)
     }
 }
+
+@Suite("Tempo that does not hold")
+struct MixStabilityTests {
+    private func track(bpm: Double?, stability: Double?, album: String = "Album") -> MixTrack {
+        MixTrack(album: album, duration: .seconds(240), bpm: bpm, bpmStability: stability)
+    }
+
+    @Test("A wandering tempo is not something to match to")
+    func unstableRefusesTheLongBlend() {
+        let steady = track(bpm: 128, stability: 1.0)
+        let ramping = track(bpm: 128, stability: 0.1, album: "Other")
+        #expect(MixPlanner.plan(from: steady, to: ramping, automix: true) == .blend(MixPlanner.unmatchedBlend))
+        #expect(MixPlanner.plan(from: ramping, to: steady, automix: true) == .blend(MixPlanner.unmatchedBlend))
+    }
+
+    @Test("Two steady tracks at one tempo still earn it")
+    func steadyKeepsTheLongBlend() {
+        let one = track(bpm: 128, stability: 0.9)
+        let two = track(bpm: 126, stability: 0.62, album: "Other")
+        #expect(MixPlanner.plan(from: one, to: two, automix: true) == .blend(MixPlanner.matchedBlend))
+    }
+
+    @Test("A server that never measured it is not held against the track")
+    func unmeasuredStabilityIsNotAFailure() {
+        let one = track(bpm: 128, stability: nil)
+        let two = track(bpm: 128, stability: nil, album: "Other")
+        #expect(MixPlanner.plan(from: one, to: two, automix: true) == .blend(MixPlanner.matchedBlend))
+        #expect(MixPlanner.holds(nil))
+    }
+}

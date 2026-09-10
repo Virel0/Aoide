@@ -168,9 +168,10 @@ public final class PlaybackEngine {
     public var loudnessResolver: ((Track) -> Double?)?
 
     /// The tempo measured for a track, when one was measured confidently enough
-    /// to report. Only ever used to decide how long a blend should be — see
-    /// ``MixPlanner``, which explains at length why it is not used to beat-match.
-    public var bpmResolver: ((Track) -> Double?)?
+    /// to report, with how well that one number describes the whole track. Only
+    /// ever used to decide how long a blend should be — see ``MixPlanner``, which
+    /// explains at length why it is not used to beat-match.
+    public var tempoResolver: ((Track) -> Tempo?)?
 
     /// Crossfade: whether one song is faded into the next. Off is the player
     /// this app has always been.
@@ -851,7 +852,8 @@ public final class PlaybackEngine {
             trackNumber: track.trackNumber,
             duration: track.duration,
             sound: track.sound ?? soundResolver?(track),
-            bpm: bpmResolver?(track)
+            bpm: tempoResolver?(track)?.bpm,
+            bpmStability: tempoResolver?(track)?.stability
         )
     }
 

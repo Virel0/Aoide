@@ -17,6 +17,13 @@ the same tempo but a quarter-beat apart sound markedly worse than two tracks
 that were never locked at all, so tempo here does exactly one job: deciding
 whether a pair is worth a long blend or a short one.
 
+A tempo also has to *describe* its track before anything can be matched to it.
+The sidecar reports `bpmStability` — the fraction of twenty-second windows that
+agreed with the whole-track figure — and a track that ramps 105→145 reports a
+confident 135 at a stability of 0.10. Below 0.5 the number is an average of a
+track that was never at it, so the pair gets the short blend. A track from a
+server too old to report stability is not penalised for it.
+
 Tempi are compared as a ratio folded into a single octave, because 85 against
 170 is one groove counted two ways — and half-or-double is the *expected* mistake
 of the measurement, so treating those as unrelated would refuse precisely the
@@ -28,7 +35,7 @@ pairs that fit best.
 | --- | --- |
 | Two consecutive tracks of one album, album lock on | Gapless — untouched |
 | Crossfade off | A cut, exactly as before |
-| Tempi agree (within 6%, any octave) | An 8-second blend |
+| Tempi agree (within 6%, any octave) and both hold steady | An 8-second blend |
 | Anything else, including unmeasured tracks | A 4-second blend |
 | Either track too short, or its length unknown | A cut |
 

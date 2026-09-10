@@ -23,6 +23,11 @@ final class AudioAnalysisSync {
         var truePeakDbfs: Double?
         var bpm: Double?
         var bpmConfidence: Double?
+        /// How much that one tempo describes the whole track — the fraction of
+        /// twenty-second windows that agreed with it. A track that ramps from 105
+        /// to 145 still reports a confident 135, and this is the number that says
+        /// so. Absent from servers before 1.12.0.0.
+        var bpmStability: Double?
     }
 
     /// Measured tracks. A `nil` inside means the server looked and had nothing
@@ -39,9 +44,23 @@ final class AudioAnalysisSync {
         var pending: [String]?
     }
 
+    /// The cache file's generation, in its name.
+    ///
+    /// Sidecar 1.12.0.0 threw away every tempo it had measured itself, because
+    /// the estimator that produced them was worse: it read 185 BPM as 92, and
+    /// nothing would ever have re-measured those rows because a row is only
+    /// re-measured when its file changes. Everything cached here came from that
+    /// estimator, so it goes the same way — kept, and the numbers would be wrong
+    /// for as long as the file existed.
+    ///
+    /// Bump this whenever a server-side measurement changes meaning. It costs one
+    /// lazy re-fetch and nothing else.
     @ObservationIgnored private let url: URL = {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("audio-analysis.json")
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // The generation before this one, from the estimator whose tempi were out
+        // by an octave often enough to matter.
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent("audio-analysis.json"))
+        return directory.appendingPathComponent("audio-analysis-2.json")
     }()
 
     private init() {
@@ -68,8 +87,9 @@ final class AudioAnalysisSync {
     /// its own confidence threshold, so an answer here is one worth having —
     /// though only for ordering and for how long to blend, never for matching
     /// beats. See `MixPlanner`.
-    func bpm(for trackId: String) -> Double? {
-        analysis(for: trackId)?.bpm
+    func tempo(for trackId: String) -> Tempo? {
+        guard let bpm = analysis(for: trackId)?.bpm else { return nil }
+        return Tempo(bpm: bpm, stability: analysis(for: trackId)?.bpmStability)
     }
 
     /// Makes sure the server has been asked about these tracks.

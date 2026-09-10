@@ -50,6 +50,25 @@ numbers used only for ordering. Verified within about a BPM at 90–170 on
 synthesised beats, at any loudness; held tones, noise, silence and anything
 under ten seconds report nothing.
 
+*As built (sidecar 1.12.0.0):* the estimator became multi-band spectral flux with
+interpolated correlation lags, and the accuracy went from about a beat per minute
+to within 0.2 — 185 BPM used to come back as 92. A `bpmStability` field arrived
+with it: the fraction of overlapping twenty-second windows whose own tempo agreed
+with the whole-track answer, half and double counting as agreement. It is the
+answer to a question confidence cannot answer — a track ramping 105→145 reports a
+*confident* 135 and a stability of 0.10. `null` under about forty seconds.
+
+The clients use stability for one thing: a track whose tempo does not hold is not
+a track a long crossfade can be matched to, whatever its BPM says. See
+[crossfade.md](crossfade.md). **1.0 does not mean "gridded"** — half a per cent is
+what twenty seconds of audio can resolve, and half a per cent still drifts most of
+a second across a three-minute track.
+
+That release also dropped every server-measured row so the better estimator would
+take them again, since a row is otherwise only re-measured when its file changes.
+The clients cache those numbers too, so iOS names its cache file by generation and
+deletes the previous one; anything else would have kept the old tempi for good.
+
 **Half and double is the expected failure**, settled for the ordinary case by a
 preference for tempi near 120, so a track reported at 85 that you would call 170
 is the mistake to look for. **Do not beat-match on these numbers.** Ordering is

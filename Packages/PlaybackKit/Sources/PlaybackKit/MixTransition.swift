@@ -34,6 +34,19 @@ public enum MixTransition: Equatable, Sendable {
     }
 }
 
+/// A measured tempo, and how much of the track it actually describes.
+public struct Tempo: Equatable, Sendable {
+    public let bpm: Double
+    /// The fraction of twenty-second windows that agreed with `bpm`, where the
+    /// server measured it. `nil` from a server too old to report it.
+    public let stability: Double?
+
+    public init(bpm: Double, stability: Double? = nil) {
+        self.bpm = bpm
+        self.stability = stability
+    }
+}
+
 /// What the planner needs to know about one track. A small mirror of the parts
 /// of ``Track`` plus the measurements, so the rules can be exercised directly.
 public struct MixTrack: Equatable, Sendable {
@@ -45,19 +58,25 @@ public struct MixTrack: Equatable, Sendable {
     public let sound: SilenceBounds?
     /// Beats per minute, when the measurement was confident enough to report one.
     public let bpm: Double?
+    /// How much that one number describes the whole track: the fraction of
+    /// twenty-second windows that agreed with it. `nil` from a server too old to
+    /// report it, or a track too short to measure.
+    public let bpmStability: Double?
 
     public init(
         album: String,
         trackNumber: Int? = nil,
         duration: Duration? = nil,
         sound: SilenceBounds? = nil,
-        bpm: Double? = nil
+        bpm: Double? = nil,
+        bpmStability: Double? = nil
     ) {
         self.album = album
         self.trackNumber = trackNumber
         self.duration = duration
         self.sound = sound
         self.bpm = bpm
+        self.bpmStability = bpmStability
     }
 
     /// How much of this track is actually sound, in seconds. The whole file when
@@ -105,7 +124,7 @@ public enum MixPlanner {
         if albumLock, isAlbumRun(from: outgoing, to: incoming) { return .gapless }
         guard automix else { return .cut }
 
-        let wanted = tempiAgree(outgoing.bpm, incoming.bpm) ? matchedBlend : unmatchedBlend
+        let wanted = tempiAgree(outgoing, incoming) ? matchedBlend : unmatchedBlend
 
         // Neither track may give up more than its share, and a track whose length
         // is unknown gives up nothing — better a cut than a fade over a guess.
@@ -127,6 +146,35 @@ public enum MixPlanner {
         guard let from = outgoing.trackNumber, let to = incoming.trackNumber else { return false }
         return to == from + 1
     }
+
+    /// Whether two tracks are near enough in tempo for a long blend.
+    ///
+    /// A single BPM figure only describes a track whose tempo holds. One that
+    /// ramps from 105 to 145 still reports a confident 135, and two such tracks
+    /// "agreeing" at 135 would earn eight seconds of overlap between passages
+    /// that are not at 135 at all. So a track whose measured stability says the
+    /// number does not describe it is not a track anything can be matched to.
+    ///
+    /// A stability of `nil` is not held against a track: it means an older server
+    /// that never measured it, and refusing every long blend on those grounds
+    /// would turn an upgrade into a regression for everyone who has not done one.
+    static func tempiAgree(_ outgoing: MixTrack, _ incoming: MixTrack) -> Bool {
+        guard holds(outgoing.bpmStability), holds(incoming.bpmStability) else { return false }
+        return tempiAgree(outgoing.bpm, incoming.bpm)
+    }
+
+    /// Whether a measured tempo describes its track well enough to compare.
+    static func holds(_ stability: Double?) -> Bool {
+        guard let stability else { return true }
+        return stability >= minimumStability
+    }
+
+    /// Below this, the number is an average of a track that was never at it.
+    ///
+    /// Half the windows agreeing is already generous: the sidecar's own figures
+    /// put a 120→122 ramp at 0.62 and a 120→125 ramp at 0.31, and the second of
+    /// those is a track a listener would call unsteady.
+    public static let minimumStability = 0.5
 
     /// Whether two tempi are near enough for a long blend.
     ///
