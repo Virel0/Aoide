@@ -1,4 +1,4 @@
-# AutoMix
+# Crossfade
 
 One song faded into the next, on a toggle beside shuffle and repeat. Off by
 default: a crossfade changes how every record on the device sounds, and a player
@@ -7,6 +7,7 @@ that starts doing it uninvited is a player that broke.
 ## What it is not
 
 It is **not beat-matching**, and calling it that would be a lie you could hear.
+That is why this is called Crossfade: it is a crossfade.
 
 Matching beats needs to know where the beats *fall* — a downbeat and a grid, not
 a count. What the library holds is one BPM figure per track, measured by the
@@ -26,7 +27,7 @@ pairs that fit best.
 | Situation | Handover |
 | --- | --- |
 | Two consecutive tracks of one album, album lock on | Gapless — untouched |
-| AutoMix off | A cut, exactly as before |
+| Crossfade off | A cut, exactly as before |
 | Tempi agree (within 6%, any octave) | An 8-second blend |
 | Anything else, including unmeasured tracks | A 4-second blend |
 | Either track too short, or its length unknown | A cut |
@@ -35,9 +36,9 @@ No blend may swallow more than a quarter of the shorter of the two tracks, and
 one that works out shorter than two seconds is a cut instead. A ninety-second
 interlude does not lose a sixth of itself to the mixer.
 
-**Album lock** is what makes AutoMix safe to leave on: a record sequenced to run
+**Album lock** is what makes crossfading safe to leave on: a record sequenced to run
 continuously still does. It is on by default and is the mixer's off-switch,
-never a second mixer — with AutoMix off, an unlocked album run is still a cut.
+never a second mixer — with Crossfade off, an unlocked album run is still a cut.
 
 The rules live in `PlaybackKit/MixTransition.swift` and are unit-tested; nothing
 about them needs a player to exercise.
@@ -91,16 +92,29 @@ next" abandons whatever was prepared.
 A cut is the player's ordinary behaviour, so falling back to one is never worse
 than not having the feature. Two songs at full volume over each other would be.
 
-## Auto DJ
+## Infinity
 
-The other half of the DJ, on its own toggle: AutoMix decides *how* one song
-becomes the next, Auto DJ decides that there **is** a next one.
+The other toggle: Crossfade decides *how* one song becomes the next, Infinity
+decides that there **is** a next one.
 
 When fewer than three songs are left in front of the listener, it asks the server
-for an Instant Mix seeded by whatever is playing, drops anything already in the
-queue or marked Not Interested, and adds up to twenty at the back. The same
-station this app already offers by hand, so nothing new is deciding what a song
-is like — the library that knows the music is.
+for an Instant Mix seeded by whatever is playing — a hundred of them, drops
+anything already queued or marked Not Interested, and then **picks twenty of that
+hundred by what this listener actually finishes.**
+
+The station is the pool, not the answer. Jellyfin knows what is *like* the song
+playing; only the local history knows which genres and artists get listened to
+all the way through, which individual tracks get skipped every time, and what has
+been heard in the last hour. `TasteRanking` scores each candidate on those:
+strongest matching genre (0.45), familiar artist (0.3 — less, so a long evening
+widens out instead of circling four artists), the track's own finish rate (±0.3,
+and a track with fewer than three decided listens is neither promoted nor
+punished), and a recency penalty wide enough to put everything heard lately below
+everything that has not been.
+
+It is arithmetic, not a recommender: every position it produces can be explained
+in a sentence, and when it is wrong it is wrong somewhere you can point at. With
+no history to read — a new install — the station's own order stands.
 
 Off by default: a queue that ends is not a fault, and a player that quietly plays
 on for an hour after the album finished is one nobody asked for. It does nothing
@@ -111,5 +125,9 @@ started playing while nobody was there.
 What it adds is context, not a choice: the songs go behind everything, including
 anything queued by hand, and they shuffle with the rest.
 
-The desktop has had this as **Auto DJ** since Feishin, with strategies of its own;
-the name is the same on both so it is one feature to talk about.
+The desktop has had a version of this since Feishin, under the name Auto DJ.
+
+**"Auto DJ" is being kept for something else**: transitions that are actually
+mixed — beat-matched, on a grid, the thing anyone picturing a DJ is picturing.
+That needs beat positions the tempo measurement does not yet give, so calling
+either of these features a DJ would be borrowing a word we have not earned.

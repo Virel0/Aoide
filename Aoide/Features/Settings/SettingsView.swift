@@ -11,9 +11,9 @@ struct SettingsView: View {
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
     @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
     @AppStorage(TrimSilencePreference.key) private var trimSilence = true
-    @AppStorage(AutoMixPreference.key) private var autoMix = false
+    @AppStorage(CrossfadePreference.key) private var crossfade = false
     @AppStorage(AlbumLockPreference.key) private var albumLock = true
-    @State private var autoDJ = AutoDJ.shared
+    @State private var infinity = InfinityQueue.shared
     @AppStorage(LoudnessPreference.key) private var loudnessNormalisation = true
     @State private var analysis = AudioAnalysisSync.shared
     @State private var silence = SilenceIndex.shared
@@ -133,15 +133,15 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("AutoMix", isOn: $autoMix)
-                    .onChange(of: autoMix) { PlaybackEngine.shared.isAutoMixing = autoMix }
+                Toggle("Crossfade", isOn: $crossfade)
+                    .onChange(of: crossfade) { PlaybackEngine.shared.isCrossfading = crossfade }
                 Toggle("Keep Albums Whole", isOn: $albumLock)
                     .onChange(of: albumLock) { PlaybackEngine.shared.isAlbumLocked = albumLock }
-                Toggle("Auto DJ", isOn: Binding(get: { autoDJ.isOn }, set: { autoDJ.setOn($0) }))
+                Toggle("Infinity", isOn: Binding(get: { infinity.isOn }, set: { infinity.setOn($0) }))
             } header: {
-                Text("AutoMix")
+                Text("Playback")
             } footer: {
-                Text("AutoMix fades one song into the next instead of stopping between them, longer when the two are at the same tempo. It is a crossfade and not a beat-match: matching beats needs to know where they fall, and what your server measures is how many there are per minute. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want the mixer everywhere. Auto DJ keeps the queue going when it runs out, with a station from your server seeded by whatever is playing.")
+                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Infinity keeps the queue going when it runs out, choosing from what you have been listening to.")
             }
 
             Section {

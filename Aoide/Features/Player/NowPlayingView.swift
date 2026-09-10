@@ -12,8 +12,6 @@ struct NowPlayingView: View {
     @State private var isShowingQueue = false
     @State private var sharePlay = SharePlayCoordinator.shared
     @State private var isShowingLyrics = false
-    @AppStorage(AutoMixPreference.key) private var autoMix = false
-    @State private var autoDJ = AutoDJ.shared
 
     @Environment(LyricsStore.self) private var lyricsStore
 
@@ -39,6 +37,8 @@ struct NowPlayingView: View {
                 scrubber
                 transportControls
                 secondaryControls
+                PlayerModesRow()
+                    .padding(.top, 12)
 
                 Spacer(minLength: 8)
             } else {
@@ -66,23 +66,12 @@ struct NowPlayingView: View {
         }
     }
 
-    /// The grab handle, with the activity chip parked in the corner beside it.
-    ///
-    /// Not down among the transport controls: the chip grows a word when it is set,
-    /// which would shove shuffle and repeat around every time it changed, and this
-    /// is something you set once and then want to *see* — not a control you reach
-    /// for mid-song.
     private var grabber: some View {
         Capsule()
             .fill(.secondary.opacity(0.5))
             .frame(width: 36, height: 5)
             .padding(.top, 8)
             .padding(.bottom, 4)
-            .frame(maxWidth: .infinity)
-            .overlay(alignment: .trailing) {
-                ActivityButton()
-                    .padding(.trailing, 20)
-            }
     }
 
     private func titleBlock(_ track: Track) -> some View {
@@ -160,27 +149,6 @@ struct NowPlayingView: View {
                 Image(systemName: "shuffle")
                     .foregroundStyle(engine.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             }
-
-            Spacer()
-
-            Button {
-                autoMix.toggle()
-                engine.isAutoMixing = autoMix
-            } label: {
-                Image(systemName: "arrow.triangle.merge")
-                    .foregroundStyle(autoMix ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-            }
-            .accessibilityLabel(autoMix ? "AutoMix on" : "AutoMix off")
-
-            Spacer()
-
-            Button {
-                autoDJ.setOn(!autoDJ.isOn)
-            } label: {
-                Image(systemName: "infinity")
-                    .foregroundStyle(autoDJ.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-            }
-            .accessibilityLabel(autoDJ.isOn ? "Auto DJ on" : "Auto DJ off")
 
             Spacer()
 

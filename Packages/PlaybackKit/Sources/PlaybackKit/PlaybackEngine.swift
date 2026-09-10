@@ -172,12 +172,12 @@ public final class PlaybackEngine {
     /// ``MixPlanner``, which explains at length why it is not used to beat-match.
     public var bpmResolver: ((Track) -> Double?)?
 
-    /// AutoMix: whether one song is faded into the next. Off is the player this
-    /// app has always been.
+    /// Crossfade: whether one song is faded into the next. Off is the player
+    /// this app has always been.
     ///
     /// Turning it off mid-blend lets the blend in flight finish; stopping a
     /// crossfade halfway is more startling than the crossfade.
-    public var isAutoMixing = false
+    public var isCrossfading = false
 
     /// Album lock: two consecutive tracks of one album are never mixed, so a
     /// record that segues still segues. On by default, and the reason the mixer
@@ -787,7 +787,7 @@ public final class PlaybackEngine {
         return true
     }
 
-    // MARK: - AutoMix
+    // MARK: - Crossfade
 
     /// Runs on every time update while something is playing: decides whether a
     /// blend should be prepared, started, or abandoned.
@@ -833,7 +833,7 @@ public final class PlaybackEngine {
         guard case let .blend(overlap) = MixPlanner.plan(
             from: mixTrack(current),
             to: mixTrack(next.track),
-            automix: isAutoMixing,
+            automix: isCrossfading,
             albumLock: isAlbumLocked
         ) else { return }
         guard let remaining = remainingSound(of: current),

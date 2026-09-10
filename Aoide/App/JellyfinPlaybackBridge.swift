@@ -23,7 +23,7 @@ enum JellyfinPlaybackBridge {
         // store gets the same events again and draws its own conclusions from them —
         // chiefly whether a track was listened to or skipped, which the server counts
         // identically.
-        let reporter = PlaybackReporters([JellyfinReporter(client: client), Self.recorder, AutoDJ.shared])
+        let reporter = PlaybackReporters([JellyfinReporter(client: client), Self.recorder, InfinityQueue.shared])
         engine.reporter = reporter
         Self.retainedReporter = reporter
 

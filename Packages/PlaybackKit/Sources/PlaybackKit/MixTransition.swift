@@ -1,6 +1,6 @@
 import Foundation
 
-/// How one song is handed over to the next when AutoMix is on.
+/// How one song is handed over to the next when crossfading is on.
 ///
 /// Pure arithmetic over numbers the library already holds — where the sound
 /// starts and ends (``SilenceBounds``) and the tempo the sidecar measured.
@@ -91,11 +91,11 @@ public enum MixPlanner {
     /// Plans the handover from `outgoing` to `incoming`.
     ///
     /// - Parameters:
-    ///   - automix: the AutoMix toggle, off by default. Off means the player
+    ///   - automix: the Crossfade toggle, off by default. Off means the player
     ///     behaves as it always has.
     ///   - albumLock: keep album runs intact. On, two consecutive tracks of one
-    ///     album hand over gaplessly whatever AutoMix says — which is what makes
-    ///     album lock the mixer's off-switch for the records that need one.
+    ///     album hand over gaplessly whatever the toggle says — which is what
+    ///     makes album lock the crossfader's off-switch for records that need one.
     public static func plan(
         from outgoing: MixTrack,
         to incoming: MixTrack,

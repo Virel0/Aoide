@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         PlaybackEngine.shared.bpmResolver = { track in
             AudioAnalysisSync.shared.bpm(for: track.id)
         }
-        PlaybackEngine.shared.isAutoMixing = AutoMixPreference.isOn
+        PlaybackEngine.shared.isCrossfading = CrossfadePreference.isOn
         PlaybackEngine.shared.isAlbumLocked = AlbumLockPreference.isOn
         }
         return true
