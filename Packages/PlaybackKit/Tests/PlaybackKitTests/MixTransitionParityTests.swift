@@ -20,6 +20,7 @@ private func track(
     number: Int? = nil,
     seconds: Double? = 240,
     bpm: Double? = nil,
+    stability: Double? = nil,
     sound: SilenceBounds? = nil
 ) -> MixTrack {
     MixTrack(
@@ -27,7 +28,8 @@ private func track(
         trackNumber: number,
         duration: seconds.map { Duration.seconds($0) },
         sound: sound,
-        bpm: bpm
+        bpm: bpm,
+        bpmStability: stability
     )
 }
 
@@ -39,7 +41,7 @@ private func kindOf(_ transition: MixTransition) -> String {
     }
 }
 
-/// The same twenty-seven pairs the desktop plans, with the same twenty-seven plans.
+/// The same thirty-one pairs the desktop plans, with the same thirty-one plans.
 ///
 /// "Both apps mix the same way" is a claim, and this table is the only thing that
 /// makes it one: it is duplicated verbatim in the desktop's
@@ -296,6 +298,42 @@ private let parityTable: [ParityCase] = [
         kind: "blend",
         overlapSeconds: 2.5
     ),
+    ParityCase(
+        why: "a track whose tempo does not hold is nothing to match to",
+        outgoing: track(bpm: 128, stability: 0.2),
+        incoming: track(album: "Other", bpm: 128),
+        automix: true,
+        albumLock: true,
+        kind: "blend",
+        overlapSeconds: 4
+    ),
+    ParityCase(
+        why: "and neither is one coming up",
+        outgoing: track(bpm: 128),
+        incoming: track(album: "Other", bpm: 128, stability: 0.4),
+        automix: true,
+        albumLock: true,
+        kind: "blend",
+        overlapSeconds: 4
+    ),
+    ParityCase(
+        why: "half the windows agreeing is steady enough",
+        outgoing: track(bpm: 128, stability: 0.5),
+        incoming: track(album: "Other", bpm: 128, stability: 0.5),
+        automix: true,
+        albumLock: true,
+        kind: "blend",
+        overlapSeconds: 8
+    ),
+    ParityCase(
+        why: "an unmeasured stability is not held against a track",
+        outgoing: track(bpm: 128),
+        incoming: track(album: "Other", bpm: 128, stability: 0.9),
+        automix: true,
+        albumLock: true,
+        kind: "blend",
+        overlapSeconds: 8
+    ),
 ]
 
 @Suite("Mix transition parity")
@@ -314,6 +352,6 @@ struct MixTransitionParityTests {
 
     @Test("answers every case in the table")
     func everyCase() {
-        #expect(parityTable.count == 27)
+        #expect(parityTable.count == 31)
     }
 }
