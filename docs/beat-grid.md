@@ -219,3 +219,47 @@ the incoming one after it, handing over in about a bar. Two kick drums at once i
 the muddiest sound in recorded music and no volume curve fixes it — taking the
 low end off the incoming record until it takes over is the oldest trick a DJ has,
 and it is most of why a mix sounds like one record rather than two.
+
+
+## The decks
+
+`PlaybackKit/DJMixer.swift`. Two `AVAudioPlayerNode`s in one `AVAudioEngine`,
+each through a varispeed unit and a low shelf, into the main mixer:
+
+```
+player → varispeed → low shelf ─┐
+                                ├→ main mixer → output
+player → varispeed → low shelf ─┘
+```
+
+One engine means one render clock, and `AVAudioTime` addresses that clock by
+sample — which is the entire reason for the rewrite. `AVQueuePlayer` starts a
+track accurate to tens of milliseconds; a beat at 128 BPM is 469 ms, so 20 ms is
+a tenth of a beat, audible as a flam, with nothing afterwards to stop the two
+drifting apart.
+
+**Varispeed, not time-pitch.** `AVAudioUnitTimePitch` holds the pitch while
+changing speed and is audibly artefacted above 1.0. Varispeed resamples, so
+speed and pitch move together — which is what a turntable's pitch fader does,
+and at ±6% it is how records have been mixed since 1975.
+
+**Local files only**, which is the shape of the feature rather than a gap:
+`AVAudioFile` reads from disk, the phone already converts every download to
+Apple Lossless, and a mix that might stall halfway is not a mix. Streamed tracks
+crossfade.
+
+### Measured, not asserted
+
+The file is free of `AVAudioSession` and of anything iOS-only precisely so the
+engine can be rendered offline on a Mac and the output measured. `DJMixerTests`
+renders click tracks and finds the clicks:
+
+| Claim | Measured |
+| --- | --- |
+| A deck starts exactly when told | Every click 1.1 ms late — the varispeed and shelf latency, common to both decks — with the offsets agreeing to under one sample. No drift. |
+| Two decks land on each other | One click per beat rather than two, within 2 ms across the passage |
+| The bend is exactly the ratio asked for | 500 ms clicks at rate 1.05 come out 476 ms apart |
+| The shelf takes the bass and leaves the rest | 60 Hz down by the requested amount; 2 kHz within a decibel of untouched |
+
+The constant 1.1 ms is worth knowing and not worth fixing: both decks run through
+the same two units, so it is common to them and cancels in a mix.
