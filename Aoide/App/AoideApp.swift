@@ -36,6 +36,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         PlaybackEngine.shared.loudnessResolver = { track in
             AudioAnalysisSync.shared.gainDb(for: track.id)
         }
+        // Tempo decides only how long a crossfade should be. See MixPlanner.
+        PlaybackEngine.shared.bpmResolver = { track in
+            AudioAnalysisSync.shared.bpm(for: track.id)
+        }
+        PlaybackEngine.shared.isAutoMixing = AutoMixPreference.isOn
+        PlaybackEngine.shared.isAlbumLocked = AlbumLockPreference.isOn
         }
         return true
     }

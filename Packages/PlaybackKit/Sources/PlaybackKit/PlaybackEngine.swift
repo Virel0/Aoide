@@ -94,7 +94,28 @@ public final class PlaybackEngine {
     // MARK: - Private
 
     private let log = Logger(subsystem: "com.example.aoide", category: "playback")
-    private let player = AVQueuePlayer()
+
+    /// Two decks, like a DJ's, because one player cannot play two things at once
+    /// and a crossfade is by definition two things at once.
+    ///
+    /// Only one of them is "the player" at any moment; ``player`` is that one, and
+    /// every path in this file that is not about mixing goes through it and cannot
+    /// tell there is a second. The spare deck is silent and empty except during a
+    /// blend, when it holds the incoming track and takes over as the outgoing one
+    /// ends. See ``MixTransition``.
+    ///
+    /// Both are queue players, so an album run still hands over the way it always
+    /// has — inside one deck, with `AVQueuePlayer`'s own seamless advance. The
+    /// mixer is not allowed anywhere near a record that segues.
+    private let deckA = AVQueuePlayer()
+    private let deckB = AVQueuePlayer()
+    private var playingDeckB = false
+
+    /// The deck the listener is hearing as the current track.
+    private var player: AVQueuePlayer { playingDeckB ? deckB : deckA }
+
+    /// The deck a blend is prepared on.
+    private var spareDeck: AVQueuePlayer { playingDeckB ? deckA : deckB }
 
     /// How many tracks to keep decoded behind the current one. Two is enough for a
     /// seamless boundary while keeping wasted prefetch small when someone is
@@ -146,6 +167,58 @@ public final class PlaybackEngine {
     /// still lands. See ``LoudnessNormalisation``.
     public var loudnessResolver: ((Track) -> Double?)?
 
+    /// The tempo measured for a track, when one was measured confidently enough
+    /// to report. Only ever used to decide how long a blend should be — see
+    /// ``MixPlanner``, which explains at length why it is not used to beat-match.
+    public var bpmResolver: ((Track) -> Double?)?
+
+    /// AutoMix: whether one song is faded into the next. Off is the player this
+    /// app has always been.
+    ///
+    /// Turning it off mid-blend lets the blend in flight finish; stopping a
+    /// crossfade halfway is more startling than the crossfade.
+    public var isAutoMixing = false
+
+    /// Album lock: two consecutive tracks of one album are never mixed, so a
+    /// record that segues still segues. On by default, and the reason the mixer
+    /// can be left on without ruining the albums that were sequenced.
+    public var isAlbumLocked = true
+
+    /// The blend being prepared or performed, if any.
+    private var blend: Blend?
+
+    /// A crossfade, from the moment the incoming track is put on the spare deck
+    /// to the moment that deck becomes the player.
+    private struct Blend {
+        let entryId: UUID
+        let track: Track
+        let overlap: Duration
+        /// The item on the spare deck, once it exists.
+        var itemKey: ObjectIdentifier?
+        /// Whether the incoming track's fade-in has been attached. A blend whose
+        /// fade is not ready in time becomes a cut rather than a track arriving
+        /// at full volume over the one still playing.
+        var isFadeReady = false
+        /// Whether the incoming track is audible yet.
+        var isRunning = false
+        /// Where the outgoing deck's own fader started, so the fade-out is applied
+        /// on top of that track's loudness levelling rather than instead of it.
+        var outgoingVolume: Float = 1
+    }
+
+    /// Watches the outgoing track's clock during a blend and rides its deck's
+    /// fader down. Removed the moment the blend ends, either way.
+    private var fadeObserver: Any?
+
+    /// How long before a blend the incoming track is put on the spare deck.
+    ///
+    /// A remote track cannot be started from nothing at the instant it is wanted
+    /// — it has to be fetched and decoded first — and a blend that begins with
+    /// silence is worse than no blend. Twelve seconds is comfortably more than a
+    /// track needs to become ready on a slow connection, and short enough that a
+    /// listener skipping around rarely pays for a preparation nobody used.
+    private static let blendLead = Duration.seconds(12)
+
     /// The last track given up on and why, for a screen to show. Cleared when a
     /// track next loads, so it describes the current trouble and not history.
     public private(set) var lastFailure: PlaybackFailure?
@@ -193,11 +266,13 @@ public final class PlaybackEngine {
     private let restartThreshold: Duration = .seconds(3)
 
     private init() {
-        // `.advance` is what makes the handoff gapless. It also raises
-        // NSInvalidArgumentException on a plain AVPlayer, so it and AVQueuePlayer
-        // have to change together.
-        player.actionAtItemEnd = .advance
-        player.automaticallyWaitsToMinimizeStalling = true
+        for deck in [deckA, deckB] {
+            // `.advance` is what makes the handoff gapless. It also raises
+            // NSInvalidArgumentException on a plain AVPlayer, so it and AVQueuePlayer
+            // have to change together.
+            deck.actionAtItemEnd = .advance
+            deck.automaticallyWaitsToMinimizeStalling = true
+        }
         observeCurrentItem()
         observeRate()
         observePlayerTime()
@@ -294,6 +369,7 @@ public final class PlaybackEngine {
 
         intendsToPlay = true
         player.play()
+        if blend?.isRunning == true { spareDeck.play() }
         state = .playing
         updateNowPlayingInfo()
 
@@ -311,6 +387,9 @@ public final class PlaybackEngine {
     public func pause() {
         intendsToPlay = false
         player.pause()
+        // A blend in flight is two decks playing; pausing one of them would leave
+        // half a crossfade audible.
+        if blend?.isRunning == true { spareDeck.pause() }
         state = .paused
         updateNowPlayingInfo()
         report { await $0.playbackDidProgress($1, position: $2, isPaused: true) }
@@ -394,6 +473,8 @@ public final class PlaybackEngine {
     public var playbackCoordinator: AVPlayerPlaybackCoordinator { player.playbackCoordinator }
 
     public func seek(to position: Duration) {
+        // The fade was scheduled against the clock the listener has just moved.
+        cancelBlend()
         let clamped = max(.zero, min(position, duration ?? position))
         player.seek(
             to: clamped.cmTime,
@@ -433,6 +514,10 @@ public final class PlaybackEngine {
 
     /// Starts whatever the queue now says is current, from the beginning.
     private func beginCurrentTrack(autoplay: Bool) {
+        // Whatever was prepared was prepared to follow a track that is no longer
+        // the one playing. The rebuild below fills the window afresh.
+        cancelBlend(resync: false)
+
         guard let track = queue.currentTrack else {
             finishPlayback()
             return
@@ -476,6 +561,7 @@ public final class PlaybackEngine {
     /// away would be worse than not restoring at all.
     public func restore(_ tracks: [Track], startingAt index: Int, elapsed: Duration) {
         guard queue.isEmpty, !tracks.isEmpty else { return }
+        cancelBlend(resync: false)
         forgetLoadFailures()
         queue.load(tracks, startingAt: index)
         guard let track = queue.currentTrack else { return }
@@ -499,15 +585,20 @@ public final class PlaybackEngine {
     /// track with no measurement, or the previous track's attenuation would
     /// quietly follow it.
     private func applyLoudness(for track: Track?) {
+        applyLoudness(for: track, on: player)
+    }
+
+    private func applyLoudness(for track: Track?, on deck: AVQueuePlayer) {
         guard let track, let resolve = loudnessResolver, let gain = resolve(track) else {
-            player.volume = 1
+            deck.volume = 1
             return
         }
-        player.volume = Float(min(1, pow(10, gain / 20)))
+        deck.volume = Float(min(1, pow(10, gain / 20)))
     }
 
     /// Called when the queue runs out.
     private func finishPlayback() {
+        cancelBlend(resync: false)
         player.pause()
         player.removeAllItems()
         releaseAllItems()
@@ -527,6 +618,15 @@ public final class PlaybackEngine {
     /// which is platform-free and unit-tested — including the subtle rule that
     /// repeat-one applies to a natural ending but not to a deliberate skip.
     private func desiredWindow() -> [RenderSlot] {
+        // While a blend is prepared, the incoming track lives on the spare deck and
+        // must not also sit behind the current one on this one: the outgoing track
+        // has to run *out* of items so the deck falls silent and hands over. An
+        // `AVPlayerItem` cannot be moved between players, so this is the only place
+        // the incoming track can be.
+        if blend != nil, let head = queue.renderWindow(count: 1).first {
+            return [head]
+        }
+
         let skipped = failedEntries.union(coolingEntries)
         guard !skipped.isEmpty else {
             return queue.renderWindow(count: lookahead + 1)
@@ -675,6 +775,265 @@ public final class PlaybackEngine {
         return true
     }
 
+    // MARK: - AutoMix
+
+    /// Runs on every time update while something is playing: decides whether a
+    /// blend should be prepared, started, or abandoned.
+    ///
+    /// Driven from the clock rather than scheduled ahead, because everything it
+    /// depends on can change under it — the queue can be reordered, the next track
+    /// can be removed, the toggle can go off — and a decision re-taken twice a
+    /// second cannot go stale.
+    private func considerBlend() {
+        let window = queue.renderWindow(count: 2)
+
+        // Nothing to hand over to, or repeat-one, which would blend a track into
+        // itself. Either way, anything prepared is no longer wanted.
+        guard window.count == 2, window[1].entryId != window[0].entryId, let current = queue.currentTrack else {
+            cancelBlend()
+            return
+        }
+        let next = window[1]
+
+        if let blend {
+            // The queue moved on under a prepared blend: the track it was going to
+            // bring in is not the one coming next any more.
+            guard blend.entryId == next.entryId else {
+                cancelBlend()
+                return
+            }
+            guard !blend.isRunning, state.isPlaying else { return }
+            guard let remaining = remainingSound(of: current), remaining <= blend.overlap else { return }
+            // The moment has come. If the incoming track is not ready to arrive
+            // from silence, it does not arrive at all — better the plain cut this
+            // player has always done than a second song at full volume over the
+            // first.
+            if blend.isFadeReady {
+                startBlend()
+            } else {
+                log.warning("The blend wasn't ready in time; cutting instead")
+                cancelBlend()
+            }
+            return
+        }
+
+        guard state.isPlaying else { return }
+        guard case let .blend(overlap) = MixPlanner.plan(
+            from: mixTrack(current),
+            to: mixTrack(next.track),
+            automix: isAutoMixing,
+            albumLock: isAlbumLocked
+        ) else { return }
+        guard let remaining = remainingSound(of: current),
+              remaining <= overlap + Self.blendLead
+        else { return }
+
+        armBlend(next, overlap: overlap)
+    }
+
+    /// What the planner needs to know about a track, filled in from the same
+    /// caches the player itself reads.
+    private func mixTrack(_ track: Track) -> MixTrack {
+        MixTrack(
+            album: track.album,
+            trackNumber: track.trackNumber,
+            duration: track.duration,
+            sound: track.sound ?? soundResolver?(track),
+            bpm: bpmResolver?(track)
+        )
+    }
+
+    /// How much sound is left in the track playing now, measured to wherever the
+    /// player will actually stop — the sound's end when it has been measured, and
+    /// the file's end when it has not.
+    private func remainingSound(of track: Track) -> Duration? {
+        let end: Duration
+        if let sound = track.sound ?? soundResolver?(track) {
+            end = sound.soundEnd
+        } else if let duration {
+            end = duration
+        } else {
+            return nil
+        }
+        return end > elapsed ? end - elapsed : .zero
+    }
+
+    /// Puts the incoming track on the spare deck, silent and ready, and takes it
+    /// out of this deck's window so the outgoing track runs out of things to
+    /// advance to.
+    private func armBlend(_ slot: RenderSlot, overlap: Duration) {
+        blend = Blend(entryId: slot.entryId, track: slot.track, overlap: overlap)
+        syncPlayer()
+
+        let item = makeItem(for: slot.track, entryId: slot.entryId)
+        blend?.itemKey = ObjectIdentifier(item)
+        spareDeck.removeAllItems()
+        spareDeck.insert(item, after: nil)
+        spareDeck.pause()
+        applyLoudness(for: slot.track, on: spareDeck)
+
+        prepareFadeIn(item, of: slot.track, overlap: overlap)
+        log.info("Blending in \(slot.track.title, privacy: .public) over \(overlap.seconds, privacy: .public)s")
+    }
+
+    /// Attaches the incoming track's fade-in before it plays a note.
+    ///
+    /// Asynchronous because the fade has to be attached to the asset's own audio
+    /// track, and for a streamed file that track is not known until some of the
+    /// file has been read. That is the reason a blend is prepared seconds ahead
+    /// rather than at the moment it is wanted.
+    ///
+    /// Only the incoming half is done this way. An `AVAudioMix` is sample-accurate
+    /// and immune to a busy main thread, but AVFoundation only promises to honour
+    /// one that was attached *before* the item played — which the outgoing track,
+    /// by definition, already has. Its half is ridden down on the deck's fader
+    /// instead; see ``startBlend()``.
+    private func prepareFadeIn(_ item: AVPlayerItem, of track: Track, overlap: Duration) {
+        let key = ObjectIdentifier(item)
+        let seconds = overlap.seconds
+        let start = (track.sound ?? soundResolver?(track))?.soundStart ?? .zero
+
+        Task { @MainActor [weak self] in
+            let mix = await Self.audioTrack(of: item).flatMap {
+                MixRamp.fadeIn(track: $0, startingAt: start.cmTime, seconds: seconds)
+            }
+            guard let self, self.blend?.itemKey == key else { return }
+            guard let mix else {
+                self.log.warning("Couldn't build a fade-in; cutting instead")
+                self.cancelBlend()
+                return
+            }
+            item.audioMix = mix
+            self.blend?.isFadeReady = true
+        }
+    }
+
+    private static func audioTrack(of item: AVPlayerItem) async -> AVAssetTrack? {
+        try? await item.asset.loadTracks(withMediaType: .audio).first
+    }
+
+    /// Lets the incoming track be heard, and starts taking the outgoing one down.
+    ///
+    /// The fade-out is driven by the outgoing deck's own clock rather than a
+    /// timer: a clock that only advances when audio does cannot drift away from
+    /// the music, and it keeps running with the screen off, which a display link
+    /// does not. Twenty steps a second puts each step a small fraction of a
+    /// decibel from the last, which is well under what anyone can hear.
+    private func startBlend() {
+        guard let current = blend, !current.isRunning, current.isFadeReady else { return }
+        guard let fadeEnd = outgoingEnd(), fadeEnd.isFinite else { return }
+
+        blend?.isRunning = true
+        blend?.outgoingVolume = player.volume
+
+        let base = player.volume
+        let overlap = current.overlap.seconds
+        let deck = player
+        fadeObserver = deck.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            let progress = (time.seconds - (fadeEnd - overlap)) / overlap
+            deck.volume = base * Float(MixCurve.outgoing(progress: progress))
+        }
+
+        spareDeck.play()
+    }
+
+    /// Where the track playing now stops, in its own timeline.
+    private func outgoingEnd() -> Double? {
+        guard let track = queue.currentTrack else { return nil }
+        if let sound = track.sound ?? soundResolver?(track) { return sound.soundEnd.seconds }
+        return duration?.seconds
+    }
+
+    /// Takes the fade-out off whichever deck was carrying it and puts its fader
+    /// back where levelling had it.
+    private func endFadeOut(restoringVolumeOn deck: AVQueuePlayer) {
+        guard let fadeObserver else { return }
+        deck.removeTimeObserver(fadeObserver)
+        self.fadeObserver = nil
+        deck.volume = blend?.outgoingVolume ?? 1
+    }
+
+    /// The outgoing track has finished and its deck is empty. Hand over.
+    ///
+    /// Returns whether it did, so the ordinary "the queue ran out" path can carry
+    /// on when there was no blend in flight.
+    private func completeBlend() -> Bool {
+        guard let running = blend, running.isRunning, let key = running.itemKey else { return false }
+
+        stopReportingCurrent()
+
+        // Retire the deck that just ran dry before it becomes the spare one.
+        endFadeOut(restoringVolumeOn: player)
+        player.pause()
+        player.removeAllItems()
+        for retired in enqueued { release(key: retired) }
+        enqueued = [key]
+
+        swapDecks()
+        _ = queue.jump(to: running.entryId)
+
+        blend = nil
+        lastReportedSecond = -1
+        elapsed = player.currentTime().validDuration ?? .zero
+        duration = assetDurations[key]
+            ?? player.currentItem?.duration.validDuration
+            ?? running.track.duration
+        state = player.rate > 0 ? .playing : .paused
+        updateNowPlayingInfo()
+
+        // Reported here rather than when the fade began: the listen is opened
+        // once, at the moment this track becomes the one playing, so a blend does
+        // not put two open plays in the history at the same time.
+        reportedStartFor = running.track.id
+        let reporter = reporter
+        let track = running.track
+        Task { await reporter?.playbackDidStart(track) }
+
+        syncPlayer()
+        return true
+    }
+
+    /// Moves the observations that watch "the player" onto the other deck.
+    ///
+    /// They are re-installed rather than kept on both, so nothing in this file
+    /// has to ask which deck a callback came from.
+    private func swapDecks() {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        currentItemObservation?.invalidate()
+        currentItemObservation = nil
+        rateObservation?.invalidate()
+        rateObservation = nil
+
+        playingDeckB.toggle()
+
+        observeCurrentItem()
+        observeRate()
+        observePlayerTime()
+    }
+
+    /// Abandons whatever was prepared. Safe to call when nothing is.
+    ///
+    /// - Parameter resync: whether to put the incoming track back into this
+    ///   deck's window. False only where the caller is about to rebuild it
+    ///   anyway, or is tearing everything down — `syncPlayer` can decide the
+    ///   queue has run out, and calling it from inside that decision would go
+    ///   round in circles.
+    private func cancelBlend(resync: Bool = true) {
+        guard let cancelled = blend else { return }
+        endFadeOut(restoringVolumeOn: player)
+        blend = nil
+        spareDeck.pause()
+        spareDeck.removeAllItems()
+        if let key = cancelled.itemKey { release(key: key) }
+        if resync { syncPlayer() }
+    }
+
     // MARK: - Boundary
 
     private func observeCurrentItem() {
@@ -720,6 +1079,10 @@ public final class PlaybackEngine {
             // tearing down — otherwise the final track of every queue never counts
             // as played on the server.
             if player.currentItem == nil, !enqueued.isEmpty {
+                // A deck that runs dry mid-blend has not reached the end of the
+                // queue; it has reached the end of its track, and the next one is
+                // already playing on the other deck.
+                if completeBlend() { return }
                 stopReportingCurrent()
                 finishPlayback()
             }
@@ -806,6 +1169,23 @@ public final class PlaybackEngine {
         assetDuration: Duration?,
         error: String?
     ) {
+        // An item waiting on the spare deck is not part of this deck's window and
+        // must not touch its state — but a blend whose track cannot be loaded is
+        // no longer a blend, and the handover has to become a plain cut before the
+        // outgoing track runs out of deck.
+        if blend?.itemKey == key {
+            switch status {
+            case .readyToPlay:
+                if let assetDuration { assetDurations[key] = assetDuration }
+            case .failed:
+                log.warning("The track to blend in failed to load; cutting instead: \(error ?? "no reason given", privacy: .public)")
+                cancelBlend()
+            default:
+                break
+            }
+            return
+        }
+
         // Several items are alive at once now; only the playing one may drive state.
         let isCurrent = player.currentItem.map { ObjectIdentifier($0) == key } ?? false
 
@@ -966,6 +1346,8 @@ public final class PlaybackEngine {
         // across a transition, which is why no generation counter is needed here.
         guard let seconds = time.validDuration else { return }
         elapsed = seconds
+
+        considerBlend()
 
 
         // No per-tick push of the position: with an honest rate reported, the

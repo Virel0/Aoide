@@ -11,6 +11,8 @@ struct SettingsView: View {
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
     @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
     @AppStorage(TrimSilencePreference.key) private var trimSilence = true
+    @AppStorage(AutoMixPreference.key) private var autoMix = false
+    @AppStorage(AlbumLockPreference.key) private var albumLock = true
     @AppStorage(LoudnessPreference.key) private var loudnessNormalisation = true
     @State private var analysis = AudioAnalysisSync.shared
     @State private var silence = SilenceIndex.shared
@@ -127,6 +129,17 @@ struct SettingsView: View {
                 Text("Gapless")
             } footer: {
                 Text("Level Volume turns each record down to the same loudness, so a 2015 remaster after a 1978 pressing is not a jolt; your server measures it, and a track quieter than the reference is left alone rather than amplified. Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks are trimmed with measurements from your server, which this phone also sends its own to.")
+            }
+
+            Section {
+                Toggle("AutoMix", isOn: $autoMix)
+                    .onChange(of: autoMix) { PlaybackEngine.shared.isAutoMixing = autoMix }
+                Toggle("Keep Albums Whole", isOn: $albumLock)
+                    .onChange(of: albumLock) { PlaybackEngine.shared.isAlbumLocked = albumLock }
+            } header: {
+                Text("AutoMix")
+            } footer: {
+                Text("AutoMix fades one song into the next instead of stopping between them, longer when the two are at the same tempo. It is a crossfade and not a beat-match: matching beats needs to know where they fall, and what your server measures is how many there are per minute. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want the mixer everywhere.")
             }
 
             Section {

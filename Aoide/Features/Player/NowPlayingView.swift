@@ -12,6 +12,7 @@ struct NowPlayingView: View {
     @State private var isShowingQueue = false
     @State private var sharePlay = SharePlayCoordinator.shared
     @State private var isShowingLyrics = false
+    @AppStorage(AutoMixPreference.key) private var autoMix = false
 
     @Environment(LyricsStore.self) private var lyricsStore
 
@@ -161,6 +162,17 @@ struct NowPlayingView: View {
 
             Spacer()
 
+            Button {
+                autoMix.toggle()
+                engine.isAutoMixing = autoMix
+            } label: {
+                Image(systemName: "arrow.triangle.merge")
+                    .foregroundStyle(autoMix ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+            .accessibilityLabel(autoMix ? "AutoMix on" : "AutoMix off")
+
+            Spacer()
+
             if let trackId = track?.id, lyricsStore.mayHaveLyrics(trackId) {
                 Button {
                     isShowingLyrics = true
@@ -210,7 +222,7 @@ struct NowPlayingView: View {
         }
         .font(.title3)
         .buttonStyle(.plain)
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 28)
     }
 }
 

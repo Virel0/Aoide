@@ -64,6 +64,14 @@ final class AudioAnalysisSync {
         )
     }
 
+    /// The measured tempo, when there is one. The server reports nothing below
+    /// its own confidence threshold, so an answer here is one worth having —
+    /// though only for ordering and for how long to blend, never for matching
+    /// beats. See `MixPlanner`.
+    func bpm(for trackId: String) -> Double? {
+        analysis(for: trackId)?.bpm
+    }
+
     /// Makes sure the server has been asked about these tracks.
     func prefetch(ids: [String]) {
         guard let client = AppSession.shared.client, LoudnessPreference.isOn else { return }
