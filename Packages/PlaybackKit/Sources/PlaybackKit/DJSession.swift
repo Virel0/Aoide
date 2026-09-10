@@ -61,11 +61,14 @@ public final class DJSession {
     /// Whether a mix is booked but has not begun.
     public var hasScheduledMix: Bool { mix != nil }
 
+    /// Whether what is booked is a beat-matched mix rather than a fade or a join.
+    public var hasScheduledBeatMatch: Bool { mix?.transition != nil }
+
     /// How far through a mix the decks are, 0…1, or nothing if none is running.
     /// A screen can draw a crossfader with this.
     public func mixProgress(at sessionSeconds: Double) -> Double? {
-        guard let mix, sessionSeconds >= mix.startsAt else { return nil }
-        return min(1, max(0, (sessionSeconds - mix.startsAt) / mix.transition.seconds))
+        guard let mix, mix.endsAt > mix.startsAt, sessionSeconds >= mix.startsAt else { return nil }
+        return min(1, max(0, (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt)))
     }
 
     public private(set) var phase: Phase = .idle
@@ -76,18 +79,49 @@ public final class DJSession {
     private var startOffset: Double = 0
     private var current: DJItem?
 
+    /// What is booked onto the other deck, if anything.
+    private var mix: Mix?
+
+    /// The session time at which a bend must be finished being eased out.
+    private var restoreEndsAt: Double?
+
+    /// A hand-over booked onto the other deck.
+    ///
+    /// Three kinds, and the decks perform all three. That is the point of them
+    /// owning playback rather than only owning mixes: a join between two records
+    /// on one clock is sample-accurate, which is a better gapless than the queue
+    /// player's, and a plain crossfade needs the same two decks a mix does.
     private struct Mix {
-        let transition: DJTransition
+        enum Kind {
+            /// Beat-matched, bar-aligned, bass swapped. See ``DJTransition``.
+            case mixed(DJTransition)
+            /// Two records overlapping for this long, on volume alone.
+            case blended(Double)
+            /// One record ending exactly as the next begins.
+            case joined
+
+            /// Only a mix holds the incoming record's low end back; a crossfade
+            /// that did would be taking the bottom out of a fade for no reason.
+            var cutsIncomingBass: Bool {
+                if case .mixed = self { return true }
+                return false
+            }
+        }
+
+        let kind: Kind
         let incoming: DJItem
-        /// Session time the two decks begin running together.
+        /// Session time the incoming record begins.
         let startsAt: Double
+        /// Session time the outgoing record is finished with.
+        let endsAt: Double
         /// Where the incoming record was started from.
         let incomingOffset: Double
-    }
 
-    private var mix: Mix?
-    /// The session time at which the bend must be finished being eased out.
-    private var restoreEndsAt: Double?
+        var transition: DJTransition? {
+            if case let .mixed(transition) = kind { return transition }
+            return nil
+        }
+    }
 
     /// Called when the record playing reaches the end of its sound with nothing
     /// mixed in behind it.
@@ -111,18 +145,22 @@ public final class DJSession {
     /// moment in the near future with the content position that will be true
     /// *then*, so the two are playing the same instant of the same record when
     /// they cross.
+    @discardableResult
     public func start(
         _ item: DJItem,
         from seconds: Double,
         at sessionSeconds: Double,
         inSeconds lead: Double = 0
-    ) throws {
+    ) throws -> Bool {
         try mixer.load(item.url, on: side, from: seconds)
         mixer.setVolume(lead > 0 ? 0 : item.linearGain, on: side)
         mixer.setBassDb(0, on: side)
         mixer.setRate(1, on: side)
+        var started = true
         if lead > 0 {
-            mixer.play(side, inSeconds: lead)
+            // Nothing to book against means nothing was booked, and a caller that
+            // believes otherwise fades the player out under silence.
+            started = mixer.play(side, inSeconds: lead) != nil
         } else {
             mixer.play(side)
         }
@@ -131,6 +169,7 @@ public final class DJSession {
         startOffset = seconds
         phase = .playing
         mix = nil
+        return started
     }
 
     /// Scales the playing deck against the record's own levelling, for a fade
@@ -144,35 +183,92 @@ public final class DJSession {
         startOffset + max(0, sessionSeconds - startedAt) * mixer.rate(on: side)
     }
 
-    /// Plans nothing and decides nothing: takes a transition somebody else
-    /// planned and books the incoming record onto the other deck for it.
+    /// Books a beat-matched mix somebody else planned.
     ///
     /// The booking is the part that has to be exact, and it is done once, here,
     /// against the mixer's own clock — after this the two decks are running and
     /// nothing that happens on the main thread can pull them apart.
     public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws {
-        guard phase == .playing else { return }
-        let position = position(at: sessionSeconds)
-        let untilMix = (transition.outgoingStartMs / 1000 - position) / mixer.rate(on: side)
-        guard untilMix > 0 else { return }
+        let untilStart = (transition.outgoingStartMs / 1000 - position(at: sessionSeconds)) / rate
+        try book(
+            .mixed(transition),
+            into: incoming,
+            from: transition.incomingStartMs / 1000,
+            startingIn: untilStart,
+            lasting: transition.seconds,
+            rate: transition.incomingRate,
+            at: sessionSeconds
+        )
+    }
 
-        let incomingOffset = transition.incomingStartMs / 1000
-        try mixer.load(incoming.url, on: other, from: incomingOffset)
+    /// Books a plain crossfade of `seconds`, ending as the outgoing record does.
+    public func scheduleBlend(seconds: Double, into incoming: DJItem, at sessionSeconds: Double) throws {
+        guard let untilEnd = untilEnd(at: sessionSeconds) else { return }
+        try book(
+            .blended(seconds),
+            into: incoming,
+            from: incoming.startSeconds,
+            startingIn: untilEnd - seconds,
+            lasting: seconds,
+            rate: 1,
+            at: sessionSeconds
+        )
+    }
+
+    /// Books the next record to begin exactly as this one ends.
+    ///
+    /// What an album run gets, and what everything else gets when nothing longer
+    /// was planned. Two records on one clock join to the sample, so this is a
+    /// truer gapless than a player that has to be asked to advance.
+    public func scheduleJoin(into incoming: DJItem, at sessionSeconds: Double) throws {
+        guard let untilEnd = untilEnd(at: sessionSeconds) else { return }
+        try book(
+            .joined,
+            into: incoming,
+            from: incoming.startSeconds,
+            startingIn: untilEnd,
+            lasting: 0,
+            rate: 1,
+            at: sessionSeconds
+        )
+    }
+
+    /// How long until the record playing reaches the end of its sound.
+    private func untilEnd(at sessionSeconds: Double) -> Double? {
+        guard let end = current?.endSeconds else { return nil }
+        return (end - position(at: sessionSeconds)) / rate
+    }
+
+    private var rate: Double { mixer.rate(on: side) }
+
+    private func book(
+        _ kind: Mix.Kind,
+        into incoming: DJItem,
+        from offset: Double,
+        startingIn lead: Double,
+        lasting seconds: Double,
+        rate incomingRate: Double,
+        at sessionSeconds: Double
+    ) throws {
+        guard phase == .playing, mix == nil, lead > 0 else { return }
+
+        try mixer.load(incoming.url, on: other, from: offset)
         // The state the deck must be in for its first instant, before any
-        // automation has run: silent, and with the low end already out of the
-        // way. `update` overwrites both a tick later, so this only governs the
-        // moment between the deck starting and the first tick after it — which
-        // is exactly the moment a record would otherwise arrive at full volume.
-        mixer.setVolume(0, on: other)
-        mixer.setBassDb(DJAutomation.bassCutDb, on: other)
-        mixer.setRate(transition.incomingRate, on: other)
-        mixer.play(other, inSeconds: untilMix)
+        // automation has run. `update` overwrites both a tick later, so this only
+        // governs the moment between the deck starting and the first tick after
+        // it — which is exactly the moment a record would otherwise arrive at
+        // full volume.
+        mixer.setVolume(seconds > 0 ? 0 : incoming.linearGain, on: other)
+        mixer.setBassDb(kind.cutsIncomingBass ? DJAutomation.bassCutDb : 0, on: other)
+        mixer.setRate(incomingRate, on: other)
+        mixer.play(other, inSeconds: lead)
 
         mix = Mix(
-            transition: transition,
+            kind: kind,
             incoming: incoming,
-            startsAt: sessionSeconds + untilMix,
-            incomingOffset: incomingOffset
+            startsAt: sessionSeconds + lead,
+            endsAt: sessionSeconds + lead + seconds,
+            incomingOffset: offset
         )
     }
 
@@ -186,19 +282,32 @@ public final class DJSession {
             return
         }
         guard sessionSeconds >= mix.startsAt else { return }
-
-        let progress = (sessionSeconds - mix.startsAt) / mix.transition.seconds
-        if progress >= 1 {
+        guard sessionSeconds < mix.endsAt else {
             finish(mix, at: sessionSeconds)
             return
         }
 
         phase = .mixing
-        mixer.apply(progress: progress, outgoing: side, incoming: other, transition: mix.transition)
-        // The levelling sits underneath the mix's own curve, so two records that
-        // were brought to one loudness stay there while they cross.
-        mixer.setVolume(DJAutomation.outgoingGain(progress: progress) * (current?.linearGain ?? 1), on: side)
-        mixer.setVolume(DJAutomation.incomingGain(progress: progress) * mix.incoming.linearGain, on: other)
+        let progress = (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt)
+
+        switch mix.kind {
+        case .mixed(let transition):
+            // The levelling sits underneath the mix's own curve, so two records
+            // brought to one loudness stay there while they cross.
+            mixer.setVolume(DJAutomation.outgoingGain(progress: progress) * (current?.linearGain ?? 1), on: side)
+            mixer.setVolume(DJAutomation.incomingGain(progress: progress) * mix.incoming.linearGain, on: other)
+            mixer.setBassDb(DJAutomation.outgoingBassDb(progress: progress), on: side)
+            mixer.setBassDb(DJAutomation.incomingBassDb(progress: progress), on: other)
+            mixer.setRate(transition.incomingRate, on: other)
+        case .blended:
+            // No bass swap and no bend: a crossfade between two records that were
+            // never claimed to fit is a fade, and dressing it up as a mix would
+            // be dressing up a guess.
+            mixer.setVolume(MixCurve.outgoing(progress: progress) * (current?.linearGain ?? 1), on: side)
+            mixer.setVolume(MixCurve.incoming(progress: progress) * mix.incoming.linearGain, on: other)
+        case .joined:
+            break
+        }
     }
 
     /// The mix is over: the outgoing deck is silent and is stopped, and the
@@ -220,9 +329,9 @@ public final class DJSession {
 
         // Bent to meet the record that has just ended; it gets its own tempo back
         // over the next few seconds rather than keeping somebody else's forever.
-        if mix.transition.incomingRate != 1 {
-            restoreEndsAt = sessionSeconds + mix.transition.restoreSeconds
-            restoreFrom = mix.transition.incomingRate
+        if let transition = mix.transition, transition.incomingRate != 1 {
+            restoreEndsAt = sessionSeconds + transition.restoreSeconds
+            restoreFrom = transition.incomingRate
             restoreStartedAt = sessionSeconds
         }
     }

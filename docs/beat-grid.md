@@ -273,23 +273,26 @@ that might stall halfway is not a mix. Grids are fetched for downloaded tracks
 in the queue, alongside the sound bounds and the loudness the app already asks
 for.
 
-**The decks are normally chosen when a record starts**, because that is the
-cleanest moment to answer the question, and the answer is yes only when the
-*next* record is already mixable — playing on the decks buys nothing otherwise.
+**With Auto DJ on, the decks take every gridded record this device holds**, from
+its beginning, whether or not a mix follows it — and they perform its hand-over
+whatever kind that turns out to be: a mix, a crossfade, or a join.
 
-**But a record already playing can be moved onto them.** The commonest way
-anybody lines up a mix is to play something and *then* queue what should follow
-it, and refusing that would mean the feature never fires for the most natural
-thing a listener does. So when a mix becomes possible for the record playing,
-the deck is booked a third of a second ahead with the content position that will
-be true *then*, and the two engines are crossfaded over the moment they overlap.
-They are playing the same instant of the same file, so the overlap is inaudible
-when the positions agree and a brief phasing when they are a few milliseconds
-apart — worth risking once, to make every mix after it possible.
+That last part is why. An earlier version only used the decks when the *next*
+record was already mixable, and moved a record onto them mid-play when one
+appeared. Two engines playing the same instant of the same file drift by a few
+milliseconds against each other, and two copies of one recording a few
+milliseconds apart is a comb filter — which a listener described as the volume
+doing something strange, just as "Mix ready" appeared. It was right about what
+it heard.
 
-The two engines cannot be joined to the sample, which is why this is a crossfade
-rather than a splice, and why it happens once per record rather than at every
-boundary.
+The mid-play hand-over still exists for the one case that needs it — Auto DJ
+switched on while something is already playing — and is abandoned at the first
+sign of trouble rather than pressed through.
+
+**A join on two decks is a better gapless than a queue player's.** One clock,
+one scheduled sample: the next record begins exactly as the last one's sound
+ends. Album runs get this, and so does every pair that earns neither a mix nor a
+crossfade.
 
 While the decks have it, the queue player is emptied rather than left idle, and
 every path that would fill it is closed: a window rebuilt behind the decks would

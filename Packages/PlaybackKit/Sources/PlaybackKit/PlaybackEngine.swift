@@ -912,27 +912,35 @@ public final class PlaybackEngine {
     /// already mixable, since playing on the decks buys nothing otherwise.
     private func shouldUseDecks() -> Bool {
         guard isAutoDJing else { return false }
-        guard let track = queue.currentTrack, djItem(for: track) != nil else { return false }
-        let window = queue.renderWindow(count: 2)
-        guard window.count == 2, window[1].entryId != window[0].entryId else { return false }
-        return plannedMix(from: track, to: window[1].track, position: .zero) != nil
+        // Every record this device holds and the server has gridded, whether or
+        // not a mix follows it.
+        //
+        // This used to also require the *next* record to be mixable, on the
+        // reasoning that the decks bought nothing otherwise. It bought something
+        // expensive: a record that turned out to have a mixable one behind it had
+        // to be moved onto the decks mid-play, and a listener heard that hand-over
+        // as a strange moment in the sound just as "Mix ready" appeared. The
+        // decks now play the record from the start, and they perform its
+        // hand-over whatever kind it turns out to be — a mix, a crossfade, or a
+        // join.
+        guard let track = queue.currentTrack, djItem(for: track)?.grid != nil else { return false }
+        return true
     }
 
     /// Taking a record off the player and onto the decks, mid-play.
     ///
-    /// The decks are normally chosen when a record starts, because that is the
-    /// only moment the question can be answered cleanly. But the commonest way
-    /// to line up a mix is to play something and *then* queue what should follow
-    /// it — at which point the record playing is on the wrong engine and the
-    /// answer would be no for the rest of its length. That is a feature that
-    /// looks broken.
+    /// **The rare path.** The decks now take every gridded local record from its
+    /// beginning, so this is only reached when Auto DJ is switched on while
+    /// something is already playing, or when a record's grid arrives after it
+    /// started. It used to be the ordinary path, and a listener heard it: two
+    /// engines playing the same instant of the same file drift against each
+    /// other by a few milliseconds, and two copies of one recording a few
+    /// milliseconds apart is a comb filter — which sounds like the volume doing
+    /// something strange, exactly as it was described.
     ///
-    /// So the record is moved. The deck is booked for a third of a second from
-    /// now with the content position that will be true then, and the two are
-    /// crossfaded over the moment they overlap. They are playing the same
-    /// instant of the same file, so the overlap is inaudible if the positions
-    /// agree and a brief phasing if they are a few milliseconds out — which is
-    /// worth risking once, to make every mix after it possible.
+    /// It is kept because the alternative is refusing to mix for the rest of a
+    /// record somebody just turned the feature on during, and it is now
+    /// abandoned at the first sign of trouble rather than pressed through.
     private struct DeckTakeover {
         let startsAt: Double
         let endsAt: Double
@@ -975,15 +983,26 @@ public final class PlaybackEngine {
 
         do {
             try mixer.start()
+            // A deck can only be booked against a clock that is running. Before
+            // the engine has rendered anything there is no clock, the booking is
+            // silently dropped, and what follows is a player faded out under a
+            // deck that never started — silence, and then a stall. Wait a tick.
+            guard mixer.renderTime != nil else { return }
             // The units' own latency comes off the content position: the deck
             // is booked for a moment, and what reaches the speaker at that
             // moment left the file that much earlier.
-            try session.start(
+            let booked = try session.start(
                 item,
                 from: elapsed.seconds + Self.takeoverLead - mixer.latency,
                 at: djClock(),
                 inSeconds: Self.takeoverLead
             )
+            guard booked else {
+                log.warning("The decks would not take \(track.title, privacy: .public); leaving it on the player")
+                session.stop()
+                djSession = nil
+                return
+            }
         } catch {
             log.warning("Couldn't take \(track.title, privacy: .public) onto the decks: \(error.localizedDescription, privacy: .public)")
             djSession = nil
@@ -1174,7 +1193,7 @@ public final class PlaybackEngine {
         }
 
         elapsed = .seconds(session.position(at: now))
-        bookMixIfDue(at: now)
+        bookHandoverIfDue(at: now)
 
         let bars = bookedBars
         switch (session.phase, bars) {
@@ -1196,9 +1215,14 @@ public final class PlaybackEngine {
     /// How many bars the booked mix runs for, if one is booked.
     private var bookedBars: Int?
 
-    /// Books the mix into the next record, once it is close enough to be worth
-    /// opening a second file for.
-    private func bookMixIfDue(at now: Double) {
+    /// Books whatever hand-over the next record has earned, once it is close
+    /// enough to be worth opening a second file for.
+    ///
+    /// The order is the whole policy: a mix if the pair can be mixed, a
+    /// crossfade if Crossfade is on and the pair suits one, and otherwise a join
+    /// — one record ending exactly as the next begins, which on two decks driven
+    /// by one clock is a truer gapless than asking a player to advance.
+    private func bookHandoverIfDue(at now: Double) {
         guard let session = djSession, session.phase == .playing, state.isPlaying else { return }
         let window = queue.renderWindow(count: 2)
 
@@ -1215,19 +1239,36 @@ public final class PlaybackEngine {
             bookedBars = nil
         }
         guard djScheduledEntryId == nil, !session.hasScheduledMix else { return }
-        guard let track = queue.currentTrack,
-              let transition = plannedMix(from: track, to: next.track, position: elapsed),
-              let item = djItem(for: next.track)
-        else { return }
-        guard transition.outgoingStartMs - elapsed.seconds * 1000 <= Self.djLead.seconds * 1000 else { return }
+        guard let track = queue.currentTrack, let item = djItem(for: next.track) else { return }
+
+        // Everything below books against how much of the record is left, so
+        // nothing is booked while the answer is "most of it".
+        let remaining = remainingSound(of: track) ?? .zero
+        guard remaining <= Self.djLead else { return }
 
         do {
-            try session.schedule(transition, into: item, at: now)
+            if let transition = plannedMix(from: track, to: next.track, position: elapsed) {
+                try session.schedule(transition, into: item, at: now)
+                bookedBars = transition.bars
+                log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
+            } else {
+                let plan = MixPlanner.plan(
+                    from: mixTrack(track),
+                    to: mixTrack(next.track),
+                    automix: isCrossfading,
+                    albumLock: isAlbumLocked
+                )
+                switch plan {
+                case .blend(let overlap):
+                    try session.scheduleBlend(seconds: overlap.seconds, into: item, at: now)
+                case .gapless, .cut:
+                    try session.scheduleJoin(into: item, at: now)
+                }
+                bookedBars = nil
+            }
             djScheduledEntryId = next.entryId
-            bookedBars = transition.bars
-            log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
         } catch {
-            log.warning("Couldn't book a mix: \(error.localizedDescription, privacy: .public)")
+            log.warning("Couldn't book a hand-over: \(error.localizedDescription, privacy: .public)")
         }
     }
 
