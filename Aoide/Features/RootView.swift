@@ -136,6 +136,9 @@ struct MainTabView: View {
             }
         }
         .task { await openToDownloadsIfOffline() }
+        // Before the shelves load: coming back to a queue that is already
+        // there is the difference between resuming and starting over.
+        .task { await QueueRestorer.restore(client: client) }
         .task { await playlists.ensureBuiltIns() }
         .task { await SongIndexer.shared.indexIfStale(library: store) }
         // The op log already syncs on return (see RootView); the Jellyfin caches

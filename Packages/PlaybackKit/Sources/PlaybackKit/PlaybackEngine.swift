@@ -174,6 +174,11 @@ public final class PlaybackEngine {
     /// Whether music was playing when an interruption began. See ``InterruptionPolicy``.
     private var wasPlayingWhenInterrupted = false
 
+    /// The track whose start has already been reported, so a listen is opened
+    /// once and only once. A queue put back from disk deliberately reports
+    /// nothing until somebody actually presses play — see ``restore(_:startingAt:elapsed:)``.
+    private var reportedStartFor: String?
+
     /// What the user asked for, as distinct from what the player has managed yet.
     ///
     /// `AVPlayer.rate` is still 0 for a moment after `play()`, so deriving state
@@ -291,6 +296,15 @@ public final class PlaybackEngine {
         player.play()
         state = .playing
         updateNowPlayingInfo()
+
+        // A restored queue has reported nothing yet, so the listen opens here
+        // instead — otherwise the one track somebody comes back to would be the
+        // one track the history never sees.
+        if let track = queue.currentTrack, reportedStartFor != track.id {
+            reportedStartFor = track.id
+            let reporter = reporter
+            Task { await reporter?.playbackDidStart(track) }
+        }
         report { await $0.playbackDidProgress($1, position: $2, isPaused: false) }
     }
 
@@ -446,8 +460,35 @@ public final class PlaybackEngine {
 
         updateNowPlayingInfo()
 
+        reportedStartFor = track.id
         let reporter = reporter
         Task { await reporter?.playbackDidStart(track) }
+    }
+
+    /// Puts back the queue this device was last playing, stopped, where it was.
+    ///
+    /// Nothing is reported: a queue restored at launch is not a listen, and
+    /// counting one would put a play nobody made into the history every time the
+    /// app was reopened. `resume()` opens the listen if and when it is played.
+    ///
+    /// Refuses if anything is already queued — the car can connect and start
+    /// something before the phone's own screen has ever run, and taking that
+    /// away would be worse than not restoring at all.
+    public func restore(_ tracks: [Track], startingAt index: Int, elapsed: Duration) {
+        guard queue.isEmpty, !tracks.isEmpty else { return }
+        forgetLoadFailures()
+        queue.load(tracks, startingAt: index)
+        guard let track = queue.currentTrack else { return }
+
+        duration = track.duration
+        lastReportedSecond = -1
+        intendsToPlay = false
+        state = .paused
+        reportedStartFor = nil
+        applyLoudness(for: track)
+        rebuildWindow(play: false)
+        if elapsed > .zero { seek(to: elapsed) } else { self.elapsed = .zero }
+        updateNowPlayingInfo()
     }
 
     /// Levels the current track against every other one.
@@ -719,6 +760,7 @@ public final class PlaybackEngine {
         updateNowPlayingInfo()
 
         if let track = queue.currentTrack {
+            reportedStartFor = track.id
             let reporter = reporter
             Task { await reporter?.playbackDidStart(track) }
         }
