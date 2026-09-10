@@ -417,11 +417,16 @@ struct LoudnessNormalisationTests {
         #expect(LoudnessNormalisation.gainDb(loudnessLufs: -18) == nil)
     }
 
-    @Test("a master already over full scale is turned down until it is not")
+    @Test("a quiet track is left alone even when its peak is already over")
+    func leavesQuietTracksAlone() {
+        // The desktop settled this one: the peak rule stops *us* pushing a
+        // signal over full scale, and a file we have decided not to touch is
+        // not ours to limit. Both apps must answer the same here.
+        #expect(LoudnessNormalisation.gainDb(loudnessLufs: -20, truePeakDbfs: 1.5) == nil)
+    }
+
+    @Test("a peak under full scale changes nothing about the attenuation")
     func respectsTruePeak() {
-        // Loudness alone would ask for nothing; the peak forces attenuation.
-        #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -20, truePeakDbfs: 1.5), -1.5))
-        // A peak under full scale changes nothing.
         #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -9, truePeakDbfs: -0.3), -9))
     }
 
@@ -437,6 +442,33 @@ struct LoudnessNormalisationTests {
         let factor = try! #require(LoudnessNormalisation.volumeFactor(loudnessLufs: -12))
         #expect(abs(factor - pow(10, -6.0 / 20)) < 0.0001)
         #expect(factor < 1)
+    }
+
+    /// The same nine inputs the desktop answers, with the same nine answers.
+    ///
+    /// "Both apps agree" is a claim, and this table is the only thing that makes
+    /// it one: it is duplicated verbatim in the desktop's
+    /// `loudness-parity.test.ts`, so either side changing its arithmetic breaks
+    /// its own copy. Rounding is included deliberately — two implementations a
+    /// hundredth of a decibel apart are still two implementations.
+    @Test("answers the desktop's table identically", arguments: [
+        (-9.0, Double?.none, Double?(-9)),
+        (-14.0, Double?.none, Double?(-4)),
+        (-24.0, Double?.none, Double?.none),
+        (-18.0, Double?.none, Double?.none),
+        (-20.0, Double?(1.5), Double?.none),
+        (-9.0, Double?(-0.3), Double?(-9)),
+        (-6.0, Double?(2), Double?(-12)),
+        (-30.0, Double?(0.5), Double?.none),
+        (-8.333, Double?.none, Double?(-9.67)),
+    ])
+    func parityWithDesktop(_ lufs: Double, _ truePeak: Double?, _ expected: Double?) {
+        let answer = LoudnessNormalisation.gainDb(loudnessLufs: lufs, truePeakDbfs: truePeak)
+        if let expected {
+            #expect(close(answer, expected))
+        } else {
+            #expect(answer == nil)
+        }
     }
 
     @Test("the reference is the ReplayGain one, shared with every other side")

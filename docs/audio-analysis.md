@@ -72,9 +72,14 @@ Authorization: MediaBrowser Token="…"                          (the user's, as
 **Loudness.** Normalise to **−18 LUFS**, the ReplayGain 2.0 reference, so both
 apps land on the same level. Gain is `−18 − loudnessLufs` dB, applied by mpv on
 the desktop and as a per-track volume factor on the phone, **attenuating only** —
-a track quieter than the reference is left alone rather than amplified into its
-own true peak. A file that already carries ReplayGain tags uses those; this is
-for the ones that do not.
+a track at or below the reference is left alone entirely, peak and all, because
+the true-peak rule exists to stop the *client* pushing a signal over full scale
+and a file it has decided not to touch is not its to limit. Among the tracks it
+is turning down, one whose true peak would still land above 0 dBFS is turned
+down further until it does not. Results are rounded to a hundredth of a decibel
+on both sides, and the same nine inputs are pinned as a table in each app's
+tests. A file that already carries ReplayGain tags uses those; this is for the
+ones that do not.
 
 **Tempo.** Ordering, at first: a mix that rises rather than lurching. Nothing
 transitions on a beat until the numbers have proved themselves in practice.

@@ -20,19 +20,29 @@ public enum LoudnessNormalisation {
     /// rather than amplified: pushing a quiet master up is how you turn its own
     /// peaks into clipping, and the listener's volume control is right there.
     ///
-    /// A master whose true peak is already above full scale — the loudness war
-    /// left plenty — is turned down until it is not, even when its loudness
-    /// alone would have asked for nothing.
+    /// A master already over full scale is turned down until it is not, but only
+    /// among the tracks this is turning down anyway.
     public static func gainDb(loudnessLufs: Double?, truePeakDbfs: Double? = nil) -> Double? {
         guard let loudnessLufs, loudnessLufs.isFinite else { return nil }
 
-        var gain = min(0, referenceLufs - loudnessLufs)
-        if let truePeakDbfs, truePeakDbfs.isFinite, truePeakDbfs + gain > 0 {
-            gain = -truePeakDbfs
+        let gain = referenceLufs - loudnessLufs
+        // A track at or below the reference is left alone entirely, peak and
+        // all. The peak rule below exists to stop *this* code pushing a signal
+        // over full scale; limiting a file we have already decided not to touch
+        // is a different feature, and not the one somebody switched on.
+        guard gain < 0 else { return nil }
+
+        var corrected = gain
+        if let truePeakDbfs, truePeakDbfs.isFinite, truePeakDbfs + corrected > 0 {
+            corrected = -truePeakDbfs
         }
-        // Nothing to apply is nil rather than 0, so a caller can tell "measured
-        // and already right" from "not measured" without a second flag.
-        return gain == 0 ? nil : gain
+
+        // Rounded exactly as the desktop rounds it, so the two cannot land a
+        // hundredth of a decibel apart and call it agreement. Nothing to apply
+        // is nil rather than zero, so a caller can tell "measured and already
+        // right" from "not measured" without a second flag.
+        let rounded = (corrected * 100).rounded() / 100
+        return rounded < 0 ? rounded : nil
     }
 
     /// The same answer as a linear multiplier, for a player whose volume is one.
