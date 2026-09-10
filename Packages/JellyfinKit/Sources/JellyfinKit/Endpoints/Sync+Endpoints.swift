@@ -61,6 +61,16 @@ public extension JellyfinClient {
         return try await send(request("GET", path: Self.beatGridPath, query: query), path: Self.beatGridPath)
     }
 
+    /// `GET /aoide/analysis/coverage`: how much of the library the server has
+    /// measured, and how much of that came out with a beat grid.
+    ///
+    /// Worth having because measurement is lazy — a track is decoded the first
+    /// time something asks about it — so a fresh install sits at nothing
+    /// measured, which is correct and looks exactly like a fault.
+    func analysisCoverage() async throws -> Data {
+        try await send(request("GET", path: Self.coveragePath), path: Self.coveragePath)
+    }
+
     /// `GET /aoide/sync/status`: what the server is and what it will take.
     func syncStatus() async throws -> Data {
         try await send(request("GET", path: Self.statusPath), path: Self.statusPath)
@@ -109,5 +119,6 @@ public extension JellyfinClient {
     private static var soundBoundsPath: String { "aoide/sound-bounds" }
     private static var audioAnalysisPath: String { "aoide/audio-analysis" }
     private static var beatGridPath: String { "aoide/beat-grid" }
+    private static var coveragePath: String { "aoide/analysis/coverage" }
     private static var pullPath: String { "aoide/sync/pull" }
 }

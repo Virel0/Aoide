@@ -189,3 +189,38 @@ enum AutoDJPreference {
     static let key = "aoide.autoDJ"
     static var isOn: Bool { UserDefaults.standard.bool(forKey: key) }
 }
+
+/// How much of the library the server has measured.
+///
+/// Measurement is lazy: a track is decoded the first time something asks about
+/// it, so a library nobody has played through sits at nothing measured. That is
+/// correct, and it looks exactly like a fault — which is the whole reason this
+/// is on a screen.
+struct AnalysisCoverage: Decodable, Equatable, Sendable {
+    var tracks: Int
+    var soundBounds: Int
+    var audioAnalysis: Int
+    var beatGrids: Int
+    /// Of the measured ones, how many actually have a grid. The gap is not a
+    /// backlog: a spoken-word track decoded and found to have no beat is
+    /// finished, and counting it as outstanding would mean never reaching the
+    /// end.
+    var gridded: Int
+    /// Queued or decoding right now. Zero with work outstanding means nothing is
+    /// asking, rather than something being stuck.
+    var measuring: Int
+    var sweepEnabled: Bool
+    var summary: String
+}
+
+extension BeatGridSync {
+    /// Asks the server how far it has got. Nil from a server too old to answer.
+    func coverage() async -> AnalysisCoverage? {
+        guard let client = AppSession.shared.client else { return nil }
+        do {
+            return try JSONDecoder().decode(AnalysisCoverage.self, from: try await client.analysisCoverage())
+        } catch {
+            return nil
+        }
+    }
+}

@@ -33,7 +33,8 @@ struct PlayerModesRow: View {
             ModeChip(
                 title: "Auto DJ",
                 symbol: "slider.horizontal.3",
-                isOn: autoDJ
+                isOn: autoDJ,
+                icon: { Turntable(isSpinning: autoDJ, tint: autoDJ ? .accentColor : .secondary) }
             ) {
                 autoDJ.toggle()
                 PlaybackEngine.shared.isAutoDJing = autoDJ
@@ -81,38 +82,76 @@ struct PlayerModesRow: View {
 }
 
 /// A capsule that is plainly off or plainly on.
-struct ModeChip: View {
+///
+/// Takes a drawn icon as well as a symbol name, because one of these is a
+/// turntable and there is no turntable in SF Symbols.
+struct ModeChip<Icon: View>: View {
     let title: String
     let symbol: String
     let isOn: Bool
+    @ViewBuilder var icon: () -> Icon
     let toggle: () -> Void
+
+    init(
+        title: String,
+        symbol: String,
+        isOn: Bool,
+        @ViewBuilder icon: @escaping () -> Icon = { EmptyView() },
+        toggle: @escaping () -> Void
+    ) {
+        self.title = title
+        self.symbol = symbol
+        self.isOn = isOn
+        self.icon = icon
+        self.toggle = toggle
+    }
 
     var body: some View {
         Button(action: toggle) {
-            ModeChipLabel(title: title, symbol: symbol, isOn: isOn)
+            ModeChipLabel(title: title, symbol: symbol, isOn: isOn, icon: icon)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) \(isOn ? "on" : "off")")
     }
 }
 
-struct ModeChipLabel: View {
+struct ModeChipLabel<Icon: View>: View {
     let title: String
     let symbol: String
     let isOn: Bool
+    @ViewBuilder var icon: () -> Icon
+
+    init(
+        title: String,
+        symbol: String,
+        isOn: Bool,
+        @ViewBuilder icon: @escaping () -> Icon = { EmptyView() }
+    ) {
+        self.title = title
+        self.symbol = symbol
+        self.isOn = isOn
+        self.icon = icon
+    }
 
     var body: some View {
-        Label(title, systemImage: symbol)
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .background {
-                Capsule().fill(isOn ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.quaternary))
+        HStack(spacing: 5) {
+            if Icon.self == EmptyView.self {
+                Image(systemName: symbol)
+            } else {
+                icon().frame(width: 15, height: 15)
             }
-            .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            Text(title)
+        }
+        .font(.caption.weight(.medium))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background {
+            Capsule().fill(isOn ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.quaternary))
+        }
+        .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
     }
 }
 
@@ -135,14 +174,24 @@ struct MixBadge: View {
         case .off, .ready:
             EmptyView()
         case .booked(let bars):
-            label("Mix ready · \(bars) bars", symbol: "slider.horizontal.3", isLive: false)
-        case .mixing(let bars):
-            label("Mixing · \(bars) bars", symbol: "slider.horizontal.3", isLive: true)
+            HStack(spacing: 6) {
+                Turntable(isSpinning: false, progress: 0.8, tint: .secondary)
+                    .frame(width: 14, height: 14)
+                label("Mix ready · \(bars) bars", isLive: false)
+            }
+            .padding(.bottom, 6)
+        case .mixing(let bars, let progress):
+            VStack(spacing: 5) {
+                MixDecks(progress: progress)
+                label("Mixing · \(bars) bars", isLive: true)
+            }
+            .padding(.bottom, 6)
+            .transition(.opacity)
         }
     }
 
-    private func label(_ title: String, symbol: String, isLive: Bool) -> some View {
-        Label(title, systemImage: symbol)
+    private func label(_ title: String, isLive: Bool) -> some View {
+        Text(title)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(isLive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             .padding(.horizontal, 8)
@@ -150,10 +199,5 @@ struct MixBadge: View {
             .background {
                 Capsule().fill(isLive ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(.quaternary))
             }
-            .padding(.bottom, 6)
-            // A mix is a fifteen- or thirty-second event; appearing without a
-            // transition reads as a glitch.
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            .animation(.easeInOut(duration: 0.25), value: isLive)
     }
 }

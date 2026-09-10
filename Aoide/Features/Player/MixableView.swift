@@ -9,6 +9,7 @@ import SwiftUI
 /// rather than out of a description.
 struct MixableView: View {
     @State private var grids = BeatGridSync.shared
+    @State private var coverage: AnalysisCoverage?
     private let downloads = DownloadIndex.shared
 
     /// A downloaded track and what the server had to say about its beats.
@@ -49,12 +50,30 @@ struct MixableView: View {
         let pending = rows.filter(\.isPending)
 
         List {
+            if let coverage {
+                Section {
+                    LabeledContent("Measured", value: "\(coverage.beatGrids) of \(coverage.tracks)")
+                    LabeledContent("With a beat", value: "\(coverage.gridded)")
+                    if coverage.measuring > 0 {
+                        LabeledContent("Measuring now", value: "\(coverage.measuring)")
+                    }
+                } header: {
+                    Text("Your Server")
+                } footer: {
+                    Text(coverage.sweepEnabled
+                        ? "Your server measures the whole library on a schedule, so coverage climbs on its own."
+                        : "Your server measures a track the first time something asks about it, so this climbs as you listen. To do the whole library at once, turn on \"Analyse the whole library nightly\" in Jellyfin's Aoide Sidecar plugin settings — the first run takes hours on a large library, which is why it is off by default.")
+                }
+            }
+
             Section {
                 LabeledContent("Downloaded", value: "\(rows.count)")
                 LabeledContent("Can be mixed", value: "\(mixable.count)")
                 if !pending.isEmpty {
                     LabeledContent("Not measured yet", value: "\(pending.count)")
                 }
+            } header: {
+                Text("On This Phone")
             } footer: {
                 Text("Two tracks mix only if both are here, their tempi are within six per cent of each other — counting half and double as a match — and there is room in each for sixteen bars. Everything else crossfades. Your server measures a track's beats the first time anything asks about it, so a fresh download takes a moment to appear.")
             }
@@ -83,6 +102,10 @@ struct MixableView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             BeatGridSync.shared.prefetch(ids: downloads.tracks.map(\.id))
+            coverage = await BeatGridSync.shared.coverage()
+        }
+        .refreshable {
+            coverage = await BeatGridSync.shared.coverage()
         }
     }
 

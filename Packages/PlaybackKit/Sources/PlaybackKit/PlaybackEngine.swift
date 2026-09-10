@@ -197,8 +197,9 @@ public final class PlaybackEngine {
         case ready
         /// A mix into the next record is booked, and this is how long it will be.
         case booked(bars: Int)
-        /// Two records are playing.
-        case mixing(bars: Int)
+        /// Two records are playing, and this is how far through it is — enough
+        /// for a screen to draw a crossfader that means something.
+        case mixing(bars: Int, progress: Double)
     }
 
     public private(set) var mixState: MixState = .off
@@ -1049,9 +1050,12 @@ public final class PlaybackEngine {
 
         let bars = bookedBars
         switch (session.phase, bars) {
-        case (.mixing, let bars?): mixState = .mixing(bars: bars)
-        case (_, let bars?): mixState = .booked(bars: bars)
-        default: mixState = .ready
+        case (.mixing, let bars?):
+            mixState = .mixing(bars: bars, progress: session.mixProgress(at: now) ?? 0)
+        case (_, let bars?):
+            mixState = .booked(bars: bars)
+        default:
+            mixState = .ready
         }
 
         let whole = Int(elapsed.seconds)

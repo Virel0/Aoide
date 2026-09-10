@@ -61,6 +61,13 @@ public final class DJSession {
     /// Whether a mix is booked but has not begun.
     public var hasScheduledMix: Bool { mix != nil }
 
+    /// How far through a mix the decks are, 0…1, or nothing if none is running.
+    /// A screen can draw a crossfader with this.
+    public func mixProgress(at sessionSeconds: Double) -> Double? {
+        guard let mix, sessionSeconds >= mix.startsAt else { return nil }
+        return min(1, max(0, (sessionSeconds - mix.startsAt) / mix.transition.seconds))
+    }
+
     public private(set) var phase: Phase = .idle
 
     /// The session clock, in seconds, at which the record now playing began.
