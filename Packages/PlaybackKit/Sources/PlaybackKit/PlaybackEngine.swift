@@ -165,6 +165,9 @@ public final class PlaybackEngine {
     /// Throttles progress reports to the server to roughly one every 10s.
     private var lastReportedSecond: Int = -1
 
+    /// Whether music was playing when an interruption began. See ``InterruptionPolicy``.
+    private var wasPlayingWhenInterrupted = false
+
     /// What the user asked for, as distinct from what the player has managed yet.
     ///
     /// `AVPlayer.rate` is still 0 for a moment after `play()`, so deriving state
@@ -256,6 +259,12 @@ public final class PlaybackEngine {
 
     public func resume() {
         guard queue.current != nil else { return }
+
+        // A phone call deactivates this app's audio session, and nothing hands it
+        // back on its own: without this, every play after a call was silence, and
+        // the only cure was relaunching. Cheap and idempotent, so it costs a
+        // no-op on the ordinary path.
+        activateSession()
 
         // Rebuild whenever what's loaded is unusable, not only when it's missing.
         // AVQueuePlayer does not advance past a failed item, so without this a
@@ -1069,15 +1078,39 @@ public final class PlaybackEngine {
 
         switch type {
         case .began:
+            // Read before pausing, which clears it.
+            wasPlayingWhenInterrupted = state.isPlaying || intendsToPlay
             pause()
         case .ended:
-            // Only resume if the system says we should — otherwise music restarting
-            // itself after an unrelated alert is a nasty surprise in a car.
-            if AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume) {
-                resume()
-            }
+            // The session is ours again only once we say so; `resume()` does it
+            // too, but the flag may say not to resume and the next deliberate tap
+            // should still find a live session.
+            activateSession()
+            let systemSaysResume = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
+                .contains(.shouldResume)
+            let resuming = InterruptionPolicy.shouldResume(
+                systemSaysResume: systemSaysResume,
+                wasPlayingWhenInterrupted: wasPlayingWhenInterrupted
+            )
+            log.info("Interruption ended: system says resume=\(systemSaysResume, privacy: .public), was playing=\(self.wasPlayingWhenInterrupted, privacy: .public), resuming=\(resuming, privacy: .public)")
+            wasPlayingWhenInterrupted = false
+            if resuming { resume() }
         @unknown default:
             break
+        }
+    }
+
+    /// Claims the audio session back.
+    ///
+    /// The category and mode are set once at launch and survive; this only says
+    /// "this app wants the output again", which is the half a phone call takes
+    /// away. A failure is logged rather than thrown: another app holding an
+    /// exclusive session is a reason to stay quiet, not to crash a music player.
+    private func activateSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            log.error("Could not reclaim the audio session: \(error.localizedDescription, privacy: .public)")
         }
     }
 

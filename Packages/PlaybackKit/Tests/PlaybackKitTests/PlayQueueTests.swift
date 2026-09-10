@@ -374,3 +374,24 @@ struct ClearUpNextTests {
         #expect(queue.isEmpty)
     }
 }
+
+@Suite("Interruption policy")
+struct InterruptionPolicyTests {
+    @Test("music that was playing comes back, whatever the system flag says")
+    func resumesWhatWasPlaying() {
+        // iOS routinely omits `shouldResume` for a phone call, which is exactly
+        // the case that used to end a listening session for good.
+        #expect(InterruptionPolicy.shouldResume(systemSaysResume: false, wasPlayingWhenInterrupted: true))
+        #expect(InterruptionPolicy.shouldResume(systemSaysResume: true, wasPlayingWhenInterrupted: true))
+    }
+
+    @Test("the system's word is honoured even if we were paused")
+    func honoursTheFlag() {
+        #expect(InterruptionPolicy.shouldResume(systemSaysResume: true, wasPlayingWhenInterrupted: false))
+    }
+
+    @Test("something already paused stays paused")
+    func staysPaused() {
+        #expect(!InterruptionPolicy.shouldResume(systemSaysResume: false, wasPlayingWhenInterrupted: false))
+    }
+}
