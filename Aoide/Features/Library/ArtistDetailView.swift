@@ -11,6 +11,9 @@ struct ArtistDetailView: View {
 
     @Environment(LibraryStore.self) private var store
     @State private var albums: [JellyfinItem] = []
+    /// How much of this artist the listener actually finishes. Nil until
+    /// there is enough history to say anything honest.
+    @State private var finishRate: Double?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
@@ -46,6 +49,7 @@ struct ArtistDetailView: View {
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .task { await loadFinishRate() }
         .task(id: artist.id) {
             guard let url = store.artworkURL(for: artist, width: Design.ArtworkWidth.card) else { return }
             palette = await ArtworkColorExtractor.shared.palette(for: url)
@@ -70,6 +74,14 @@ struct ArtistDetailView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .tracking(0.4)
+            }
+
+            // Absent rather than zero below the sample floor: a figure drawn
+            // from two listens says something untrue about an artist.
+            if let finishRate {
+                Text("You finish \(Int((finishRate * 100).rounded()))% of this artist's songs")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             DetailActionRow(
@@ -114,6 +126,20 @@ struct ArtistDetailView: View {
     /// the app that plays from something the history has no word for — it is neither an
     /// album nor a playlist, and calling the shuffle button `.shuffle` while the play
     /// button was `.unknown` would split one page's listening across two meanings.
+    /// Every song this artist has here, asked once. The album pages hold the
+    /// track ids; the artist page holds albums, so they are gathered first.
+    private func loadFinishRate() async {
+        guard let db = CurationDatabase.shared else { return }
+        var ids: [String] = []
+        for album in albums {
+            guard let tracks = try? await store.tracks(inAlbum: album.id) else { continue }
+            ids.append(contentsOf: tracks.map(\.id))
+        }
+        guard !ids.isEmpty else { return }
+        let wanted = ids
+        finishRate = try? await Task.detached { try db.finishRate(jellyfinIds: wanted) }.value
+    }
+
     private func playEverything(shuffled: Bool) async {
         var everything: [JellyfinItem] = []
         for album in albums {

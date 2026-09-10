@@ -39,6 +39,9 @@ struct TrackListView: View {
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
     @State private var isFavorite = false
+    /// How much of this record the listener actually finishes. Nil until there
+    /// is enough history to say anything honest.
+    @State private var finishRate: Double?
 
     private var engine: PlaybackEngine { .shared }
 
@@ -215,6 +218,16 @@ struct TrackListView: View {
                         .tracking(0.4)
                         .padding(.top, 3)
                 }
+
+                // The one figure a music server cannot produce. Absent rather
+                // than zero when there is too little history: "0%" on a record
+                // played twice says something untrue.
+                if let finishRate {
+                    Text("You finish \(Int((finishRate * 100).rounded()))% of this")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 1)
+                }
             }
 
             actionRow
@@ -310,6 +323,13 @@ struct TrackListView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Read after the tracks arrive, since it is a question about them.
+    private func loadFinishRate() async {
+        guard let store = CurationDatabase.shared, !tracks.isEmpty else { return }
+        let ids = tracks.map(\.id)
+        finishRate = try? await Task.detached { try store.finishRate(jellyfinIds: ids) }.value
+    }
+
     private func load() async {
         isLoading = true
         errorMessage = nil
@@ -324,6 +344,7 @@ struct TrackListView: View {
             errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
+        await loadFinishRate()
     }
 }
 

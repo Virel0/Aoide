@@ -583,3 +583,61 @@ struct PlayHistoryTests {
         #expect(restored > penalised)
     }
 }
+
+/// Mirrored by the desktop's `finish-rate.test.ts`. The two must not drift, or
+/// one library reports two figures.
+@Suite("Finish rate")
+struct FinishRateTests {
+    @Test("too little history says nothing at all")
+    func floor() {
+        #expect(FinishRate.rate(FinishCounts(starts: 2, completed: 2)) == nil)
+        #expect(FinishRate.rate(FinishCounts(starts: 0, completed: 0)) == nil)
+        #expect(FinishRate.rate(FinishCounts(starts: 3, completed: 3)) == 1)
+    }
+
+    @Test("a set sums its counts rather than averaging its rates")
+    func aggregation() {
+        // Heard fifty times and never finished, against one heard three times
+        // and always finished. The mean of the rates would say 50%; the album
+        // says what actually happened.
+        let heavy = FinishCounts(starts: 50, completed: 0)
+        let light = FinishCounts(starts: 3, completed: 3)
+        let combined = try! #require(FinishRate.rate(over: [heavy, light]))
+        #expect(abs(combined - 3.0 / 53.0) < 0.0001)
+
+        let meanOfRates = ((FinishRate.rate(heavy) ?? 0) + (FinishRate.rate(light) ?? 0)) / 2
+        #expect(abs(combined - meanOfRates) > 0.4, "must not be the mean of the rates")
+    }
+
+    @Test("counted from the store: only decided listens, every id present")
+    func fromStore() throws {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        // Three decided listens, two of them finished.
+        for (completed, skipped) in [(true, false), (true, false), (false, true)] {
+            let event = try store.beginPlay(jellyfinId: "t1", contentKey: "k1")
+            _ = try store.finishPlay(
+                event,
+                msPlayed: completed ? 200_000 : 3_000,
+                trackDurationMs: 200_000,
+                endedAt: Date().millis
+            )
+            _ = (completed, skipped)
+        }
+        // One still open: no verdict, so it counts for nothing.
+        _ = try store.beginPlay(jellyfinId: "t1", contentKey: "k1")
+
+        let counts = try store.finishCounts(jellyfinIds: ["t1", "never-played"])
+        #expect(counts["never-played"] == FinishCounts(starts: 0, completed: 0))
+        let t1 = try #require(counts["t1"])
+        #expect(t1.starts == 3, "the open listen must not count")
+        #expect(t1.completed == 2)
+        #expect(FinishRate.percentDescription(t1) == "67%")
+    }
+
+    @Test("nothing asked for, nothing returned")
+    func empty() throws {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        #expect(try store.finishCounts(jellyfinIds: []).isEmpty)
+        #expect(try store.finishRate(jellyfinIds: []) == nil)
+    }
+}
