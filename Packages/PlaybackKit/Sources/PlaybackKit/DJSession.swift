@@ -101,16 +101,42 @@ public final class DJSession {
 
     /// Starts a record now, on whichever deck is free.
     public func start(_ item: DJItem, at sessionSeconds: Double) throws {
-        try mixer.load(item.url, on: side, from: item.startSeconds)
-        mixer.setVolume(item.linearGain, on: side)
+        try start(item, from: item.startSeconds, at: sessionSeconds)
+    }
+
+    /// Starts a record from a given point, optionally a moment from now.
+    ///
+    /// The lead exists for taking a record over from the ordinary player, which
+    /// cannot be stopped and started to the sample: the deck is booked for a
+    /// moment in the near future with the content position that will be true
+    /// *then*, so the two are playing the same instant of the same record when
+    /// they cross.
+    public func start(
+        _ item: DJItem,
+        from seconds: Double,
+        at sessionSeconds: Double,
+        inSeconds lead: Double = 0
+    ) throws {
+        try mixer.load(item.url, on: side, from: seconds)
+        mixer.setVolume(lead > 0 ? 0 : item.linearGain, on: side)
         mixer.setBassDb(0, on: side)
         mixer.setRate(1, on: side)
-        mixer.play(side)
+        if lead > 0 {
+            mixer.play(side, inSeconds: lead)
+        } else {
+            mixer.play(side)
+        }
         current = item
-        startedAt = sessionSeconds
-        startOffset = item.startSeconds
+        startedAt = sessionSeconds + lead
+        startOffset = seconds
         phase = .playing
         mix = nil
+    }
+
+    /// Scales the playing deck against the record's own levelling, for a fade
+    /// that belongs to something other than a mix.
+    public func setCurrentVolume(scale: Double) {
+        mixer.setVolume((current?.linearGain ?? 1) * max(0, min(1, scale)), on: side)
     }
 
     /// Where the record playing has got to, in its own timeline.

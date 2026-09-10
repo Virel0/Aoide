@@ -918,6 +918,109 @@ public final class PlaybackEngine {
         return plannedMix(from: track, to: window[1].track, position: .zero) != nil
     }
 
+    /// Taking a record off the player and onto the decks, mid-play.
+    ///
+    /// The decks are normally chosen when a record starts, because that is the
+    /// only moment the question can be answered cleanly. But the commonest way
+    /// to line up a mix is to play something and *then* queue what should follow
+    /// it — at which point the record playing is on the wrong engine and the
+    /// answer would be no for the rest of its length. That is a feature that
+    /// looks broken.
+    ///
+    /// So the record is moved. The deck is booked for a third of a second from
+    /// now with the content position that will be true then, and the two are
+    /// crossfaded over the moment they overlap. They are playing the same
+    /// instant of the same file, so the overlap is inaudible if the positions
+    /// agree and a brief phasing if they are a few milliseconds out — which is
+    /// worth risking once, to make every mix after it possible.
+    private struct DeckTakeover {
+        let startsAt: Double
+        let endsAt: Double
+    }
+
+    private var takeover: DeckTakeover?
+
+    /// How far ahead the deck is booked when taking a record over.
+    private static let takeoverLead = 0.35
+    /// And how long the two are crossfaded across.
+    private static let takeoverFade = 0.3
+
+    /// Asked on every time update while the player still has the record.
+    private func considerDeckTakeover() {
+        guard isAutoDJing, !isUsingDecks, takeover == nil, state.isPlaying, blend == nil else { return }
+        guard let entryId = queue.current?.id,
+              let track = queue.currentTrack,
+              let item = djItem(for: track)
+        else { return }
+
+        let window = queue.renderWindow(count: 2)
+        guard window.count == 2, window[1].entryId != entryId else { return }
+
+        // Planned from where the record will be once the hand-over is done, not
+        // from where it is now.
+        let after = elapsed + .seconds(Self.takeoverLead + Self.takeoverFade)
+        guard let transition = plannedMix(from: track, to: window[1].track, position: after) else { return }
+        // Only worth moving a record for a mix that is actually close.
+        guard transition.outgoingStartMs - elapsed.seconds * 1_000 <= Self.djLead.seconds * 1_000 else { return }
+
+        beginTakeover(track, entryId: entryId, item: item)
+    }
+
+    private func beginTakeover(_ track: Track, entryId: UUID, item: DJItem) {
+        let mixer = djMixer ?? DJMixer()
+        djMixer = mixer
+        let session = djSession ?? DJSession(mixer: mixer)
+        djSession = session
+        session.onTrackEnded = { [weak self] in self?.next() }
+
+        do {
+            try mixer.start()
+            try session.start(
+                item,
+                from: elapsed.seconds + Self.takeoverLead,
+                at: djClock(),
+                inSeconds: Self.takeoverLead
+            )
+        } catch {
+            log.warning("Couldn't take \(track.title, privacy: .public) onto the decks: \(error.localizedDescription, privacy: .public)")
+            djSession = nil
+            return
+        }
+
+        let now = djClock()
+        takeover = DeckTakeover(startsAt: now + Self.takeoverLead, endsAt: now + Self.takeoverLead + Self.takeoverFade)
+        djEntryId = entryId
+        djScheduledEntryId = nil
+        bookedBars = nil
+        mixState = .ready
+        log.info("Taking \(track.title, privacy: .public) onto the decks at \(self.elapsed.seconds, privacy: .public)s")
+        startDJTimer()
+    }
+
+    /// Rides the two across each other, then empties the player.
+    private func runTakeover(_ moment: DeckTakeover, at now: Double) {
+        guard let session = djSession else { return }
+        let progress = (now - moment.startsAt) / (moment.endsAt - moment.startsAt)
+
+        guard progress < 1 else {
+            session.setCurrentVolume(scale: 1)
+            player.pause()
+            player.removeAllItems()
+            releaseAllItems()
+            enqueued = []
+            player.volume = 1
+            takeover = nil
+            return
+        }
+        guard progress >= 0 else { return }
+
+        // The same equal-power curve as everything else here, for the same
+        // reason: two copies of one recording at half volume are not one copy at
+        // full volume.
+        player.volume = Float(MixCurve.outgoing(progress: progress))
+        session.setCurrentVolume(scale: MixCurve.incoming(progress: progress))
+    }
+
     /// Everything the decks need about a track, or nothing if it cannot be one.
     private func djItem(for track: Track) -> DJItem? {
         guard let url = localFileResolver?(track) else { return nil }
@@ -1030,11 +1133,20 @@ public final class PlaybackEngine {
         djScheduledEntryId = nil
         bookedBars = nil
         mixState = .off
+        // A take-over abandoned halfway would otherwise leave the player turned
+        // down for good.
+        takeover = nil
+        player.volume = 1
     }
 
     private func djTick() {
         guard let session = djSession, let entryId = djEntryId else { return }
         let now = djClock()
+
+        if let moment = takeover {
+            runTakeover(moment, at: now)
+        }
+
         session.update(at: now)
 
         // A mix that has begun means the queue has moved: the record the listener
@@ -1420,6 +1532,11 @@ public final class PlaybackEngine {
     }
 
     private func handleCurrentItemChanged(_ key: ObjectIdentifier?) {
+        // While the decks have the record, the player is either being faded out
+        // of a hand-over or already empty. Either way its boundaries are not the
+        // queue's, and acting on one would tear the decks down mid-record.
+        guard !isUsingDecks else { return }
+
         guard let key, let entryId = entryForItem[key] else {
             // The queue drained on its own. Report the last track's stop before
             // tearing down — otherwise the final track of every queue never counts
@@ -1694,6 +1811,7 @@ public final class PlaybackEngine {
         elapsed = seconds
 
         considerBlend()
+        considerDeckTakeover()
 
 
         // No per-tick push of the position: with an honest rate reported, the

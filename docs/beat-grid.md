@@ -273,11 +273,23 @@ that might stall halfway is not a mix. Grids are fetched for downloaded tracks
 in the queue, alongside the sound bounds and the loudness the app already asks
 for.
 
-**The decks are chosen when a record starts, and not revisited.** They cannot
-take over a record already playing — two engines cannot be joined
-sample-accurately mid-track — so the question is asked at the only moment it can
-be answered, and the answer is yes only when the *next* record is already
-mixable. Playing on the decks buys nothing otherwise.
+**The decks are normally chosen when a record starts**, because that is the
+cleanest moment to answer the question, and the answer is yes only when the
+*next* record is already mixable — playing on the decks buys nothing otherwise.
+
+**But a record already playing can be moved onto them.** The commonest way
+anybody lines up a mix is to play something and *then* queue what should follow
+it, and refusing that would mean the feature never fires for the most natural
+thing a listener does. So when a mix becomes possible for the record playing,
+the deck is booked a third of a second ahead with the content position that will
+be true *then*, and the two engines are crossfaded over the moment they overlap.
+They are playing the same instant of the same file, so the overlap is inaudible
+when the positions agree and a brief phasing when they are a few milliseconds
+apart — worth risking once, to make every mix after it possible.
+
+The two engines cannot be joined to the sample, which is why this is a crossfade
+rather than a splice, and why it happens once per record rather than at every
+boundary.
 
 While the decks have it, the queue player is emptied rather than left idle, and
 every path that would fill it is closed: a window rebuilt behind the decks would
