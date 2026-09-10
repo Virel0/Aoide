@@ -1,6 +1,10 @@
 # Beat grid: what Auto DJ needs
 
-*Asked of the sidecar on 2026-09-10, from the client side. The third measurement
+*Asked of the sidecar on 2026-09-10 and **shipped in 1.13.0.0** the same day; the built contract is in the sidecar's own `client-integration.md`. From the client side.*
+
+*Originally:*
+
+*Asked of the sidecar, The third measurement
 in the same family as [sound bounds](sound-bounds.md) and
 [audio analysis](audio-analysis.md), and the same decode again — but the answer
 this one wants is a different kind of thing, so it is worth being exact about
@@ -155,3 +159,27 @@ Not stems, not per-instrument separation, not a neural model. If the grid and th
 downbeat are right, the difference between a crossfade and a mix is the client's
 job: aligning the two clocks, running one deck at the other's tempo, and taking
 the bass out of the outgoing track on a downbeat.
+
+
+## As built (sidecar 1.13.0.0)
+
+All four parts, and two answers worth carrying in the client's head:
+
+- **`downbeatIndex` is always 0 when the meter is known.** Every segment's beat
+  zero was put on a downbeat, so `bar(n) = anchorMs + n × beatsPerBar × 60000 /
+  bpm` holds in every segment and no phase has to be carried across a tempo
+  change. The field stays because a future grid might not promise that.
+- **Segments cover the track end to end**, including an intro the fit did not
+  span, so "which segment holds this moment" always has an answer.
+- **No `POST`**, as proposed.
+- On the rig's steady fixture the anchor landed 5.5 ms from the true first beat
+  with a 4.8 ms residual; the drifting 105→145 fixture came back as six segments
+  with residuals from 261 ms down to 16 ms, no meter and no mix points — which is
+  a client refusing it, correctly.
+- The key estimator is **untested on real music**. Prefer on it; never refuse on
+  it.
+
+The client half of this is `PlaybackKit/BeatGrid.swift`: the fit arithmetic, the
+downbeat lookup, the Camelot moves, and the two refusals that matter — a residual
+too large for the blend's length, and a blend that would cross a segment
+boundary.
