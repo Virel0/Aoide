@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         PlaybackEngine.shared.soundResolver = { track in
             TrimSilencePreference.isOn ? SilenceIndex.shared.bounds(for: track.id) : nil
         }
+        PlaybackEngine.shared.loudnessResolver = { track in
+            AudioAnalysisSync.shared.gainDb(for: track.id)
+        }
         }
         return true
     }

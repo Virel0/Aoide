@@ -11,6 +11,8 @@ struct SettingsView: View {
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
     @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
     @AppStorage(TrimSilencePreference.key) private var trimSilence = true
+    @AppStorage(LoudnessPreference.key) private var loudnessNormalisation = true
+    @State private var analysis = AudioAnalysisSync.shared
     @State private var silence = SilenceIndex.shared
     @State private var siri = SiriAuthorization.shared
     @State private var downloads = DownloadStore.shared
@@ -118,12 +120,13 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Level Volume", isOn: $loudnessNormalisation)
                 Toggle("Trim Silence", isOn: $trimSilence)
                 LabeledContent("Measured", value: "\(silence.measuredCount) of \(downloads.downloadedCount) downloads, \(silence.serverCount) from the server")
             } header: {
                 Text("Gapless")
             } footer: {
-                Text("Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks are trimmed with measurements from your server, which this phone also sends its own to.")
+                Text("Level Volume turns each record down to the same loudness, so a 2015 remaster after a 1978 pressing is not a jolt; your server measures it, and a track quieter than the reference is left alone rather than amplified. Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks are trimmed with measurements from your server, which this phone also sends its own to.")
             }
 
             Section {

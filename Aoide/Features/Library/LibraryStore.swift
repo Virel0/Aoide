@@ -373,7 +373,9 @@ final class LibraryStore {
         // Bounds for what is queued, so a streamed track is trimmed like a
         // downloaded one. Answers land before the engine makes the item, most of
         // the time; the first track of a fresh queue may play whole once.
-        SoundBoundsSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+        let queued = PlaybackEngine.shared.queue.entries.map(\.track.id)
+        SoundBoundsSync.shared.prefetch(ids: queued)
+        AudioAnalysisSync.shared.prefetch(ids: queued)
     }
 
     func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {

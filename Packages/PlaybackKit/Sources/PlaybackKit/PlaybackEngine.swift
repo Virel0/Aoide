@@ -140,6 +140,12 @@ public final class PlaybackEngine {
     /// after the queue was built. Main-actor, synchronous: a lookup, never a fetch.
     public var soundResolver: ((Track) -> SilenceBounds?)?
 
+    /// How loud a track was measured to be, so every record plays at one level.
+    /// Returns decibels to apply, or nil to leave the track alone. Read when a
+    /// track becomes current, so an answer arriving after the queue was built
+    /// still lands. See ``LoudnessNormalisation``.
+    public var loudnessResolver: ((Track) -> Double?)?
+
     /// The last track given up on and why, for a screen to show. Cleared when a
     /// track next loads, so it describes the current trouble and not history.
     public private(set) var lastFailure: PlaybackFailure?
@@ -424,6 +430,8 @@ public final class PlaybackEngine {
         // because there the failed entry sits behind the head and stays filtered.
         if let id = queue.current?.id { forgetLoadFailures(of: id) }
 
+        applyLoudness(for: track)
+
         elapsed = .zero
         duration = track.duration
         lastReportedSecond = -1
@@ -440,6 +448,21 @@ public final class PlaybackEngine {
 
         let reporter = reporter
         Task { await reporter?.playbackDidStart(track) }
+    }
+
+    /// Levels the current track against every other one.
+    ///
+    /// `AVPlayer.volume` is this app's own fader, separate from the system
+    /// volume the hardware buttons move, so it is free to spend on this and the
+    /// listener's own control still does what they expect. Reset to unity for a
+    /// track with no measurement, or the previous track's attenuation would
+    /// quietly follow it.
+    private func applyLoudness(for track: Track?) {
+        guard let track, let resolve = loudnessResolver, let gain = resolve(track) else {
+            player.volume = 1
+            return
+        }
+        player.volume = Float(min(1, pow(10, gain / 20)))
     }
 
     /// Called when the queue runs out.
@@ -678,6 +701,8 @@ public final class PlaybackEngine {
             for retired in enqueued.prefix(index) { release(key: retired) }
             enqueued.removeFirst(index)
         }
+
+        applyLoudness(for: queue.currentTrack)
 
         elapsed = .zero
         lastReportedSecond = -1

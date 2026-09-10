@@ -395,3 +395,52 @@ struct InterruptionPolicyTests {
         #expect(!InterruptionPolicy.shouldResume(systemSaysResume: false, wasPlayingWhenInterrupted: false))
     }
 }
+
+/// Mirrored by the desktop's `loudness.test.ts`; the two must not drift, or one
+/// album plays at two levels on two devices.
+@Suite("Loudness normalisation")
+struct LoudnessNormalisationTests {
+    private func close(_ a: Double?, _ b: Double, _ tolerance: Double = 0.001) -> Bool {
+        guard let a else { return false }
+        return abs(a - b) <= tolerance
+    }
+
+    @Test("a loud master is turned down to the reference")
+    func attenuates() {
+        #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -9), -9))
+        #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -14), -4))
+    }
+
+    @Test("a quiet master is left alone rather than amplified")
+    func neverBoosts() {
+        #expect(LoudnessNormalisation.gainDb(loudnessLufs: -24) == nil)
+        #expect(LoudnessNormalisation.gainDb(loudnessLufs: -18) == nil)
+    }
+
+    @Test("a master already over full scale is turned down until it is not")
+    func respectsTruePeak() {
+        // Loudness alone would ask for nothing; the peak forces attenuation.
+        #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -20, truePeakDbfs: 1.5), -1.5))
+        // A peak under full scale changes nothing.
+        #expect(close(LoudnessNormalisation.gainDb(loudnessLufs: -9, truePeakDbfs: -0.3), -9))
+    }
+
+    @Test("nothing measured means nothing applied")
+    func unmeasured() {
+        #expect(LoudnessNormalisation.gainDb(loudnessLufs: nil) == nil)
+        #expect(LoudnessNormalisation.gainDb(loudnessLufs: .nan) == nil)
+        #expect(LoudnessNormalisation.volumeFactor(loudnessLufs: nil) == nil)
+    }
+
+    @Test("the linear factor matches the decibels, and never exceeds one")
+    func linear() {
+        let factor = try! #require(LoudnessNormalisation.volumeFactor(loudnessLufs: -12))
+        #expect(abs(factor - pow(10, -6.0 / 20)) < 0.0001)
+        #expect(factor < 1)
+    }
+
+    @Test("the reference is the ReplayGain one, shared with every other side")
+    func reference() {
+        #expect(LoudnessNormalisation.referenceLufs == -18)
+    }
+}

@@ -44,6 +44,13 @@ public extension JellyfinClient {
         return try await send(request, path: Self.soundBoundsPath)
     }
 
+    /// `GET /aoide/audio-analysis?ids=…`: how loud each track is, and its tempo.
+    /// At most 200 ids per call. See `docs/audio-analysis.md`.
+    func audioAnalysis(ids: [String]) async throws -> Data {
+        let query = [URLQueryItem(name: "ids", value: ids.joined(separator: ","))]
+        return try await send(request("GET", path: Self.audioAnalysisPath, query: query), path: Self.audioAnalysisPath)
+    }
+
     /// `GET /aoide/sync/status`: what the server is and what it will take.
     func syncStatus() async throws -> Data {
         try await send(request("GET", path: Self.statusPath), path: Self.statusPath)
@@ -90,5 +97,6 @@ public extension JellyfinClient {
     private static var pushPath: String { "aoide/sync/push" }
     private static var statusPath: String { "aoide/sync/status" }
     private static var soundBoundsPath: String { "aoide/sound-bounds" }
+    private static var audioAnalysisPath: String { "aoide/audio-analysis" }
     private static var pullPath: String { "aoide/sync/pull" }
 }
