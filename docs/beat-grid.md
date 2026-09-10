@@ -183,3 +183,39 @@ The client half of this is `PlaybackKit/BeatGrid.swift`: the fit arithmetic, the
 downbeat lookup, the Camelot moves, and the two refusals that matter — a residual
 too large for the blend's length, and a blend that would cross a segment
 boundary.
+
+
+## The mix itself
+
+`PlaybackKit/DJTransition.swift` turns a pair of grids into a plan, or into
+nothing — which means [Crossfade](crossfade.md).
+
+**Sixteen bars, or eight, or no.** Sixteen is the length a DJ reaches for; eight
+is what there is room for when the outgoing record is nearly out of mixable
+track; below that it is not a mix. The mix ends on the outgoing record's
+`mixOutMs` and works backwards a whole number of bars, which lands it on a
+downbeat because `mixOutMs` is one.
+
+**Only the incoming record bends.** The record already playing is the one the
+listener is already hearing, and bending it under them is the one thing a mix
+must not do. The bend is capped at ±6% — about a turntable's pitch fader, and
+about where a listener starts hearing that something was done to the record
+rather than to the mix. Folded into one octave first, which means a double-time
+record is **not** slowed: at 170 over 85 its beats already land on every other
+beat, which is what somebody mixing drum and bass over hip-hop is doing.
+
+A bend also eats the record faster than the clock — thirty seconds at 1.05 is
+thirty-one and a half seconds of source — so the incoming track has to have that
+much of itself left, not merely that much wall time.
+
+**The bend does not outlive the mix.** The incoming record eases back to its own
+tempo over eight seconds afterwards; left bent, every record after the first
+would play at the speed of whatever preceded it.
+
+**The bass swaps, it does not fade.** Volume follows the same equal-power curve
+as a crossfade, so the pair never dips or piles up. The low end does something
+else entirely: it belongs to the outgoing record until the halfway bar and to
+the incoming one after it, handing over in about a bar. Two kick drums at once is
+the muddiest sound in recorded music and no volume curve fixes it — taking the
+low end off the incoming record until it takes over is the oldest trick a DJ has,
+and it is most of why a mix sounds like one record rather than two.
