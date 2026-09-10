@@ -112,9 +112,20 @@ public enum DJPlanner {
             let incomingNeeded = seconds * 1000 * rate
             guard inMixIn + incomingNeeded <= inSegment.endMs else { continue }
 
+            // Both ends snapped to the grid rather than trusted.
+            //
+            // The contract says `mixOutMs` and `mixInMs` are downbeats, and the
+            // sidecar keeps that promise — but the arithmetic here inherits
+            // whatever phase they carry, so a mix point half a beat out would
+            // produce a mix that is half a beat out, silently and for every pair.
+            // Snapping costs a bar at most and makes the alignment true of the
+            // grid rather than of the promise.
+            let start = outgoing.downbeat(atOrBefore: startMs) ?? startMs
+            let entry = incoming.downbeat(atOrBefore: inMixIn) ?? inMixIn
+
             return DJTransition(
-                outgoingStartMs: startMs,
-                incomingStartMs: inMixIn,
+                outgoingStartMs: start,
+                incomingStartMs: entry,
                 bars: bars,
                 seconds: seconds,
                 targetBpm: outSegment.bpm,
@@ -162,9 +173,15 @@ public enum DJAutomation {
     /// because the mix is a whole number of bars.
     public static let swapPoint = 0.5
 
-    /// How much of the mix the swap itself takes. A bar or so at sixteen bars —
-    /// long enough not to click, short enough to be an event.
-    public static let swapWidth = 0.0625
+    /// How much of the mix the swap itself takes: about a beat.
+    ///
+    /// Short on purpose. While it is happening both records are partly cut, so
+    /// the low end briefly dips — measured at a little over a third of one
+    /// record's bass at the midpoint — and the fix for that is to be quick
+    /// rather than to be gentle. A DJ flicks the knob; they do not ride it.
+    /// Wide enough not to click, and narrow enough that the dip is a moment
+    /// rather than a passage.
+    public static let swapWidth = 0.03
 
     /// How far the low end is taken down. Not silence: a shelf this deep is
     /// inaudible under the other record's bass, and going to zero makes the

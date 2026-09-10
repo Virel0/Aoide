@@ -45,6 +45,10 @@ public final class DJMixer {
         let speed = AVAudioUnitVarispeed()
         let shelf = AVAudioUnitEQ(numberOfBands: 1)
         var file: AVAudioFile?
+        /// Whether this deck is meant to be sounding, as distinct from whether it
+        /// happens to be paused. A deck stopped at the end of a mix must not come
+        /// back when somebody presses play.
+        var isRunning = false
 
         init() {
             let band = shelf.bands[0]
@@ -101,13 +105,34 @@ public final class DJMixer {
     }
 
     public func stop() {
-        for deck in decks.values { deck.player.stop() }
+        for deck in decks.values {
+            deck.isRunning = false
+            deck.player.stop()
+        }
         engine.stop()
     }
 
     /// Starts a deck as soon as the engine can.
     public func play(_ side: Side) {
+        decks[side]?.isRunning = true
         decks[side]?.player.play()
+    }
+
+    /// Stops one deck and leaves the other running — the end of a mix, where the
+    /// record that faded out is done and the one that came in is not.
+    public func stopDeck(_ side: Side) {
+        decks[side]?.isRunning = false
+        decks[side]?.player.stop()
+    }
+
+    /// Both decks together, so a pause in the middle of a mix does not leave
+    /// half of one audible.
+    public func pauseAll() {
+        for deck in decks.values { deck.player.pause() }
+    }
+
+    public func resumeAll() {
+        for deck in decks.values where deck.isRunning { deck.player.play() }
     }
 
     /// The engine's clock, as a sample position. Nil before it has rendered
@@ -123,6 +148,7 @@ public final class DJMixer {
     @discardableResult
     public func play(_ side: Side, inSeconds seconds: Double) -> AVAudioTime? {
         guard let deck = decks[side], let now = renderTime else { return nil }
+        deck.isRunning = true
         let rate = now.sampleRate > 0 ? now.sampleRate : engine.outputNode.outputFormat(forBus: 0).sampleRate
         let when = AVAudioTime(sampleTime: now.sampleTime + AVAudioFramePosition(seconds * rate), atRate: rate)
         deck.player.play(at: when)
@@ -143,6 +169,12 @@ public final class DJMixer {
     public func setBassDb(_ db: Double, on side: Side) {
         decks[side]?.shelf.bands[0].gain = Float(max(-96, min(24, db)))
     }
+
+    /// Whether a deck is meant to be sounding. The end of a mix has to leave the
+    /// record that faded out actually stopped, not merely turned down: a deck at
+    /// volume zero is still decoding, and still there to be resumed by the next
+    /// thing that presses play.
+    public func isRunning(_ side: Side) -> Bool { decks[side]?.isRunning ?? false }
 
     public func rate(on side: Side) -> Double { Double(decks[side]?.speed.rate ?? 1) }
     public func volume(on side: Side) -> Double { Double(decks[side]?.player.volume ?? 0) }

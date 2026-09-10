@@ -151,6 +151,22 @@ struct DJTransitionTests {
         #expect(full.bars == 16)
     }
 
+    @Test("Both ends are put on the grid, whatever the mix points say")
+    func snapsToDownbeats() throws {
+        // A mix-out point half a beat off its own grid — which the server does
+        // not do, and which would otherwise make every mix on this record half a
+        // beat out.
+        let bar = 1_875.0
+        let crooked = record(bpm: 128, anchorMs: 0, mixOutMs: 200_000 + 234)
+        let incoming = record(bpm: 128, anchorMs: 100, mixInMs: 40_000 + 51)
+        let plan = try #require(DJPlanner.plan(outgoing: crooked, incoming: incoming))
+
+        let outBars = plan.outgoingStartMs / bar
+        #expect(abs(outBars - outBars.rounded()) < 1e-6, "start at \(plan.outgoingStartMs)ms")
+        let inBars = (plan.incomingStartMs - 100) / bar
+        #expect(abs(inBars - inBars.rounded()) < 1e-6, "entry at \(plan.incomingStartMs)ms")
+    }
+
     @Test("Keys are noted, never enforced")
     func keys() throws {
         let related = try #require(DJPlanner.plan(
@@ -212,7 +228,7 @@ struct DJAutomationTests {
 
     @Test("The swap happens in the middle, where the downbeat is")
     func swapPoint() {
-        #expect(DJAutomation.ramp(DJAutomation.swapPoint) == 0.5)
+        #expect(abs(DJAutomation.ramp(DJAutomation.swapPoint) - 0.5) < 1e-9)
         #expect(DJAutomation.ramp(DJAutomation.swapPoint - DJAutomation.swapWidth) == 0)
         #expect(DJAutomation.ramp(DJAutomation.swapPoint + DJAutomation.swapWidth) == 1)
     }
