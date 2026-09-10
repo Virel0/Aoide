@@ -217,31 +217,53 @@ struct QueueView: View {
                     }
                 }
 
-                let upNext = engine.queue.upNext
+                // Two lanes, because they mean different things: what you chose
+                // yourself plays before whatever was already running resumes.
+                let lane = engine.queue.lane
+                let rest = engine.queue.contextUpNext
                 // Captured together, deliberately. A drag delivers offsets in the
-                // index space of the rows SwiftUI last rendered, so `offset` has to
+                // index space of the rows SwiftUI last rendered, so the base has to
                 // come from that same evaluation — reading `queue.position` inside
                 // the drop closure reads it *live*, and a track boundary during the
                 // drag would then reorder the wrong entry.
                 let queueOffset = (engine.queue.position ?? 0) + 1
-                if !upNext.isEmpty {
-                    Section("Up Next") {
-                        ForEach(upNext) { entry in
+
+                if !lane.isEmpty {
+                    Section("Next Up") {
+                        ForEach(lane) { entry in
                             QueueRow(entry: entry)
                                 .contentShape(.rect)
                                 .onTapGesture { engine.jump(to: entry.id) }
                         }
                         .onDelete { offsets in
-                            // `offsets` index into Up Next, but the engine works in
-                            // whole-queue terms — map through the entry ids.
-                            for index in offsets {
-                                engine.remove(entryId: upNext[index].id)
-                            }
+                            for index in offsets { engine.remove(entryId: lane[index].id) }
                         }
                         .onMove { source, destination in
                             engine.move(
                                 fromOffsets: IndexSet(source.map { $0 + queueOffset }),
                                 toOffset: destination + queueOffset
+                            )
+                        }
+                    }
+                }
+
+                if !rest.isEmpty {
+                    // The lane sits between the current track and this one, so a
+                    // drag here is offset by both.
+                    let restOffset = queueOffset + lane.count
+                    Section(lane.isEmpty ? "Up Next" : "Then") {
+                        ForEach(rest) { entry in
+                            QueueRow(entry: entry)
+                                .contentShape(.rect)
+                                .onTapGesture { engine.jump(to: entry.id) }
+                        }
+                        .onDelete { offsets in
+                            for index in offsets { engine.remove(entryId: rest[index].id) }
+                        }
+                        .onMove { source, destination in
+                            engine.move(
+                                fromOffsets: IndexSet(source.map { $0 + restOffset }),
+                                toOffset: destination + restOffset
                             )
                         }
                     }

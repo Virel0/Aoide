@@ -8,10 +8,14 @@ import Foundation
 public struct QueueEntry: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let track: Track
+    /// Put here on purpose, by Play Next or Play Last, rather than arriving as
+    /// part of whatever album or playlist is running. See ``PlayQueue/lane``.
+    public let isManual: Bool
 
-    init(_ track: Track) {
+    init(_ track: Track, isManual: Bool = false) {
         self.id = UUID()
         self.track = track
+        self.isManual = isManual
     }
 }
 
@@ -77,6 +81,28 @@ public struct PlayQueue: Sendable {
         return Array(entries[(position + 1)...])
     }
 
+    /// The tracks the listener put here themselves, which play before the album
+    /// or playlist resumes.
+    ///
+    /// A run rather than a set: it is the entries marked manual that sit
+    /// *immediately* after the current one. Once one has played it leaves the
+    /// lane by falling behind the playhead, which is what makes the lane empty
+    /// itself without anything having to tidy up.
+    public var lane: [QueueEntry] {
+        Array(upNext.prefix { $0.isManual })
+    }
+
+    /// What follows the lane: the rest of whatever was playing.
+    public var contextUpNext: [QueueEntry] {
+        Array(upNext.dropFirst(lane.count))
+    }
+
+    /// Index just past the lane, which is where Play Last inserts.
+    private var laneEnd: Int {
+        guard let position else { return entries.count }
+        return position + 1 + lane.count
+    }
+
     /// The next `count` things that will play, current first, without mutating
     /// anything.
     ///
@@ -113,11 +139,27 @@ public struct PlayQueue: Sendable {
     /// any shuffling — so "shuffle this album starting from track 4" still begins on
     /// track 4 and shuffles the rest.
     public mutating func load(_ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false) {
-        let newEntries = tracks.map(QueueEntry.init)
+        // What the listener queued by hand outlives the thing that was playing.
+        // Picking a new album is a statement about the album, not a decision to
+        // throw away the three songs they lined up a minute ago — and a lane
+        // that evaporates exactly when somebody starts something else is a lane
+        // that cannot be relied on.
+        let kept = lane
+        let newEntries = tracks.map { QueueEntry($0) }
         entries = newEntries
         unshuffledEntries = nil
         position = newEntries.isEmpty ? nil : min(max(index, 0), newEntries.count - 1)
         if shuffled { setShuffled(true) }
+        if !kept.isEmpty, let position {
+            entries.insert(contentsOf: kept, at: position + 1)
+            if var saved = unshuffledEntries {
+                saved.insert(contentsOf: kept, at: min(position + 1, saved.count))
+                unshuffledEntries = saved
+            }
+        } else if !kept.isEmpty {
+            entries = kept
+            position = 0
+        }
     }
 
     public mutating func clear() {
@@ -207,10 +249,15 @@ public struct PlayQueue: Sendable {
                 entries.shuffle()
                 return
             }
+            // The lane is not shuffled. Somebody who queued three songs and
+            // then hit shuffle meant "surprise me afterwards", not "scatter the
+            // three things I just chose".
+            let keptLane = lane
+            let untouched = Set([current.id] + keptLane.map(\.id))
             var rest = entries
-            rest.removeAll { $0.id == current.id }
+            rest.removeAll { untouched.contains($0.id) }
             rest.shuffle()
-            entries = [current] + rest
+            entries = [current] + keptLane + rest
             position = 0
             unshuffledEntries = original
         } else {
@@ -225,16 +272,20 @@ public struct PlayQueue: Sendable {
     /// Reshuffles the tracks after the current one, leaving it playing.
     public mutating func reshuffle() {
         guard isShuffled, let position, position + 1 < entries.count else { return }
-        var tail = Array(entries[(position + 1)...])
+        // Everything past the lane, for the same reason shuffle skips it.
+        let start = laneEnd
+        guard start < entries.count else { return }
+        var tail = Array(entries[start...])
         tail.shuffle()
-        entries.replaceSubrange((position + 1)..., with: tail)
+        entries.replaceSubrange(start..., with: tail)
+        _ = position
     }
 
     // MARK: - Editing
 
-    /// "Play Next" — insert directly after the current track.
+    /// "Play Next" — the front of the lane, ahead of anything queued earlier.
     public mutating func playNext(_ tracks: [Track]) {
-        let newEntries = tracks.map(QueueEntry.init)
+        let newEntries = tracks.map { QueueEntry($0, isManual: true) }
         guard !newEntries.isEmpty else { return }
         guard let position else {
             load(tracks)
@@ -254,13 +305,31 @@ public struct PlayQueue: Sendable {
         }
     }
 
-    /// "Play Last" — append to the end.
+    /// "Play Last" — the back of the lane, not the back of the queue.
+    ///
+    /// The end of the queue is the wrong place and always was: asking for a song
+    /// while a twenty-track album is running used to mean hearing it in an hour.
+    /// It goes after everything else queued by hand, and before the album picks
+    /// up again.
     public mutating func append(_ tracks: [Track]) {
-        let newEntries = tracks.map(QueueEntry.init)
+        let newEntries = tracks.map { QueueEntry($0, isManual: true) }
         guard !newEntries.isEmpty else { return }
-        entries.append(contentsOf: newEntries)
-        unshuffledEntries?.append(contentsOf: newEntries)
-        if position == nil { position = 0 }
+        guard position != nil else {
+            entries.append(contentsOf: newEntries)
+            unshuffledEntries?.append(contentsOf: newEntries)
+            position = 0
+            return
+        }
+        entries.insert(contentsOf: newEntries, at: laneEnd)
+        // Mirrored into the pre-shuffle order for the same reason `playNext`
+        // mirrors: turning shuffle off must not fling a queued song to the end.
+        if let saved = unshuffledEntries {
+            let anchor = current.flatMap { c in saved.firstIndex { $0.id == c.id } }
+            let lastLaneId = lane.last?.id
+            let laneAnchor = lastLaneId.flatMap { id in saved.firstIndex { $0.id == id } }
+            let at = (laneAnchor ?? anchor).map { $0 + 1 } ?? saved.count
+            unshuffledEntries?.insert(contentsOf: newEntries, at: at)
+        }
     }
 
     /// Removing the currently playing entry leaves `position` pointing at whatever

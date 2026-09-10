@@ -476,3 +476,99 @@ struct LoudnessNormalisationTests {
         #expect(LoudnessNormalisation.referenceLufs == -18)
     }
 }
+
+/// The lane: what the listener put there by hand, ahead of whatever was running.
+@Suite("The manual lane")
+struct QueueLaneTests {
+    private func tracks(_ names: String...) -> [Track] {
+        names.map {
+            Track(id: $0, title: $0, artist: "a", album: "b", duration: .seconds(1),
+                  streamURL: URL(string: "https://x/\($0)")!)
+        }
+    }
+
+    @Test("Play Last lands after the current track, not at the end of the album")
+    func playLastJoinsTheLane() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2", "a3", "a4"), startingAt: 0)
+        queue.append(tracks("wanted"))
+        // The whole point: an hour of album no longer sits in front of it.
+        #expect(queue.upNext.map(\.track.id) == ["wanted", "a2", "a3", "a4"])
+        #expect(queue.lane.map(\.track.id) == ["wanted"])
+        #expect(queue.contextUpNext.map(\.track.id) == ["a2", "a3", "a4"])
+    }
+
+    @Test("Play Next goes to the front of the lane, Play Last to the back")
+    func laneOrdering() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2"), startingAt: 0)
+        queue.append(tracks("second"))
+        queue.append(tracks("third"))
+        queue.playNext(tracks("first"))
+        #expect(queue.lane.map(\.track.id) == ["first", "second", "third"])
+        #expect(queue.contextUpNext.map(\.track.id) == ["a2"])
+    }
+
+    @Test("a lane track that has played leaves the lane")
+    func laneEmptiesItself() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2"), startingAt: 0)
+        queue.append(tracks("q1", "q2"))
+        #expect(queue.lane.count == 2)
+        _ = queue.skipToNext()
+        #expect(queue.current?.track.id == "q1")
+        #expect(queue.lane.map(\.track.id) == ["q2"], "the one still ahead")
+        _ = queue.skipToNext()
+        _ = queue.skipToNext()
+        #expect(queue.current?.track.id == "a2")
+        #expect(queue.lane.isEmpty)
+    }
+
+    @Test("shuffle leaves the lane in place and shuffles the rest")
+    func shuffleSparesTheLane() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2", "a3", "a4", "a5", "a6"), startingAt: 0)
+        queue.append(tracks("q1", "q2"))
+        queue.setShuffled(true)
+        #expect(queue.current?.track.id == "a1")
+        #expect(queue.lane.map(\.track.id) == ["q1", "q2"], "chosen by hand, so not scattered")
+        #expect(Set(queue.contextUpNext.map(\.track.id)) == ["a2", "a3", "a4", "a5", "a6"])
+    }
+
+    @Test("starting something else keeps what was queued by hand")
+    func laneSurvivesANewContext() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2"), startingAt: 0)
+        queue.append(tracks("kept"))
+        queue.load(tracks("b1", "b2", "b3"), startingAt: 0)
+        #expect(queue.current?.track.id == "b1")
+        #expect(queue.lane.map(\.track.id) == ["kept"], "queued a minute ago, still wanted")
+        #expect(queue.contextUpNext.map(\.track.id) == ["b2", "b3"])
+    }
+
+    @Test("a track already played is not carried into the next context")
+    func playedLaneTracksAreNotCarried() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2"), startingAt: 0)
+        queue.append(tracks("q1"))
+        _ = queue.skipToNext()          // q1 is now playing
+        queue.load(tracks("b1", "b2"), startingAt: 0)
+        #expect(queue.lane.isEmpty, "it has had its turn")
+        #expect(queue.entries.map(\.track.id) == ["b1", "b2"])
+    }
+
+    @Test("an empty queue still starts playing what was added")
+    func appendToEmpty() {
+        var queue = PlayQueue()
+        queue.append(tracks("only"))
+        #expect(queue.current?.track.id == "only")
+    }
+
+    @Test("album tracks are not manual, so nothing is mistaken for a choice")
+    func contextIsNotManual() {
+        var queue = PlayQueue()
+        queue.load(tracks("a1", "a2"), startingAt: 0)
+        #expect(queue.entries.allSatisfy { !$0.isManual })
+        #expect(queue.lane.isEmpty)
+    }
+}
