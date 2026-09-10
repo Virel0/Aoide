@@ -230,3 +230,61 @@ struct SidecarMatchTests {
         #expect(response.matched == 1)
     }
 }
+
+/// The sidecar's own documented payload, pasted from its client-integration
+/// contract. Parsing is where a client and a server quietly disagree, and the
+/// entry that is literally `null` is the one most likely to be dropped.
+@Suite("Audio analysis wire form")
+struct AudioAnalysisWireTests {
+    struct Analysis: Codable, Hashable, Sendable {
+        var loudnessLufs: Double?
+        var truePeakDbfs: Double?
+        var bpm: Double?
+        var bpmConfidence: Double?
+    }
+
+    struct Wire: Decodable {
+        var analysis: [String: Analysis?]
+        var pending: [String]?
+    }
+
+    static let payload = """
+    { "analysis": { "3b1c": { "loudnessLufs": -9.7, "truePeakDbfs": -0.3,
+                              "bpm": 128.0, "bpmConfidence": 0.82 },
+                    "a71f": { "loudnessLufs": -14.2, "truePeakDbfs": -1.1,
+                              "bpm": null, "bpmConfidence": null },
+                    "c904": null },
+      "pending": ["9c0e"] }
+    """
+
+    @Test("decodes every shape the contract can send")
+    func decodes() throws {
+        let wire = try JSONDecoder().decode(Wire.self, from: Data(Self.payload.utf8))
+
+        // Measured, with both numbers.
+        let full = try #require(wire.analysis["3b1c"] ?? nil)
+        #expect(full.loudnessLufs == -9.7)
+        #expect(full.bpm == 128.0)
+
+        // Measured, loudness only — the common case for ambient.
+        let partial = try #require(wire.analysis["a71f"] ?? nil)
+        #expect(partial.loudnessLufs == -14.2)
+        #expect(partial.bpm == nil)
+
+        // Measured, nothing to report. Present as a key, null as a value: the
+        // entry must survive, or the client asks about it forever.
+        #expect(wire.analysis.keys.contains("c904"))
+        #expect((wire.analysis["c904"] ?? nil) == nil)
+
+        // Never asked about.
+        #expect(wire.analysis["9c0e"] == nil)
+        #expect(wire.pending == ["9c0e"])
+    }
+
+    @Test("a reply with nothing pending still decodes")
+    func noPending() throws {
+        let wire = try JSONDecoder().decode(Wire.self, from: Data(#"{"analysis":{}}"#.utf8))
+        #expect(wire.analysis.isEmpty)
+        #expect(wire.pending == nil)
+    }
+}

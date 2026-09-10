@@ -21,6 +21,13 @@ Both come from decoding the file, which the sidecar **already does** for
 `/aoide/sound-bounds`. One decode can produce all of it; doing them in the same
 pass is the main reason to build this here rather than anywhere else.
 
+*As built:* it really is one decode — the filter graph splits, one branch
+carrying raw PCM for the silence scan and the tempo envelope while the other
+goes through `loudnorm` purely so it prints its numbers. Asking **either**
+endpoint about a file fills both caches, so a client that has already fetched
+sound bounds for a playlist gets loudness and tempo without the server decoding
+anything again.
+
 ## The measurements, pinned
 
 Both clients must apply the same numbers, so the definitions are the contract.
@@ -31,11 +38,30 @@ prints both as `input_i` and `input_tp`; that is the reference implementation.
 A track too short or too quiet to measure reports `null`.
 
 **Tempo** — beats per minute as a float, with a confidence between 0 and 1.
-`aubio tempo` or Essentia's `RhythmExtractor2013` are both fine; the clients
-only order by it, so approximate is acceptable and wrong is not. **Report `null`
-below 0.5 confidence** rather than guessing: ambient, spoken word and rubato
-classical have no meaningful single tempo, and a made-up 128 there is worse than
-nothing.
+The clients only order by it, so approximate is acceptable and wrong is not.
+**Report `null` below 0.5 confidence** rather than guessing: ambient, spoken
+word and rubato classical have no meaningful single tempo, and a made-up 128
+there is worse than nothing.
+
+*As built (sidecar 1.11.0.0):* envelope autocorrelation in C#, not `aubio` or
+Essentia — Jellyfin ships ffmpeg and nothing else, and a plugin that is one
+managed DLL should not need an admin to install a native library first for two
+numbers used only for ordering. Verified within about a BPM at 90–170 on
+synthesised beats, at any loudness; held tones, noise, silence and anything
+under ten seconds report nothing.
+
+**Half and double is the expected failure**, settled for the ordinary case by a
+preference for tempi near 120, so a track reported at 85 that you would call 170
+is the mistake to look for. **Do not beat-match on these numbers.** Ordering is
+what they are for.
+
+**If a client ever measures tempo itself, taper the analysis window.** A 220 Hz
+drone came back as a confident 120 BPM on the sidecar's first live run and
+passed its unit tests, which had used 440 Hz: reading energy off a rigid grid
+makes a sustained note's level wobble in step with its own frequency against the
+hop rate, and that wobble is as periodic as any drum machine. A Hann taper kills
+it. Two implementations would hit this separately, so it is written here rather
+than only in the server.
 
 ## Endpoint
 
