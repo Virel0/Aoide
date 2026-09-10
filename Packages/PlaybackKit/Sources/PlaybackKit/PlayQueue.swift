@@ -305,6 +305,20 @@ public struct PlayQueue: Sendable {
         }
     }
 
+    /// Songs found to keep the queue going, rather than chosen.
+    ///
+    /// The back of the queue, behind everything — including the lane, which is
+    /// the opposite of where a hand-picked song goes. Nobody asked for these in
+    /// particular, so they are context: they shuffle with the rest, and anything
+    /// queued by hand still plays first.
+    public mutating func extend(_ tracks: [Track]) {
+        let newEntries = tracks.map { QueueEntry($0) }
+        guard !newEntries.isEmpty else { return }
+        entries.append(contentsOf: newEntries)
+        unshuffledEntries?.append(contentsOf: newEntries)
+        if position == nil { position = 0 }
+    }
+
     /// "Play Last" — the back of the lane, not the back of the queue.
     ///
     /// The end of the queue is the wrong place and always was: asking for a song

@@ -321,6 +321,18 @@ public final class PlaybackEngine {
         }
     }
 
+    /// Adds songs the app went looking for when the queue was running out.
+    ///
+    /// Separate from ``addToQueue(_:)`` because these were not chosen: they go
+    /// behind everything rather than into the hand-picked lane, and they never
+    /// start playback on their own — an empty queue that fills itself would be a
+    /// player that started playing while nobody was there.
+    public func extendQueue(_ tracks: [Track]) {
+        guard !queue.isEmpty else { return }
+        queue.extend(tracks)
+        syncPlayer()
+    }
+
     /// Clears what comes next; the current track plays on.
     public func clearUpNext() {
         queue.clearUpNext()

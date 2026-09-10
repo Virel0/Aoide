@@ -572,3 +572,51 @@ struct QueueLaneTests {
         #expect(queue.lane.isEmpty)
     }
 }
+
+@Suite("Extending a running queue")
+struct QueueExtensionTests {
+    private func track(_ id: String) -> Track {
+        Track(id: id, title: id, artist: "A", album: "B", duration: .seconds(180), streamURL: URL(string: "https://example.com/\(id)")!)
+    }
+
+    @Test("Found songs go behind everything, including the lane")
+    func behindTheLane() {
+        var queue = PlayQueue()
+        queue.load([track("1"), track("2")])
+        queue.playNext([track("hand")])
+        queue.extend([track("found")])
+
+        #expect(queue.entries.map(\.track.id) == ["1", "hand", "2", "found"])
+        #expect(queue.entries.last?.isManual == false)
+        #expect(queue.lane.map(\.track.id) == ["hand"])
+    }
+
+    @Test("They do not move the listener")
+    func positionUnmoved() {
+        var queue = PlayQueue()
+        queue.load([track("1"), track("2")], startingAt: 1)
+        queue.extend([track("found")])
+        #expect(queue.currentTrack?.id == "2")
+    }
+
+    @Test("They shuffle like context, not like a choice")
+    func shuffleMirrors() {
+        var queue = PlayQueue()
+        queue.load((1...8).map { track("\($0)") })
+        queue.setShuffled(true)
+        queue.extend([track("found")])
+        // Present under shuffle, and still there when it is turned off — the
+        // mirrored order has to learn about them too.
+        #expect(queue.entries.contains { $0.track.id == "found" })
+        queue.setShuffled(false)
+        #expect(queue.entries.map(\.track.id) == ["1", "2", "3", "4", "5", "6", "7", "8", "found"])
+    }
+
+    @Test("Nothing to add changes nothing")
+    func empty() {
+        var queue = PlayQueue()
+        queue.load([track("1")])
+        queue.extend([])
+        #expect(queue.entries.count == 1)
+    }
+}

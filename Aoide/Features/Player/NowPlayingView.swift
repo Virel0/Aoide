@@ -13,6 +13,7 @@ struct NowPlayingView: View {
     @State private var sharePlay = SharePlayCoordinator.shared
     @State private var isShowingLyrics = false
     @AppStorage(AutoMixPreference.key) private var autoMix = false
+    @State private var autoDJ = AutoDJ.shared
 
     @Environment(LyricsStore.self) private var lyricsStore
 
@@ -170,6 +171,16 @@ struct NowPlayingView: View {
                     .foregroundStyle(autoMix ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             }
             .accessibilityLabel(autoMix ? "AutoMix on" : "AutoMix off")
+
+            Spacer()
+
+            Button {
+                autoDJ.setOn(!autoDJ.isOn)
+            } label: {
+                Image(systemName: "infinity")
+                    .foregroundStyle(autoDJ.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+            .accessibilityLabel(autoDJ.isOn ? "Auto DJ on" : "Auto DJ off")
 
             Spacer()
 

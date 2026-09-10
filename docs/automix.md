@@ -91,7 +91,25 @@ next" abandons whatever was prepared.
 A cut is the player's ordinary behaviour, so falling back to one is never worse
 than not having the feature. Two songs at full volume over each other would be.
 
-## Not yet
+## Auto DJ
 
-Infinity — keeping the queue fed once it runs out — is the other half of the DJ
-feature and is not built yet.
+The other half of the DJ, on its own toggle: AutoMix decides *how* one song
+becomes the next, Auto DJ decides that there **is** a next one.
+
+When fewer than three songs are left in front of the listener, it asks the server
+for an Instant Mix seeded by whatever is playing, drops anything already in the
+queue or marked Not Interested, and adds up to twenty at the back. The same
+station this app already offers by hand, so nothing new is deciding what a song
+is like — the library that knows the music is.
+
+Off by default: a queue that ends is not a fault, and a player that quietly plays
+on for an hour after the album finished is one nobody asked for. It does nothing
+while the queue is looping, since a loop never runs out, and it never starts
+playback on its own — an empty queue that fills itself would be a player that
+started playing while nobody was there.
+
+What it adds is context, not a choice: the songs go behind everything, including
+anything queued by hand, and they shuffle with the rest.
+
+The desktop has had this as **Auto DJ** since Feishin, with strategies of its own;
+the name is the same on both so it is one feature to talk about.
