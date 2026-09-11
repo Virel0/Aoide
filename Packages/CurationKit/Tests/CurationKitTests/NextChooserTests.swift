@@ -60,5 +60,10 @@ struct NextChooserTests {
 
         let heard = NextChooser.Factors(taste: 0.2, freshness: 0, similarity: 0.5, mixability: nil, arc: 0.5)
         #expect(heard.summary.hasSuffix("· heard lately"))
+
+        let refused = NextChooser.Factors(taste: 0.2, kinship: 1, freshness: 1, similarity: 0.5, mixability: 0.15, arc: 0.5)
+        #expect(refused.summary == "Taste 20% · Kin 100% · Fits 50% · Crossfade · Arc 50%")
+        let barely = NextChooser.Factors(taste: 0.2, kinship: 0.5, freshness: 1, similarity: 0.5, mixability: 0.16, arc: 0.5)
+        #expect(barely.summary == "Taste 20% · Kin 50% · Fits 50% · Mixes 16% · Arc 50%")
     }
 }

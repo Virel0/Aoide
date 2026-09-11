@@ -186,6 +186,13 @@ struct MainTabView: View {
         .environment(lyrics)
         .environment(smartSearch)
         .environment(playlists)
+        // The lyrics of the record playing and the next, fetched on every
+        // track change while Auto DJ is on — the decks cut between lines,
+        // and can only read what has arrived.
+        .task(id: engine.currentTrack?.id) {
+            guard AutoDJPreference.isOn else { return }
+            await lyrics.prefetchUpNext()
+        }
     }
 
     /// Opens straight to Downloaded when there's no connection and something is

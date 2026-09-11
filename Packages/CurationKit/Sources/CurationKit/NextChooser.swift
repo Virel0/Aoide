@@ -105,6 +105,10 @@ public enum NextChooser {
 }
 
 public extension NextChooser.Factors {
+    /// What the server reports for a pair the planner refused: the record
+    /// can still be crossfaded. Anything at or under it is not a mix.
+    static let crossfadeOnly = 0.15
+
     /// One line for a queue row: the figures that put the record there, as
     /// percentages, and a word when freshness cost it something.
     ///
@@ -115,7 +119,12 @@ public extension NextChooser.Factors {
         var parts = ["Taste \(pct(taste))"]
         if let kinship { parts.append("Kin \(pct(kinship))") }
         parts.append("Fits \(pct(similarity))")
-        if let mixability { parts.append("Mixes \(pct(mixability))") }
+        // A pair the planner looked at and declined is a crossfade; one it
+        // could not look at says nothing. "Mixes 15%" would read as a poor
+        // mix rather than no mix.
+        if let mixability {
+            parts.append(mixability <= Self.crossfadeOnly ? "Crossfade" : "Mixes \(pct(mixability))")
+        }
         parts.append("Arc \(pct(arc))")
         if freshness < 0.25 {
             parts.append("heard lately")

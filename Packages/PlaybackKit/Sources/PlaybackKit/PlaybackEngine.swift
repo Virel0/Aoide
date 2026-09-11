@@ -254,6 +254,11 @@ public final class PlaybackEngine {
     /// that cannot see the music, and refuses a little less than it should.
     public var arrangementResolver: ((Track) -> Arrangement?)?
 
+    /// Where each line of a track's synced lyrics starts, in milliseconds,
+    /// when the app has them. A cut is placed between lines rather than
+    /// between two words of one; nothing else reads this.
+    public var lyricLinesResolver: ((Track) -> [Double]?)?
+
     /// The decks, made only if Auto DJ is ever turned on: an idle
     /// `AVAudioEngine` is a running audio graph, and there is no reason for one
     /// on a device whose owner never asked for this.
@@ -1116,7 +1121,38 @@ public final class PlaybackEngine {
               let arrangement = arrangementResolver?(track),
               let duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
         else { return nil }
-        return SetProgrammer.exitMs(grid: grid, arrangement: arrangement, durationMs: duration.seconds * 1_000)
+        let durationMs = duration.seconds * 1_000
+        let early = SetProgrammer.exitMs(grid: grid, arrangement: arrangement, durationMs: durationMs)
+        // The early exit is for a mix. When what follows cannot be mixed in
+        // — an echo-out, an escape — the set plays to the end of the last
+        // hook instead: nothing arrives under this record, so nothing is
+        // gained by leaving it early. Decided against the record actually
+        // queued next, and remembered per pair: this is asked sixty times a
+        // second.
+        guard let next = nextTrack(after: track), let early else { return early }
+        let pairKey = "\(track.id)>\(next.id)"
+        if let known = exitDecisions[pairKey] { return known }
+        // Undecided until the next record can be read: its grid and
+        // arrangement may still be on their way, and "unread" is not "cannot
+        // be mixed".
+        guard let nextGrid = beatGridResolver?(next), let nextArrangement = arrangementResolver?(next) else { return early }
+        let mixable = DJPlanner.plan(
+            outgoing: grid, incoming: nextGrid,
+            outgoingArrangement: arrangement, incomingArrangement: nextArrangement,
+            outgoingExitMs: early
+        ) != nil
+        let decided = mixable ? early : (SetProgrammer.lateExitMs(grid: grid, arrangement: arrangement, durationMs: durationMs) ?? early)
+        exitDecisions[pairKey] = decided
+        return decided
+    }
+
+    /// The exit decided for each pair of records, by "outgoing>incoming".
+    private var exitDecisions: [String: Double] = [:]
+
+    private func nextTrack(after track: Track) -> Track? {
+        let window = queue.renderWindow(count: 2)
+        guard window.count == 2, window[0].track.id == track.id, window[1].entryId != window[0].entryId else { return nil }
+        return window[1].track
     }
 
     /// The mix from one record into another, if there is one.
@@ -1152,7 +1188,8 @@ public final class PlaybackEngine {
             notBeforeMs: position.seconds * 1000 + 1_000,
             outgoingArrangement: arrangementResolver?(outgoing),
             incomingArrangement: arrangementResolver?(incoming),
-            outgoingExitMs: programmedExit(for: outgoing)
+            outgoingExitMs: programmedExit(for: outgoing),
+            outgoingLyricLinesMs: lyricLinesResolver?(outgoing)
         )
     }
 

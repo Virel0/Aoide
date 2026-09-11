@@ -202,8 +202,14 @@ struct NextRankingFixtureTests {
         // Synthwave 1 of 5 → 0.2, electronic 2 of 5 → 0.4, best 0.4 → 0.18;
         // Marrow 1 of 5 → 0.2 → 0.06; never played → no bias. 0.24.
         #expect(abs(t16.factors.taste - 0.24) <= 1e-9)
-        // Shared genre → kin 1; same tempo 1; same key 1; energy 1 − 0 = 1.
+        // First genre the seed's → kin 1; same tempo 1; same key 1; energy 1 − 0 = 1.
         #expect(t16.factors.kinship == 1)
+        // t13 is pop first and synthwave second: a secondary tag shared with
+        // the seed is worth half. t20 is pop only: nothing shared.
+        let t13 = try #require(results.first { $0.id == "t13" })
+        #expect(t13.factors.kinship == 0.5)
+        let t20 = try #require(results.first { $0.id == "t20" })
+        #expect(t20.factors.kinship == 0)
         #expect(abs(t16.factors.similarity - 1) <= 1e-9)
         // Never played, but Marrow is the artist of t02, heard on this device.
         #expect(t16.factors.freshness == 0.5)

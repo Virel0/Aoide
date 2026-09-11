@@ -88,6 +88,35 @@ public struct Arrangement: Equatable, Sendable {
     /// across, before giving up and cutting on the one it was given.
     public static let lineSearchPhrases = 4
 
+    /// The longest a sung line runs before a gap between two line starts is
+    /// taken to be a rest rather than a line still being sung. LRC gives
+    /// line starts, not ends; a line that started eight seconds ago is over.
+    public static let longestLineMs = 8_000.0
+
+    /// How long after a line starts a cut may not fall: the line is being
+    /// sung. A cut lands *before* a line starts — the last word of the
+    /// previous line is done — or in a rest.
+    public static let lineLeadMs = 400.0
+
+    /// Whether `ms` is a clean place to stop the record according to its
+    /// synced lyrics: within ``lineLeadMs`` before a line starts (the line
+    /// before it has ended), or in a rest longer than ``longestLineMs``, or
+    /// after the last line. Everything else is mid-line.
+    public static func isLyricClean(_ ms: Double, lineStartsMs: [Double]) -> Bool {
+        guard let last = lineStartsMs.last else { return true }
+        if ms >= last + longestLineMs { return true }
+        var previous: Double?
+        for start in lineStartsMs {
+            if start >= ms {
+                if start - ms <= lineLeadMs { return true }
+                break
+            }
+            previous = start
+        }
+        guard let previous else { return true }
+        return ms - previous >= longestLineMs
+    }
+
     /// The latest phrase line at or before `ms` that is not mid-word.
     ///
     /// A cut on a phrase line is on the grid, but the grid does not know
@@ -97,7 +126,7 @@ public struct Arrangement: Equatable, Sendable {
     /// time, to the latest one with ``lineClearanceMs`` of nobody singing
     /// before it. Unknown vocals, or no clean line within
     /// ``lineSearchPhrases``, and the line stands where it was.
-    public func cleanLine(atOrBefore ms: Double, barMs: Double, downbeat: (Double) -> Double?) -> Double? {
+    public func cleanLine(atOrBefore ms: Double, barMs: Double, lyricLinesMs: [Double]? = nil, downbeat: (Double) -> Double?) -> Double? {
         guard let line = phraseLine(atOrBefore: ms, barMs: barMs) ?? downbeat(ms) else { return nil }
         // Unknown vocals mean "may be singing throughout", so every line
         // reads as sung and the given one stands — no separate case needed.
@@ -109,10 +138,20 @@ public struct Arrangement: Equatable, Sendable {
         // the record on the brink of its chorus — the one place to stay.
         let part = section(at: max(0, line - 1))
         let earliest = part.map { $0.startMs } ?? 0
+        // Synced lyrics, when the record has them, are the finer map: the
+        // server's vocal spans say where *somebody* is singing, the lyrics
+        // say where each line starts, and a cut between two words of one
+        // line is exactly what the spans cannot see. With lyrics, the
+        // phrase line is moved back to the latest one that is not mid-line;
+        // the spans decide only when there are no lyrics to read.
+        let isClean: (Double) -> Bool = { candidate in
+            if let lyricLinesMs { return Self.isLyricClean(candidate, lineStartsMs: lyricLinesMs) }
+            return !self.maySing(from: candidate - Self.lineClearanceMs, to: candidate)
+        }
         for back in 0..<Self.lineSearchPhrases {
             let candidate = line - Double(back) * phraseMs
             guard candidate >= 0, back == 0 || candidate > earliest else { break }
-            if !maySing(from: candidate - Self.lineClearanceMs, to: candidate) { return candidate }
+            if isClean(candidate) { return candidate }
         }
         return line
     }

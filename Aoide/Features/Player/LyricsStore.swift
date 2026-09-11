@@ -43,6 +43,20 @@ final class LyricsStore {
         let stored = UserDefaults.standard.double(forKey: Self.offsetKey)
         offset = .seconds(stored)
         PlaybackEngine.shared.lyricsOffset = .seconds(stored)
+        // The decks read the lyrics too: a cut is placed between two lines
+        // rather than between two words of one. Only what is already loaded
+        // — the engine asks on its clock and cannot wait — which is why the
+        // record coming up is fetched as soon as it is queued.
+        PlaybackEngine.shared.lyricLinesResolver = { [weak self] track in
+            self?.lineStartsMs(for: track.id)
+        }
+    }
+
+    /// Where each synced line starts, in milliseconds, or nil when the track
+    /// has no synced lyrics loaded.
+    func lineStartsMs(for trackId: String) -> [Double]? {
+        guard case .loaded(let lyrics) = entries[trackId], lyrics.isSynced else { return nil }
+        return lyrics.lines.compactMap { $0.start.map { $0.seconds * 1_000 } }
     }
 
     func entry(for trackId: String) -> Entry? { entries[trackId] }
@@ -101,11 +115,14 @@ final class LyricsStore {
         }
     }
 
-    /// Warms the next track's lyrics so opening the sheet after a boundary is
-    /// instant rather than showing a spinner.
+    /// Warms the lyrics of the track playing and the next: opening the sheet
+    /// after a boundary is instant rather than a spinner, and the decks have
+    /// the lines to cut between when the hand-over is booked.
     func prefetchUpNext() async {
-        guard let next = PlaybackEngine.shared.queue.upNext.first?.track.id else { return }
-        await load(trackId: next)
+        let queue = PlaybackEngine.shared.queue
+        for id in [queue.currentTrack?.id, queue.upNext.first?.track.id].compactMap({ $0 }) {
+            await load(trackId: id)
+        }
     }
 
     /// Drops everything but the current track, so a long listening session doesn't

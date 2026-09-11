@@ -236,7 +236,8 @@ public enum DJPlanner {
         notBeforeMs: Double = 0,
         outgoingArrangement: Arrangement?,
         incomingArrangement: Arrangement?,
-        outgoingExitMs: Double? = nil
+        outgoingExitMs: Double? = nil,
+        outgoingLyricLinesMs: [Double]? = nil
     ) -> DJTransition? {
         guard let outgoingArrangement, let incomingArrangement else { return nil }
         guard let outMixOut = outgoingExitMs ?? outgoing.mixOutMs,
@@ -250,7 +251,7 @@ public enum DJPlanner {
         // A cut stops the record dead, so the line has to be one nobody is
         // singing across — a mix fades the outgoing voice under the new
         // record and can afford a line mid-word; a cut cannot.
-        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar) { outgoing.downbeat(atOrBefore: $0) }
+        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar, lyricLinesMs: outgoingLyricLinesMs) { outgoing.downbeat(atOrBefore: $0) }
             ?? outMixOut
         guard exit >= notBeforeMs else { return nil }
         let entry = entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)

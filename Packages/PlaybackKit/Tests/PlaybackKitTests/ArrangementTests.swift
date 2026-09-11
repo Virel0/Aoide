@@ -375,3 +375,67 @@ struct CutTests {
         #expect(DJPlanner.planCut(outgoing: grid(), incoming: grid(), outgoingArrangement: nil, incomingArrangement: read) == nil)
     }
 }
+
+@Suite("Lyrics as the map for a cut")
+struct LyricCutTests {
+    private let read = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)])
+    private let slow = BeatGrid(
+        segments: [BeatGrid.Segment(startMs: 0, endMs: 240_000, anchorMs: 0, bpm: 100, residualMs: 4, beats: 400)],
+        beatsPerBar: 4, downbeatIndex: 0, mixInMs: 2_400 * 8, mixOutMs: 2_400 * 90
+    )
+
+    @Test("A moment is clean before a line starts, in a rest, or after the last line")
+    func cleanMoments() {
+        let lines: [Double] = [10_000, 13_000, 16_000, 30_000, 33_000]
+        // 12.8 s: 200 ms before a line starts — the previous one is over.
+        #expect(Arrangement.isLyricClean(12_800, lineStartsMs: lines))
+        // 12.5 s: 500 ms before a line, 2.5 s into the previous — mid-line.
+        #expect(!Arrangement.isLyricClean(12_500, lineStartsMs: lines))
+        // 11 s: a second into a line.
+        #expect(!Arrangement.isLyricClean(11_000, lineStartsMs: lines))
+        // 25 s: nine seconds after a line started, with the next at 30 —
+        // a rest longer than any line runs.
+        #expect(Arrangement.isLyricClean(25_000, lineStartsMs: lines))
+        // 20 s: four seconds in, next at 30 — still within a line's reach.
+        #expect(!Arrangement.isLyricClean(20_000, lineStartsMs: lines))
+        // 9 s: before the first line ever starts.
+        #expect(Arrangement.isLyricClean(9_000, lineStartsMs: lines))
+        // 45 s: long after the last.
+        #expect(Arrangement.isLyricClean(45_000, lineStartsMs: lines))
+        // No lyrics at all: nothing to say.
+        #expect(Arrangement.isLyricClean(20_000, lineStartsMs: []))
+    }
+
+    @Test("With lyrics, a cut moves back to a line that is not mid-line; the spans are not consulted")
+    func lyricsDecide() throws {
+        // The spans say the phrase line at bar 112 is clear; the lyrics say a
+        // line started three seconds before it and the next starts two
+        // seconds after — mid-line. The line at bar 96 has a line starting
+        // 200 ms after it: clean.
+        let sung = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [])
+        let lines: [Double] = [bar * 96 + 200, bar * 112 - 3_000, bar * 112 + 2_000]
+        let cut = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: sung, incomingArrangement: read,
+            outgoingLyricLinesMs: lines
+        ))
+        #expect(abs(cut.outgoingStartMs - bar * 96) < 0.01, "cut at bar \(cut.outgoingStartMs / bar)")
+
+        // The other way round: the spans say sung throughout, the lyrics say
+        // the line at bar 112 falls 300 ms before a line starts. Clean.
+        let spansSay = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [.init(startMs: 0, endMs: bar * 128)])
+        let clean = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: spansSay, incomingArrangement: read,
+            outgoingLyricLinesMs: [bar * 100, bar * 112 + 300]
+        ))
+        #expect(abs(clean.outgoingStartMs - bar * 112) < 0.01, "cut at bar \(clean.outgoingStartMs / bar)")
+
+        // Without lyrics, the spans decide as before.
+        let byTheSpans = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: spansSay, incomingArrangement: read
+        ))
+        #expect(abs(byTheSpans.outgoingStartMs - bar * 112) < 0.01)
+    }
+}

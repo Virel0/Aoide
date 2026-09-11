@@ -240,12 +240,20 @@ public enum NextRanking {
 
     // MARK: - Kinship
 
-    /// 1 when a genre is shared with the seed, 0 when both are tagged and
-    /// none is, 0.5 when either is untagged and nothing can be said.
+    /// What sharing a secondary tag is worth against sharing the first one.
+    /// A record's first genre is what it *is*; the rest is what it touches.
+    /// "Alternative" on a whispered pop record and on a pop-punk one made
+    /// them kin at 1 — it is a tag half a library carries.
+    public static let secondaryKinship = 0.5
+
+    /// 1 when the seed's first genre is the candidate's first, 0.5 when any
+    /// other genre is shared, 0 when both are tagged and none is, 0.5 when
+    /// either is untagged and nothing can be said.
     static func kinship(seed: Record, candidate: Record) -> Double {
-        guard !seed.genres.isEmpty, !candidate.genres.isEmpty else { return 0.5 }
-        let mine = Set(seed.genres.map { $0.lowercased() })
-        return candidate.genres.contains { mine.contains($0.lowercased()) } ? 1 : 0
+        guard let mine = seed.genres.first, let theirs = candidate.genres.first else { return 0.5 }
+        if mine.lowercased() == theirs.lowercased() { return 1 }
+        let shared = Set(seed.genres.map { $0.lowercased() })
+        return candidate.genres.contains { shared.contains($0.lowercased()) } ? secondaryKinship : 0
     }
 
     // MARK: - Taste

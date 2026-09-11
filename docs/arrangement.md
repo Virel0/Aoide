@@ -266,3 +266,26 @@ chorus* into a slower song — twice, for two different reasons:
 The lyrics were also fixed in passing: on the decks they read the idle
 player's clock and froze. And the scrubber runs the whole record now, with a
 mark where the set will leave it, rather than ending at the exit.
+
+## The lyrics as the map, and an escape that plays on
+
+Two more, after a cut fell between two words of one line and a record was
+escaped from before half of it had played:
+
+- **Synced lyrics place a cut.** The server's vocal spans say where
+  *somebody* is singing; the record's own `.lrc` says where each line
+  starts, which is the finer map. With lyrics loaded, a cut is placed on the
+  latest phrase line (inside the hook, as before) that is not mid-line: within
+  400 ms *before* a line starts — the previous line's last word is done — or
+  in a rest of more than eight seconds since the last line started, or after
+  the last line. The spans decide only when there are no lyrics to read. The
+  app fetches the lyrics of the record playing and the next on every track
+  change while Auto DJ is on, so the decks have them when the hand-over is
+  booked.
+- **An escape leaves late.** The play window — the 60% target, the end of the
+  hook nearest it — exists for a *mix*: the next record arrives under this
+  one before it winds down. An echo-out brings nothing in under anything, so
+  there is no reason to leave early: when the record queued next cannot be
+  mixed in, the exit is the end of the **last** hook instead, and the set
+  escapes from there. Decided against the record actually queued, once its
+  grid and arrangement have arrived, and remembered per pair.

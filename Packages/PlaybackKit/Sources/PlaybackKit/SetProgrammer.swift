@@ -43,6 +43,20 @@ public enum SetProgrammer {
     /// boundary, the record's mix-out point stands and the set plays it out —
     /// which is what a record with no drop deserves.
     public static func exitMs(grid: BeatGrid, arrangement: Arrangement, durationMs: Double) -> Double? {
+        exit(grid: grid, arrangement: arrangement, durationMs: durationMs, late: false)
+    }
+
+    /// Where to leave when the next record cannot be mixed in — an echo-out,
+    /// which is an escape and not a mix. The play window exists for mixing:
+    /// the room got the hook, and the next record arrives *under* this one
+    /// before it winds down. An escape brings nothing in under anything, so
+    /// there is no reason to leave early; the set plays to the end of the
+    /// *last* hook instead, and escapes from there.
+    public static func lateExitMs(grid: BeatGrid, arrangement: Arrangement, durationMs: Double) -> Double? {
+        exit(grid: grid, arrangement: arrangement, durationMs: durationMs, late: true)
+    }
+
+    private static func exit(grid: BeatGrid, arrangement: Arrangement, durationMs: Double, late: Bool) -> Double? {
         guard let mixOut = grid.mixOutMs else { return nil }
         let target = targetMs(durationMs: durationMs)
         let floor = durationMs * earliestExit
@@ -58,7 +72,7 @@ public enum SetProgrammer {
         }
 
         let usable = candidates.filter { $0 >= floor && $0 <= mixOut }
-        guard let chosen = usable.min(by: { abs($0 - target) < abs($1 - target) }) else { return nil }
+        guard let chosen = late ? usable.max() : usable.min(by: { abs($0 - target) < abs($1 - target) }) else { return nil }
 
         // Onto the phrase line at or before it if one is close, else the bar
         // line. The boundary is where the hook ends; a phrase line seven bars

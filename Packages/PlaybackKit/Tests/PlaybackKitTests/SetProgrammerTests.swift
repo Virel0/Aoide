@@ -62,6 +62,25 @@ struct SetProgrammerTests {
         #expect(abs(snapped - bar * 96) < 0.01, "exit at bar \(snapped / bar)")
     }
 
+    @Test("An escape leaves at the end of the last hook, not the nearest to the target")
+    func lateExit() throws {
+        // Two drops end at bars 48 and 96; the target is bar 77. The mix
+        // leaves at 96, the closer; the escape leaves at 96 too here — the
+        // last. Add a third drop ending at bar 120, past the mix-out at 116,
+        // and the escape is still 96: never past the record's own mix-out.
+        let a = arrangement([(.intro, 16, 0.2), (.drop, 32, 0.9), (.breakdown, 16, 0.4), (.drop, 32, 1.0), (.outro, 32, 0.2)])
+        let late = try #require(SetProgrammer.lateExitMs(grid: grid(mixOutMs: bar * 116), arrangement: a, durationMs: bar * 128))
+        #expect(abs(late - bar * 96) < 0.01)
+
+        // Three drops ending at 48, 80 and 112; target bar 77. The mix leaves
+        // at 80; the escape at 112.
+        let three = arrangement([(.intro, 16, 0.2), (.drop, 32, 0.9), (.breakdown, 8, 0.4), (.drop, 24, 1.0), (.breakdown, 8, 0.4), (.drop, 24, 1.0), (.outro, 16, 0.2)])
+        let early = try #require(SetProgrammer.exitMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128))
+        #expect(abs(early - bar * 80) < 0.01, "mix exit at bar \(early / bar)")
+        let escape = try #require(SetProgrammer.lateExitMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128))
+        #expect(abs(escape - bar * 112) < 0.01, "escape at bar \(escape / bar)")
+    }
+
     @Test("Never before forty per cent, never after the record's own mix-out")
     func bounds() throws {
         // A drop that ends at bar 24 (19%) is too early to leave on; the next

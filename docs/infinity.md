@@ -428,6 +428,20 @@ and its taste, placed where it mixes. Both client ports pass all eight; ten
 mutations of the round-two rule (the weight, the untagged case, where the
 chain starts, the crossfade figure, the tie, the mode gate) fail it.
 
+### Round two, amended: the first genre is what a record is
+
+*After Birds of a Feather was followed by Fences.* Both carry "Alternative"
+among their tags, and a shared tag was kinship 1. A record's **first** genre
+is what it is; the rest is what it touches. Kinship is now **1 when the
+seed's first genre is the candidate's first, 0.5 when any other genre is
+shared, 0 when both are tagged and nothing is, 0.5 when either is untagged.**
+The fixture is regenerated (`t13` gains a secondary tag to pin the half), and
+the hand check names the three cases.
+
+And a reading for the row: `mixability` at or under **0.15** is a pair the
+planner looked at and declined — the clients show it as *Crossfade*, not
+"Mixes 15%"; `null` is a pair it could not look at, and shows nothing.
+
 ## What the clients will do with it
 
 - Infinity asks `/aoide/next` instead of Jellyfin's Instant Mix, and enqueues
