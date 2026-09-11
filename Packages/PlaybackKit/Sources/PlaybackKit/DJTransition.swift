@@ -44,12 +44,14 @@ public struct DJTransition: Equatable, Sendable {
     /// would not have minded — but worth knowing, and worth preferring on when
     /// something upstream is choosing which record comes next.
     public let isKeyCompatible: Bool
+    /// How the pair scored, and why. See ``MixScore``.
+    public let score: MixScore
 }
 
 public enum DJPlanner {
-    /// What a mix wants to be: sixteen bars, the length a DJ reaches for.
+    /// What a pair with nothing known against it gets: sixteen bars.
     public static let preferredBars = 16
-    /// And what it will settle for when there is not room for sixteen.
+    /// The shortest a mix is; anything less is a crossfade.
     public static let minimumBars = 8
 
     /// How far a record may be bent to meet another.
@@ -64,6 +66,9 @@ public enum DJPlanner {
     /// before anybody is listening for it.
     public static let restoreSeconds = 8.0
 
+    /// The longest a pair may run together, and the lengths tried in turn.
+    public static let lengths = [32, 16, 8]
+
     /// Plans a mix, or returns nothing — which means Crossfade.
     ///
     /// - Parameters:
@@ -72,6 +77,9 @@ public enum DJPlanner {
     ///   - notBeforeMs: the earliest point in the outgoing track the mix may
     ///     start. The engine's answer to "how much warning do I need", which is
     ///     however long it takes to have the next file open and ready.
+    ///   - outgoingArrangement, incomingArrangement: what each record is made of,
+    ///     when the server has measured it. Without them the pair is scored on
+    ///     tempo and key alone and comes in at its mix-in point.
     public static func plan(
         outgoing: BeatGrid,
         incoming: BeatGrid,
@@ -83,7 +91,6 @@ public enum DJPlanner {
         guard let outMixOut = outgoing.mixOutMs,
               let inMixIn = incoming.mixInMs,
               let outSegment = outgoing.segment(at: outMixOut),
-              let inSegment = incoming.segment(at: inMixIn),
               outgoing.beatsPerBar != nil,
               incoming.beatsPerBar != nil,
               let outBar = outgoing.barMs(at: outMixOut),
@@ -93,36 +100,67 @@ public enum DJPlanner {
         // The bend, folded into one octave: 85 against 170 is one groove counted
         // two ways, and the incoming deck can play the double-time record at half
         // speed to sit inside it.
-        guard let rate = bendableRate(from: inSegment.bpm, to: outSegment.bpm) else { return nil }
+        guard let rate = bendableRate(from: incoming.segment(at: inMixIn)?.bpm ?? 0, to: outSegment.bpm) else { return nil }
 
-        // Sixteen bars if they fit, eight if only those do. Measured against the
-        // outgoing record, which is the one with a deadline.
-        //
-        // Records whose keys clash get the short mix even when there is room for
-        // the long one. Sixteen bars is half a minute of two keys arguing, and
-        // the complaint that produced this rule was two tracks seven steps apart
-        // on the wheel held against each other for thirty seconds. It is still
-        // never a *refusal* — the key estimator has not been tried on real music,
-        // and refusing on a guess is worse than a short mix.
-        let clashes = outgoing.key != nil && incoming.key != nil
-            && !CamelotKey.areCompatible(outgoing.key, incoming.key)
+        // Where the incoming record could come in. Its mix-in point always; and
+        // with an arrangement, the start of every build, intro and breakdown as
+        // well — because coming in on a build is what a DJ does, and the mix-in
+        // point is only where the groove starts.
+        var entries = [entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)]
+        for section in incomingArrangement?.sections ?? [] where [.build, .intro, .breakdown].contains(section.kind) {
+            entries.append(entryPoint(section.startMs, in: incoming, arrangement: incomingArrangement, barMs: inBar))
+        }
 
-        // Where the incoming record comes in: its mix-in point, moved back onto
-        // the start of the phrase it sits in when the record counts phrases. A
-        // mix is counted in phrases, and a record brought in three bars into one
-        // is a record brought in at the wrong moment however exactly its beats
-        // land.
-        let entry = incomingArrangement?.phraseStart(atOrBefore: inMixIn, barMs: inBar)
-            ?? incoming.downbeat(atOrBefore: inMixIn)
-            ?? inMixIn
+        // Best score wins; on a tie, the earlier entry, which is the thinner one.
+        var best: DJTransition?
+        for entry in Set(entries).sorted() {
+            guard let candidate = plan(
+                entry: entry, rate: rate,
+                outgoing: outgoing, incoming: incoming,
+                outMixOut: outMixOut, outBar: outBar, inBar: inBar, outSegmentBpm: outSegment.bpm,
+                notBeforeMs: notBeforeMs,
+                outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement
+            ) else { continue }
+            if best == nil || candidate.score.total > best!.score.total {
+                best = candidate
+            }
+        }
+        return best
+    }
+
+    /// A candidate entry, put on the phrase line it sits in when the record
+    /// counts phrases and on the bar line otherwise. A record brought in three
+    /// bars into a phrase is a record brought in at the wrong moment however
+    /// exactly its beats land.
+    private static func entryPoint(_ ms: Double, in grid: BeatGrid, arrangement: Arrangement?, barMs: Double) -> Double {
+        arrangement?.phraseStart(atOrBefore: ms, barMs: barMs)
+            ?? grid.downbeat(atOrBefore: ms)
+            ?? ms
+    }
+
+    /// One entry point, scored and fitted.
+    private static func plan(
+        entry: Double,
+        rate: Double,
+        outgoing: BeatGrid,
+        incoming: BeatGrid,
+        outMixOut: Double,
+        outBar: Double,
+        inBar: Double,
+        outSegmentBpm: Double,
+        notBeforeMs: Double,
+        outgoingArrangement: Arrangement?,
+        incomingArrangement: Arrangement?
+    ) -> DJTransition? {
+        guard let inSegment = incoming.segment(at: entry) else { return nil }
+
+        let exitKind = outgoingArrangement?.section(at: outMixOut)?.kind
+        let entryKind = incomingArrangement?.section(at: entry)?.kind
 
         // Two drops on top of each other is the mistake every DJ names first —
-        // a new chorus dropped onto somebody else's. Nothing here can find a
-        // better place to come in, but it can decline to sit there for long.
-        let dropOnDrop = outgoingArrangement?.section(at: outMixOut)?.kind == .drop
-            && incomingArrangement?.section(at: entry)?.kind == .drop
-
-        let lengths = clashes || dropOnDrop ? [minimumBars] : [preferredBars, minimumBars]
+        // a new chorus dropped onto somebody else's. Whatever the rest of the
+        // score says, that pair does not get long together.
+        let dropOnDrop = exitKind == .drop && entryKind == .drop
 
         for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
@@ -133,27 +171,35 @@ public enum DJPlanner {
             let startMs = outgoingArrangement?.phraseStart(atOrBefore: counted, barMs: outBar) ?? counted
 
             guard startMs >= notBeforeMs else { continue }
+            guard outgoing.canLock(at: startMs, blendSeconds: seconds) else { continue }
+            guard incoming.canLock(at: entry, blendSeconds: seconds) else { continue }
+            // A bent record is eaten faster than the clock — thirty seconds at
+            // 1.05 is thirty-one and a half of source — so it has to have that
+            // much of itself left rather than that much wall time.
+            guard entry + seconds * 1000 * rate <= inSegment.endMs else { continue }
 
+            // Singing, across exactly the stretch that would overlap.
+            let outgoingSings = outgoingArrangement.map { $0.maySing(from: startMs, to: startMs + seconds * 1000) }
+            let incomingSings = incomingArrangement.map { $0.maySing(from: entry, to: entry + seconds * 1000 * rate) }
             // Two records singing at once is the other thing on every list of
             // what not to do, and not something a client can hear for itself.
             // Unknown counts as singing: a false positive costs a mix, and a
             // false negative is the exact mistake this exists to prevent.
-            if let outgoingArrangement, let incomingArrangement {
-                let outgoingSings = outgoingArrangement.maySing(from: startMs, to: startMs + seconds * 1000)
-                let incomingSings = incomingArrangement.maySing(from: entry, to: entry + seconds * 1000 * rate)
-                if outgoingSings && incomingSings { continue }
-            }
-            // The whole mix has to sit inside one tempo on both sides: a segment
-            // boundary is a tempo change, and a grid fitted either side of one
-            // describes neither half of what is playing.
-            guard outgoing.canLock(at: startMs, blendSeconds: seconds) else { continue }
-            guard incoming.canLock(at: entry, blendSeconds: seconds) else { continue }
-            // And the incoming record must have that much of itself to give.
-            // Measured in its own timeline, which a bend consumes faster or
-            // slower than the clock: thirty seconds at 1.05 eats thirty-one and
-            // a half seconds of record.
-            let incomingNeeded = seconds * 1000 * rate
-            guard entry + incomingNeeded <= inSegment.endMs else { continue }
+            if outgoingSings == true && incomingSings == true { continue }
+
+            let score = MixScore(
+                tempo: MixScore.tempo(rate: rate),
+                key: MixScore.key(outgoing.key, incoming.key),
+                vocals: MixScore.vocals(outgoingSings: outgoingSings, incomingSings: incomingSings),
+                energy: MixScore.energy(
+                    outgoingArrangement?.section(at: startMs)?.energy,
+                    incomingArrangement?.section(at: entry)?.energy
+                ),
+                sections: MixScore.sections(exit: exitKind, entry: entryKind)
+            )
+            guard let earned = score.bars else { return nil }
+            let allowed = dropOnDrop ? min(earned, minimumBars) : earned
+            guard bars <= allowed else { continue }
 
             // The outgoing side snapped to the grid rather than trusted. The
             // contract says `mixOutMs` is a downbeat and the sidecar keeps that
@@ -169,11 +215,12 @@ public enum DJPlanner {
                 incomingStartMs: entry,
                 bars: bars,
                 seconds: seconds,
-                targetBpm: outSegment.bpm,
+                targetBpm: outSegmentBpm,
                 outgoingRate: 1,
                 incomingRate: rate,
                 restoreSeconds: restoreSeconds,
-                isKeyCompatible: CamelotKey.areCompatible(outgoing.key, incoming.key)
+                isKeyCompatible: CamelotKey.areCompatible(outgoing.key, incoming.key),
+                score: score
             )
         }
         return nil
@@ -255,7 +302,22 @@ public enum DJAutomation {
         return MixCurve.incoming(progress: progress / entryWidth)
     }
 
+    /// How far out the outgoing record's low end is, 0…1: in until the swap,
+    /// out after it. What the decks' filters are driven by.
+    public static func outgoingBassCut(progress: Double) -> Double {
+        ramp(progress)
+    }
+
+    /// And the incoming record's, the other way round.
+    public static func incomingBassCut(progress: Double) -> Double {
+        1 - ramp(progress)
+    }
+
     /// The outgoing record keeps its bass until the swap, then loses it.
+    ///
+    /// The same swap in the decibels of the shelf it used to be, kept for the
+    /// arithmetic that describes it: the two are complementary in power across
+    /// the crossing, which is why the level holds.
     public static func outgoingBassDb(progress: Double) -> Double {
         db(MixCurve.outgoing(progress: ramp(progress)))
     }

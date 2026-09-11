@@ -154,7 +154,7 @@ public final class DJSession {
     ) throws -> Bool {
         try mixer.load(item.url, on: side, from: seconds)
         mixer.setVolume(lead > 0 ? 0 : item.linearGain, on: side)
-        mixer.setBassDb(0, on: side)
+        mixer.setBassCut(0, on: side)
         mixer.setRate(1, on: side)
         var started = true
         if lead > 0 {
@@ -259,7 +259,7 @@ public final class DJSession {
         // it — which is exactly the moment a record would otherwise arrive at
         // full volume.
         mixer.setVolume(seconds > 0 ? 0 : incoming.linearGain, on: other)
-        mixer.setBassDb(kind.cutsIncomingBass ? DJAutomation.bassCutDb : 0, on: other)
+        mixer.setBassCut(kind.cutsIncomingBass ? 1 : 0, on: other)
         mixer.setRate(incomingRate, on: other)
         mixer.play(other, inSeconds: lead)
 
@@ -296,8 +296,8 @@ public final class DJSession {
             // brought to one loudness stay there while they cross.
             mixer.setVolume(DJAutomation.outgoingGain(progress: progress) * (current?.linearGain ?? 1), on: side)
             mixer.setVolume(DJAutomation.incomingGain(progress: progress) * mix.incoming.linearGain, on: other)
-            mixer.setBassDb(DJAutomation.outgoingBassDb(progress: progress), on: side)
-            mixer.setBassDb(DJAutomation.incomingBassDb(progress: progress), on: other)
+            mixer.setBassCut(DJAutomation.outgoingBassCut(progress: progress), on: side)
+            mixer.setBassCut(DJAutomation.incomingBassCut(progress: progress), on: other)
             mixer.setRate(transition.incomingRate, on: other)
         case .blended:
             // No bass swap and no bend: a crossfade between two records that were
@@ -315,7 +315,7 @@ public final class DJSession {
     private func finish(_ mix: Mix, at sessionSeconds: Double) {
         mixer.setVolume(0, on: side)
         mixer.stopDeck(side)
-        mixer.setBassDb(0, on: other)
+        mixer.setBassCut(0, on: other)
         mixer.setVolume(mix.incoming.linearGain, on: other)
 
         side = other

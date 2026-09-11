@@ -16,9 +16,9 @@ import Foundation
 /// the bass swap:
 ///
 /// ```
-/// player → varispeed → low shelf ─┐
-///                                 ├→ main mixer → output
-/// player → varispeed → low shelf ─┘
+/// player → time-pitch → high-pass ─┐
+///                                  ├→ main mixer → output
+/// player → time-pitch → high-pass ─┘
 /// ```
 ///
 /// **Time-pitch rather than varispeed**, which reverses an earlier decision here
@@ -41,9 +41,12 @@ public final class DJMixer {
         case a, b
     }
 
-    /// Where the low shelf sits. Kick drums and bass lines live below this; the
-    /// body of a vocal does not.
-    public static let bassShelfHz: Float = 220
+    /// Where the high-pass sits when a record's low end is out: kick drums and
+    /// bass lines live below this, the body of a vocal does not.
+    public static let bassCutHz: Float = 220
+    /// And where it sits when the record is untouched — below anything a
+    /// speaker reproduces, so the filter is in the chain but not in the sound.
+    public static let bassOpenHz: Float = 20
 
     private let engine = AVAudioEngine()
 
@@ -61,10 +64,16 @@ public final class DJMixer {
             // Pitch held while the speed moves. `.varispeed` would be the other
             // choice and is the one this used to make.
             speed.pitch = 0
+            // A high-pass rather than the shelf this used to be. A shelf turns
+            // the low end *down*; a kick's harmonics and a bass line's upper
+            // notes still come through it, and two of those under each other is
+            // exactly the mud the swap exists to stop. A filter takes the low
+            // end *out*, and sweeping its corner across the swap is how a DJ's
+            // isolator actually behaves.
             let band = shelf.bands[0]
-            band.filterType = .lowShelf
-            band.frequency = DJMixer.bassShelfHz
-            band.gain = 0
+            band.filterType = .highPass
+            band.frequency = DJMixer.bassOpenHz
+            band.bandwidth = 0.7
             band.bypass = false
         }
     }
@@ -203,12 +212,23 @@ public final class DJMixer {
         deck.player.volume = wanted
     }
 
-    /// Decibels on the low shelf: 0 leaves the bass alone, negative takes it out.
-    public func setBassDb(_ db: Double, on side: Side) {
+    /// How much of the low end is out: 0 leaves the record alone, 1 takes the
+    /// bass out entirely. In between, the filter's corner moves across the
+    /// octaves between the two on a log scale, because that is how frequency
+    /// is heard — halfway is a corner at about 66 Hz, not at 120.
+    public func setBassCut(_ amount: Double, on side: Side) {
         guard let deck = decks[side] else { return }
-        let wanted = Float(max(-96, min(24, db)))
-        guard abs(deck.shelf.bands[0].gain - wanted) > 0.01 else { return }
-        deck.shelf.bands[0].gain = wanted
+        let fraction = max(0, min(1, amount.isFinite ? amount : 0))
+        let wanted = Self.bassOpenHz * pow(Self.bassCutHz / Self.bassOpenHz, Float(fraction))
+        guard abs(deck.shelf.bands[0].frequency - wanted) > 0.5 else { return }
+        deck.shelf.bands[0].frequency = wanted
+    }
+
+    /// The older shape of the same control, in decibels of a shelf that no
+    /// longer exists. Kept because the automation still speaks in it; mapped
+    /// onto the filter by how far down the cut the number sits.
+    public func setBassDb(_ db: Double, on side: Side) {
+        setBassCut(db / DJAutomation.bassCutDb, on: side)
     }
 
     /// Whether a deck is meant to be sounding. The end of a mix has to leave the
@@ -219,7 +239,8 @@ public final class DJMixer {
 
     public func rate(on side: Side) -> Double { Double(decks[side]?.speed.rate ?? 1) }
     public func volume(on side: Side) -> Double { Double(decks[side]?.player.volume ?? 0) }
-    public func bassDb(on side: Side) -> Double { Double(decks[side]?.shelf.bands[0].gain ?? 0) }
+    /// Where the high-pass corner is, in hertz.
+    public func bassCornerHz(on side: Side) -> Double { Double(decks[side]?.shelf.bands[0].frequency ?? 0) }
 
     /// Applies everything a transition says about one instant of itself.
     ///

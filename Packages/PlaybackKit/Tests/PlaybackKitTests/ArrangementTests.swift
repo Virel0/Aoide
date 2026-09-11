@@ -36,9 +36,10 @@ private let plain = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 1
 struct ArrangementTests {
     @Test("A mix starts on a phrase, not merely on a bar")
     func phraseAligned() throws {
-        // Mix-out at bar 112; sixteen bars back is bar 96, which is a phrase
-        // line. Move the mix-out to bar 115 and sixteen back is bar 99 — a bar
-        // line and not a phrase line — so the start goes back to 96.
+        // A pair with everything going for it earns thirty-two bars. Mix-out at
+        // bar 112; thirty-two back is bar 80, a phrase line. Move the mix-out to
+        // bar 115 and thirty-two back is bar 83 — a bar line and not a phrase
+        // line — so the start goes back to 80.
         let crooked = BeatGrid(
             segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0,
             mixInMs: bar * 8, mixOutMs: bar * 115
@@ -47,7 +48,8 @@ struct ArrangementTests {
             outgoing: crooked, incoming: grid(),
             outgoingArrangement: plain, incomingArrangement: plain
         ))
-        #expect(abs(plan.outgoingStartMs - bar * 96) < 0.01)
+        #expect(plan.bars == 32)
+        #expect(abs(plan.outgoingStartMs - bar * 80) < 0.01)
 
         // And the entry: mix-in at bar 8 sits on the phrase line already. At bar
         // 11 it would come in three bars into a phrase, so it comes in at 0.
@@ -64,7 +66,7 @@ struct ArrangementTests {
             outgoing: crooked, incoming: lateEntry,
             outgoingArrangement: noPhrases, incomingArrangement: noPhrases
         ))
-        #expect(abs(barred.outgoingStartMs - bar * 99) < 0.01)
+        #expect(abs(barred.outgoingStartMs - bar * (115 - Double(barred.bars))) < 0.01)
         #expect(abs(barred.incomingStartMs - bar * 11) < 0.01)
     }
 
@@ -125,10 +127,49 @@ struct ArrangementTests {
         #expect(long.bars == 16)
     }
 
-    @Test("Without an arrangement, nothing here applies")
+    @Test("Without an arrangement, nothing here applies, and nothing runs long")
     func absentIsAbsent() throws {
         let plan = try #require(DJPlanner.plan(outgoing: grid(), incoming: grid()))
+        // Sixteen, not thirty-two: half a minute together is earned by knowing
+        // the records suit each other, not by knowing nothing against them.
         #expect(plan.bars == 16)
+    }
+
+    @Test("A record comes in on its build when it has one")
+    func comesInOnTheBuild() throws {
+        // Mix-in at bar 8, inside the intro; a build from bar 16. A DJ brings the
+        // record in on the build, and so does this.
+        let withBuild = arrangement([(.intro, 16, 0.2), (.build, 16, 0.5), (.drop, 80, 0.95), (.outro, 16, 0.2)])
+        let outgoingSide = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.55), (.outro, 16, 0.2)])
+        let plan = try #require(DJPlanner.plan(
+            outgoing: grid(), incoming: grid(),
+            outgoingArrangement: outgoingSide, incomingArrangement: withBuild
+        ))
+        #expect(abs(plan.incomingStartMs - bar * 16) < 0.01)
+        #expect(plan.score.sections == 1)
+    }
+
+    @Test("Energy that matches scores; energy that does not, does not")
+    func energyCounts() {
+        #expect(MixScore.energy(0.5, 0.5) == 1)
+        #expect(abs(MixScore.energy(0.9, 0.2) - 0.3) < 1e-9)
+        #expect(MixScore.energy(nil, 0.5) == 0.5)
+    }
+
+    @Test("The score sets the length")
+    func scoreSetsLength() {
+        let perfect = MixScore(tempo: 1, key: 1, vocals: 1, energy: 1, sections: 1)
+        #expect(perfect.bars == 32)
+        let unknown = MixScore(tempo: 1, key: 0.5, vocals: 0.5, energy: 0.5, sections: 0.5)
+        #expect(unknown.bars == 16)
+        let strained = MixScore(tempo: 0.4, key: 0, vocals: 0.5, energy: 0.5, sections: 0.5)
+        #expect(strained.bars == 8)
+        let hopeless = MixScore(tempo: 0, key: 0, vocals: 0.5, energy: 0, sections: 0.2)
+        #expect(hopeless.bars == nil)
+        // Two per cent is free; six is the end of the road.
+        #expect(MixScore.tempo(rate: 1.019) == 1)
+        #expect(abs(MixScore.tempo(rate: 1.04) - 0.5) < 1e-9)
+        #expect(MixScore.tempo(rate: 1.06) == 0)
     }
 
     @Test("Reading the arrangement")

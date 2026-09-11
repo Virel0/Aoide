@@ -137,19 +137,20 @@ struct DJTransitionTests {
 
     @Test("A bent record is consumed faster than the clock, and must have that much")
     func bendEatsMoreRecord() throws {
-        // 121.9 into 128 is a bend of 1.05: thirty seconds of mix eats thirty-one
-        // and a half seconds of the incoming record. This one has thirty-one from
-        // its mix-in — enough by the clock, not enough by the record, which is a
-        // distinction only the rate makes.
-        // The mix-in on a downbeat, as the contract has it, so the entry is not
-        // moved back onto one and handed extra room.
-        let mixIn = 60_000 / 121.9 * 4 * 50
-        let short = record(bpm: 121.9, lengthMs: mixIn + 31_000, mixInMs: mixIn, mixOutMs: 120_000)
+        // A one per cent bend — inside the free range, so the score still says
+        // sixteen bars — means thirty seconds of mix eats thirty and a third of
+        // the incoming record. This one has thirty from its mix-in: enough by
+        // the clock, not enough by the record, which is a distinction only the
+        // rate makes. The mix-in sits on a downbeat, as the contract has it, so
+        // the entry is not moved back onto one and handed extra room.
+        let bpm = 128 / 1.01
+        let mixIn = 60_000 / bpm * 4 * 50
+        let short = record(bpm: bpm, lengthMs: mixIn + 30_100, mixInMs: mixIn, mixOutMs: 120_000)
         let cramped = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: short))
         #expect(cramped.bars == 8)
 
-        // Two more seconds of record and the same pair gets the full sixteen.
-        let longer = record(bpm: 121.9, lengthMs: mixIn + 33_000, mixInMs: mixIn, mixOutMs: 120_000)
+        // Half a second more record and the same pair gets the full sixteen.
+        let longer = record(bpm: bpm, lengthMs: mixIn + 30_600, mixInMs: mixIn, mixOutMs: 120_000)
         let full = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: longer))
         #expect(full.bars == 16)
     }

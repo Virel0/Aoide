@@ -123,3 +123,36 @@ The planner (`DJTransition.swift`) now does three things it could not:
 
 Energy is not used yet. It is the ingredient for choosing *where* to come in —
 a build rather than a drop — which is the next thing.
+
+
+## Scoring, and the crossover
+
+Two more from the sidecar's reading of how others have done this, both taken.
+
+**A weighted score sets the length.** Refusing on one criterion at a time meant
+a key clash was eight bars and a tempo gap was no, and nothing in between could
+be said. `MixScore` grades five things — tempo (free to two per cent, gone at
+six), key, singing, energy at the exit and entry, and what kind of section each
+is — and the total earns thirty-two, sixteen or eight bars, or a crossfade. A
+pair with nothing *known* against it gets sixteen; half a minute together has to
+be earned by knowing the records suit each other. Two hard rules stay outside
+the score, because a score can be outvoted and some mistakes should not be: two
+records singing is refused, and a drop onto a drop is capped at eight.
+
+The score also chooses **where the incoming record comes in**: its mix-in point,
+or the start of any build, intro or breakdown it has, whichever scores best —
+coming in on the build is what a DJ does, and the mix-in point is only where the
+groove starts.
+
+**The bass swap is a high-pass now, not a shelf.** A shelf turns the low end
+down; a kick's harmonics and a bass line's upper notes still come through it,
+and two of those under each other is exactly the mud the swap exists to stop. A
+second-order high-pass takes the low end out, and its corner is swept across the
+swap on a log scale from 20 Hz to 220 Hz — halfway is 66 Hz, not 120, because
+that is how frequency is heard. Rendered and measured: the level through a mix
+still holds within a decibel, and 60 Hz is 22 dB down on the record that has
+given its bass up.
+
+**Not taken:** ramping the bend in over the first bars. The incoming record is
+bent before it is audible and eased back over eight seconds after the mix, so
+there is no moment at which a listener could hear the bend arrive.

@@ -140,7 +140,7 @@ struct DJMixerTests {
         }
     }
 
-    @Test("The shelf takes the bass out and leaves the rest")
+    @Test("The filter takes the bass out and leaves the rest")
     func bassShelfCuts() throws {
         let url = try tone(hz: 60)
         let highUrl = try tone(hz: 2_000)
@@ -171,8 +171,9 @@ struct DJMixerTests {
         let bassCut = try level(of: url, bassDb: DJAutomation.bassCutDb)
         #expect(bassCut < bassOpen)
         let cutDb = 20 * log10(bassCut / bassOpen)
-        // Within a few decibels of what was asked for — a shelf is a slope, not
-        // a wall, and 60Hz is below the corner rather than at it.
+        // Within a few decibels of the shelf this used to be: a second-order
+        // high-pass at 220 Hz is about 22 dB down at 60 Hz, which is the point —
+        // the low end is *out*, not turned down.
         #expect(abs(cutDb - DJAutomation.bassCutDb) < 4, "cut measured \(cutDb) dB")
 
         // And the top of the record is left alone.
