@@ -50,16 +50,20 @@ public enum NextChooser {
     }
 
     /// Why a record was chosen, each in 0…1. `mixability` is absent outside
-    /// Auto DJ and for a pair the server could not read.
+    /// Auto DJ and for a pair the server could not read. `kinship` — whether
+    /// the record is of the seed's kind — is absent from a server older than
+    /// 1.17.0.0, which folded it into `similarity`.
     public struct Factors: Codable, Equatable, Sendable {
         public var taste: Double
+        public var kinship: Double?
         public var freshness: Double
         public var similarity: Double
         public var mixability: Double?
         public var arc: Double
 
-        public init(taste: Double, freshness: Double, similarity: Double, mixability: Double?, arc: Double) {
+        public init(taste: Double, kinship: Double? = nil, freshness: Double, similarity: Double, mixability: Double?, arc: Double) {
             self.taste = taste
+            self.kinship = kinship
             self.freshness = freshness
             self.similarity = similarity
             self.mixability = mixability
@@ -72,6 +76,7 @@ public enum NextChooser {
         public func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(taste, forKey: .taste)
+            if let kinship { try container.encode(kinship, forKey: .kinship) }
             try container.encode(freshness, forKey: .freshness)
             try container.encode(similarity, forKey: .similarity)
             if let mixability {
@@ -107,7 +112,9 @@ public extension NextChooser.Factors {
     /// just heard, so nearly every row would read "fresh", which says nothing.
     var summary: String {
         func pct(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
-        var parts = ["Taste \(pct(taste))", "Fits \(pct(similarity))"]
+        var parts = ["Taste \(pct(taste))"]
+        if let kinship { parts.append("Kin \(pct(kinship))") }
+        parts.append("Fits \(pct(similarity))")
         if let mixability { parts.append("Mixes \(pct(mixability))") }
         parts.append("Arc \(pct(arc))")
         if freshness < 0.25 {

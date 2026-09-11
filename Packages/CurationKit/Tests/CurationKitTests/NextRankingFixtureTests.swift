@@ -65,7 +65,14 @@ struct NextRankingFixtureTests {
         var library: [Record]
         var plays: [Play]
         var notInterested: [String]
+        /// The planner's pair scores, keyed "from>to"; a pair not listed is unread.
+        var mixability: [String: Double]?
         var cases: [Case]
+    }
+
+    static func mixability(of fixture: Fixture) -> NextRanking.Mixability {
+        let table = fixture.mixability ?? [:]
+        return { from, to in table["\(from)>\(to)"] }
     }
 
     static let url = Bundle.module.url(forResource: "next-ranking-fixture", withExtension: "json", subdirectory: "Fixtures")!
@@ -105,7 +112,7 @@ struct NextRankingFixtureTests {
                 seed: testCase.seed, queue: testCase.queue, recent: testCase.recent,
                 mode: testCase.mode, limit: testCase.limit
             )
-            let (results, events) = NextRanking.rank(query, in: library)
+            let (results, events) = NextRanking.rank(query, in: library, mixability: Self.mixability(of: fixture))
             let actual = Fixture.Expected(
                 events: events,
                 candidates: results.map {
@@ -114,6 +121,7 @@ struct NextRankingFixtureTests {
                         score: Self.round6($0.score),
                         factors: NextChooser.Factors(
                             taste: Self.round6($0.factors.taste),
+                            kinship: $0.factors.kinship.map(Self.round6),
                             freshness: Self.round6($0.factors.freshness),
                             similarity: Self.round6($0.factors.similarity),
                             mixability: $0.factors.mixability.map(Self.round6),
@@ -134,6 +142,7 @@ struct NextRankingFixtureTests {
             for (got, want) in zip(actual.candidates, expected.candidates) where got.id == want.id {
                 #expect(abs(got.score - want.score) <= 1e-6, "\(testCase.name) \(got.id): score \(got.score) vs \(want.score)")
                 #expect(abs(got.factors.taste - want.factors.taste) <= 1e-6, "\(testCase.name) \(got.id): taste")
+                #expect(got.factors.kinship == want.factors.kinship, "\(testCase.name) \(got.id): kinship")
                 #expect(got.factors.freshness == want.factors.freshness, "\(testCase.name) \(got.id): freshness")
                 #expect(abs(got.factors.similarity - want.factors.similarity) <= 1e-6, "\(testCase.name) \(got.id): similarity")
                 #expect(got.factors.mixability == want.factors.mixability, "\(testCase.name) \(got.id): mixability")
@@ -168,17 +177,18 @@ struct NextRankingFixtureTests {
         // Solenne the strongest artist (5) → 1; t17 has one decided listen,
         // below the sample of three → no bias. 0.45 + 0.3 = 0.75.
         #expect(abs(t17.factors.taste - 0.75) <= 1e-9)
-        // Similarity: no genre shared (house vs synthwave/electronic) → 0;
-        // 125/120 = 1.041667, bend 4.17% → 1 − (0.041667 − 0.02)/0.04 = 0.458333;
-        // 8A/8A → 1; energy |0.6 − 0.78| → 0.82. Mean of four = 0.569583.
-        #expect(abs(t17.factors.similarity - (0 + 0.4583333333 + 1 + 0.82) / 4) <= 1e-6)
+        // Kinship: no genre shared (house vs synthwave/electronic) → 0.
+        #expect(t17.factors.kinship == 0)
+        // Similarity: 125/120 = 1.041667, bend 4.17% → 1 − (0.041667 − 0.02)/0.04
+        // = 0.458333; 8A/8A → 1; energy |0.6 − 0.78| → 0.82. Mean of three.
+        #expect(abs(t17.factors.similarity - (0.4583333333 + 1 + 0.82) / 3) <= 1e-6)
         // Arc: recent reversed [t12 0.6, t02 0.65] + seed 0.6 → not a rise, not
         // a fall; target = 0.6; 1 − |0.78 − 0.6| = 0.82.
         #expect(abs(t17.factors.arc - 0.82) <= 1e-9)
         // t17 was finished 400 hours ago: among the last 40 started → heard
         // lately, and its artist too. Both penalties.
         #expect(t17.factors.freshness == 0)
-        #expect(abs(t17.score - (0.75 + 0.5695833333 * 0.4 + 0.82 * 0.2 - 1.4 - 0.4)) <= 1e-6)
+        #expect(abs(t17.score - (0.75 + 0 * 0.6 + (0.4583333333 + 1 + 0.82) / 3 * 0.4 + 0.82 * 0.2 - 1.4 - 0.4)) <= 1e-6)
     }
 
     @Test("Hand-checked: t16, a twin of the seed by an artist heard lately")
@@ -192,11 +202,12 @@ struct NextRankingFixtureTests {
         // Synthwave 1 of 5 → 0.2, electronic 2 of 5 → 0.4, best 0.4 → 0.18;
         // Marrow 1 of 5 → 0.2 → 0.06; never played → no bias. 0.24.
         #expect(abs(t16.factors.taste - 0.24) <= 1e-9)
-        // Shared genre 1; same tempo 1; same key 1; energy 1 − 0 = 1. Mean 1.
+        // Shared genre → kin 1; same tempo 1; same key 1; energy 1 − 0 = 1.
+        #expect(t16.factors.kinship == 1)
         #expect(abs(t16.factors.similarity - 1) <= 1e-9)
         // Never played, but Marrow is the artist of t02, heard on this device.
         #expect(t16.factors.freshness == 0.5)
-        #expect(abs(t16.score - (0.24 + 0.4 + 1.0 * 0.2 - 0.4)) <= 1e-9)
+        #expect(abs(t16.score - (0.24 + 0.6 + 0.4 + 1.0 * 0.2 - 0.4)) <= 1e-9)
     }
 
     @Test("Hand-checked: the rising set asks for a breather, and Auto DJ writes a null")
@@ -204,18 +215,46 @@ struct NextRankingFixtureTests {
         let fixture = try Self.load()
         let library = Self.library(from: fixture)
         let query = NextRanking.Query(seed: "t01", queue: ["t03", "t07", "t08"], recent: ["t02", "t12"], mode: .autodj, limit: 20)
-        let (results, _) = NextRanking.rank(query, in: library)
+        // The chain starts from t08, the end of the queue, and no pair from
+        // t08 is in the table: the first record is the best-chosen one, with
+        // a null mixability.
+        let (results, _) = NextRanking.rank(query, in: library, mixability: Self.mixability(of: fixture))
+        #expect(results.first?.factors.mixability == nil)
 
         // The last four: t01 0.6, t03 0.8, t07 0.85, t08 0.9 — rose three
         // times; target 0.9 − 0.25 = 0.65. t15 is at 0.65 exactly.
         let t15 = try #require(results.first { $0.id == "t15" })
         #expect(abs(t15.factors.arc - 1) <= 1e-9)
-        #expect(t15.factors.mixability == nil)
         // The queued records are never returned.
         #expect(!results.contains { ["t03", "t07", "t08"].contains($0.id) })
         // Deep Harbour is the artist of the last three queued: t18 pays.
         let t18 = try #require(results.first { $0.id == "t18" })
         #expect(t18.factors.freshness == 0.5)
+    }
+
+    @Test("Hand-checked: chosen by taste and kin, then ordered as a chain")
+    func handCheckedOrder() throws {
+        let fixture = try Self.load()
+        let library = Self.library(from: fixture)
+        let query = NextRanking.Query(seed: "t01", queue: [], recent: ["t02", "t12"], mode: .autodj, limit: 5)
+        let (results, _) = NextRanking.rank(query, in: library, mixability: Self.mixability(of: fixture))
+        // The five best by the choosing score, in that order, are t16, t20,
+        // t14, t11, t15 (see the infinity case with the same request). Not
+        // one of them was chosen for mixing with the seed: mixability is not
+        // in the choosing score, and the reported scores are the choosing
+        // scores in the choosing order's own figures.
+        let chosen = Set(results.map(\.id))
+        #expect(chosen == ["t16", "t20", "t14", "t11", "t15"])
+        // Ordered from the seed: t01→t16 is 0.9 (best); t16→t20 0.85;
+        // t20→t14 0.8; t14→t15 0.9 beats t14→t11 0.6; t15→t11 0.5 last.
+        #expect(results.map(\.id) == ["t16", "t20", "t14", "t15", "t11"])
+        #expect(results.map(\.factors.mixability) == [0.9, 0.85, 0.8, 0.9, 0.5])
+        // A record with no pair in the table would be a crossfade, 0.15, and
+        // would lose to any read pair — pinned by t11 going last here even
+        // though its choosing score is above t15's.
+        let t11 = try #require(results.first { $0.id == "t11" })
+        let t15 = try #require(results.first { $0.id == "t15" })
+        #expect(t11.score > t15.score)
     }
 
     @Test("Hand-checked: the falling set, from a seed nothing can be measured against")
@@ -228,13 +267,15 @@ struct NextRankingFixtureTests {
         // recent reversed [t07 0.85, t03 0.8] + seed 0.1: fell twice; target 0.3.
         let t05 = try #require(results.first { $0.id == "t05" })
         #expect(abs(t05.factors.arc - (1 - abs(0.4 - 0.3))) <= 1e-9)
-        // The seed has no tempo and no key: tempo left out, key 0.5, genre 0
-        // (ambient vs indie/pop), energy 1 − |0.1 − 0.4| = 0.7. Mean of three.
-        #expect(abs(t05.factors.similarity - (0 + 0.5 + 0.7) / 3) <= 1e-6)
-        // t11 shares ambient but has no arrangement: genre 1, key 0.5, two
-        // parts → 0.75; arc 0.5 for a record with nothing to read.
+        // The seed has no tempo and no key: tempo left out, key 0.5, energy
+        // 1 − |0.1 − 0.4| = 0.7. Mean of two. No kin: ambient vs indie/pop.
+        #expect(abs(t05.factors.similarity - (0.5 + 0.7) / 2) <= 1e-6)
+        #expect(t05.factors.kinship == 0)
+        // t11 shares ambient but has no arrangement: kin 1; key 0.5 is the
+        // one similarity part → 0.5; arc 0.5 for a record with nothing to read.
         let t11 = try #require(results.first { $0.id == "t11" })
-        #expect(abs(t11.factors.similarity - 0.75) <= 1e-9)
+        #expect(t11.factors.kinship == 1)
+        #expect(abs(t11.factors.similarity - 0.5) <= 1e-9)
         #expect(abs(t11.factors.arc - 0.5) <= 1e-9)
         // The flagged record never appears, whatever it would have scored.
         #expect(!results.contains { $0.id == "t19" })

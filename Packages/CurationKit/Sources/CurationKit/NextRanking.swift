@@ -114,6 +114,11 @@ public enum NextRanking {
         }
     }
 
+    /// The planner's score for the pair `(from, to)`, or nil when either
+    /// record is unread. The server has the planner; this module does not,
+    /// so the fixture supplies the figures by hand.
+    public typealias Mixability = (String, String) -> Double?
+
     public struct Result: Equatable, Sendable {
         public var id: String
         public var score: Double
@@ -129,12 +134,19 @@ public enum NextRanking {
     public static let minimumFinishSample = 3
 
     public static let genreWeight = 0.45
+    /// Whether the record is of the seed's kind — shares a genre with it.
+    /// The largest single term after taste, because it is what "what plays
+    /// next" mostly means: a pop record playing is not followed by a techno
+    /// one however well the room likes techno.
+    public static let kinshipWeight = 0.6
+    /// What a pair the planner refused, or could not read, is worth in the
+    /// ordering: it can still be crossfaded.
+    public static let crossfadeOnly = 0.15
     public static let artistWeight = 0.3
     public static let finishWeight = 0.3
     public static let recentPenalty = 1.4
     public static let sameArtistPenalty = 0.4
     public static let similarityWeight = 0.4
-    public static let mixabilityWeight = 0.6
     public static let arcWeight = 0.2
 
     public static let easyBend = 0.02
@@ -146,9 +158,16 @@ public enum NextRanking {
 
     // MARK: - The ranking
 
-    /// The best `limit` records to follow the seed, best first, and how many
-    /// finished plays the taste term stood on.
-    public static func rank(_ query: Query, in library: Library) -> (results: [Result], events: Int) {
+    /// The best `limit` records to follow the seed, in the order they should
+    /// play, and how many finished plays the taste term stood on.
+    ///
+    /// Chosen by taste, kinship, similarity, freshness and arc — never by
+    /// mixability, so a set is made of the records the room would want and
+    /// not of the ones that happen to mix. Then, with Auto DJ on, *ordered*
+    /// by mixability: a chain from the seed, each record the one that best
+    /// follows the last. The score reported is the choosing score; the
+    /// mixability reported is the pair's, from the record before it.
+    public static func rank(_ query: Query, in library: Library, mixability: Mixability? = nil) -> (results: [Result], events: Int) {
         let byId = Dictionary(library.records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         guard let seed = byId[query.seed] else { return ([], 0) }
 
@@ -162,14 +181,13 @@ public enum NextRanking {
         var results: [Result] = []
         for record in library.records where !excluded.contains(record.id) && !library.notInterested.contains(record.id) {
             let tasteRaw = taste(record, profile: profile, finish: finish[record.id])
+            let kinship = kinship(seed: seed, candidate: record)
             let similarity = similarity(seed: seed, candidate: record)
-            let mixability: Double? = nil // no grids in the fixture; pinned by the planner's own table
             let arc = arc(candidate: record, target: target)
             let wasHeard = heard.contains(record.id)
             let sameArtist = heardArtists.contains(record.artist.lowercased())
 
-            var score = tasteRaw + similarity * similarityWeight + arc * arcWeight
-            if query.mode == .autodj, let mixability { score += mixability * mixabilityWeight }
+            var score = tasteRaw + kinship * kinshipWeight + similarity * similarityWeight + arc * arcWeight
             if wasHeard { score -= recentPenalty }
             if sameArtist { score -= sameArtistPenalty }
 
@@ -178,9 +196,10 @@ public enum NextRanking {
                 score: score,
                 factors: NextChooser.Factors(
                     taste: min(1, max(0, tasteRaw)),
+                    kinship: kinship,
                     freshness: wasHeard ? 0 : (sameArtist ? 0.5 : 1),
                     similarity: similarity,
-                    mixability: mixability,
+                    mixability: nil,
                     arc: arc
                 )
             ))
@@ -190,7 +209,43 @@ public enum NextRanking {
             if a.score != b.score { return a.score > b.score }
             return a.id.utf8.lexicographicallyPrecedes(b.id.utf8)
         }
-        return (Array(results.prefix(max(0, query.limit))), profile.events)
+        let chosen = Array(results.prefix(max(0, query.limit)))
+        guard query.mode == .autodj else { return (chosen, profile.events) }
+        // The chain starts from what the first of them will actually follow:
+        // the end of the queue, or the seed when nothing is queued.
+        return (order(chosen, after: query.queue.last ?? query.seed, mixability: mixability ?? { _, _ in nil }), profile.events)
+    }
+
+    /// The chosen records as a set: from what they follow, each next is the
+    /// one that best follows the last. A pair refused or unread counts as a crossfade;
+    /// ties go to the better-chosen record, then the id.
+    static func order(_ chosen: [Result], after seed: String, mixability: Mixability) -> [Result] {
+        var remaining = chosen
+        var ordered: [Result] = []
+        var last = seed
+        while !remaining.isEmpty {
+            var best = 0
+            var bestScore = -Double.infinity
+            for (index, candidate) in remaining.enumerated() {
+                let pair = mixability(last, candidate.id) ?? crossfadeOnly
+                if pair > bestScore { bestScore = pair; best = index }
+            }
+            var next = remaining.remove(at: best)
+            next.factors.mixability = mixability(last, next.id)
+            ordered.append(next)
+            last = next.id
+        }
+        return ordered
+    }
+
+    // MARK: - Kinship
+
+    /// 1 when a genre is shared with the seed, 0 when both are tagged and
+    /// none is, 0.5 when either is untagged and nothing can be said.
+    static func kinship(seed: Record, candidate: Record) -> Double {
+        guard !seed.genres.isEmpty, !candidate.genres.isEmpty else { return 0.5 }
+        let mine = Set(seed.genres.map { $0.lowercased() })
+        return candidate.genres.contains { mine.contains($0.lowercased()) } ? 1 : 0
     }
 
     // MARK: - Taste
@@ -268,14 +323,10 @@ public enum NextRanking {
 
     // MARK: - Similarity
 
-    /// The mean of the parts that can be answered.
+    /// The mean of the parts that can be answered: tempo, key, energy. Genre
+    /// is ``kinship``'s, on its own, with its own weight.
     static func similarity(seed: Record, candidate: Record) -> Double {
         var parts: [Double] = []
-
-        if !seed.genres.isEmpty, !candidate.genres.isEmpty {
-            let mine = Set(seed.genres.map { $0.lowercased() })
-            parts.append(candidate.genres.contains { mine.contains($0.lowercased()) } ? 1 : 0)
-        }
 
         if let a = steadyTempo(seed), let b = steadyTempo(candidate) {
             var ratio = b / a

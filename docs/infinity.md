@@ -367,6 +367,67 @@ server's order; a 404 turns the Instant Mix path back on for the session. Each
 row the server chose shows its figures in the queue — "Taste 71% · Fits 62% ·
 Mixes 79% · Arc 90%" — so a pick that feels wrong can be argued with by number.
 
+## Round two: choose by kin, then order by what mixes
+
+*Asked 2026-09-11, after a listener heard Homewrecker followed by EDM. His
+words: Infinity should choose primarily from genre, taste and freshness —
+and then, once the list is chosen, order it so that neighbours are mixable.*
+
+He is right on both counts, and the first version had them tangled: genre
+against the seed was a quarter of one factor at 0.4, so a candidate the room
+liked could out-score one of the seed's own kind by a mile; and mixability
+sat in the choosing score at 0.6, so with Auto DJ on the set was made of
+whatever *mixed*, and a good record that could only be crossfaded lost to a
+mediocre one in the same key.
+
+### The rule, as it is now
+
+**Choosing** (both modes):
+
+```
+score = taste
+      + kinship · 0.6
+      + similarity · 0.4
+      + arc · 0.2
+      − 1.4 if heard lately
+      − 0.4 if by an artist heard lately
+```
+
+- **kinship** — new, and the largest single term after taste: 1 when the
+  candidate shares a genre with the seed, 0 when both are tagged and none is
+  shared, 0.5 when either is untagged and nothing can be said. This is what
+  "what plays next" mostly means: a pop record playing is not followed by a
+  techno one however well the room likes techno.
+- **similarity** — tempo, key, energy, as before; the genre part moves out to
+  kinship. The mean of the parts that can be answered.
+- **mixability is not in the choosing score at all**, in either mode.
+
+**Ordering**, `autodj` mode only: the chosen `limit` records are put in the
+order they should play — a chain from what the first of them will follow
+(the last of `queue`, or the seed when nothing is queued): each next is the
+record with the highest planner score for the pair *(last → candidate)*; a
+pair refused or unread counts **0.15**, the crossfade figure; ties go to the
+better-chosen record, then the id. The `score` reported is the choosing
+score; the `mixability` reported is the pair's, from the record before it in
+the order (`null` when unread). In `infinity` mode the order is the choosing
+order and `mixability` is `null`.
+
+`factors` gains `kinship`. The clients read it as optional, so a 1.16.x
+server still parses.
+
+### The fixture, round two
+
+The same file, regenerated: every case's `expected` moves with kinship, and
+a top-level **`mixability`** table (`"from>to": score`) stands in for the
+planner's pair scores so the chain can be pinned without grids — a pair not
+in the table is unread. An eighth case, `autodj … ordered as a chain`, is
+the one that pins the ordering: chosen `t16 t20 t14 t11 t15` by score, played
+`t16 t20 t14 t15 t11` because `t14→t15` is 0.9 and `t14→t11` 0.6, with `t11`
+last though its choosing score is higher — a candidate chosen for its kind
+and its taste, placed where it mixes. Both client ports pass all eight; ten
+mutations of the round-two rule (the weight, the untagged case, where the
+chain starts, the crossfade figure, the tie, the mode gate) fail it.
+
 ## What the clients will do with it
 
 - Infinity asks `/aoide/next` instead of Jellyfin's Instant Mix, and enqueues
