@@ -171,8 +171,24 @@ public enum DJPlanner {
         return best
     }
 
-    /// How long the last beat rings after an echo-out.
-    public static let echoTailSeconds = 2.0
+    /// How long the last beat rings after an echo-out: two bars of the
+    /// outgoing tempo, under the first two of the new record.
+    ///
+    /// Two seconds was too short — one repeat, then the new record, which is
+    /// a cut with a hiccup rather than a tail. A DJ lets the echo run for a
+    /// bar or two and lets the feedback do the fading.
+    public static let echoTailBars = 2.0
+
+    /// The tail in seconds, at the tempo the echo repeats at.
+    public static func echoTailSeconds(targetBpm: Double) -> Double {
+        guard targetBpm > 0 else { return 0 }
+        return echoTailBars * 4 * 60 / targetBpm
+    }
+
+    /// Where along the tail the fader starts to close. Until then the repeats
+    /// decay on the feedback alone, which is the sound of an echo-out; the
+    /// fader only sees the last of them out so the ring does not stop dead.
+    public static let echoFadeFrom = 0.6
 
     /// Plans a cut — or an echo-out — for a pair that has been read but cannot
     /// be mixed: tempi too far apart to bend, or both records singing. The

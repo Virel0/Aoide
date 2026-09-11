@@ -255,7 +255,7 @@ public final class DJSession {
     public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws {
         let untilStart = (transition.outgoingStartMs / 1000 - position(at: sessionSeconds)) / rate
         guard transition.style.overlaps else {
-            let tail = transition.style == .echoOut ? DJPlanner.echoTailSeconds : 0
+            let tail = transition.style == .echoOut ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
             try book(
                 .cut(transition, tail: tail),
                 into: incoming,
@@ -378,10 +378,12 @@ public final class DJSession {
                 cutStarted = true
                 mixer.echoOut(side, beatSeconds: 60 / transition.targetBpm)
             }
-            // The ring dies away on the deck's own fader, so it ends rather
-            // than being cut off a second time.
+            // The repeats decay on the feedback; the fader stays open for
+            // most of the tail and closes over the last of it, so the ring
+            // ends rather than being cut off a second time.
             if tail > 0 {
-                mixer.setVolume((1 - progress) * (current?.linearGain ?? 1), on: side)
+                let fade = max(0, min(1, (progress - DJPlanner.echoFadeFrom) / (1 - DJPlanner.echoFadeFrom)))
+                mixer.setVolume((1 - fade) * (current?.linearGain ?? 1), on: side)
             }
         case .mixed(let transition):
             // The levelling sits underneath the mix's own curve, so two records

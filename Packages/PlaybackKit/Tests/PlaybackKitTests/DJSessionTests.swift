@@ -470,6 +470,17 @@ struct DJCutTests {
         )
     }
 
+    /// The loudest sample within 30 ms after each time given.
+    private func clickPeaks(in buffer: AVAudioPCMBuffer, at times: [Double]) -> [Float] {
+        let samples = buffer.floatChannelData![0]
+        let rate = buffer.format.sampleRate
+        return times.map { time in
+            let start = Int(time * rate)
+            let end = min(Int(buffer.frameLength), start + Int(0.03 * rate))
+            return (start..<end).map { abs(samples[$0]) }.max() ?? 0
+        }
+    }
+
     /// Clicks, with a hold long enough that an echo's darkened, lengthened
     /// repeat still counts as one click and not two.
     private func clickTimes(in buffer: AVAudioPCMBuffer, threshold: Float = 0.1, holdSeconds: Double = 0.03) -> [Double] {
@@ -553,17 +564,26 @@ struct DJCutTests {
         try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
         try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
         try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
-        let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
+        let tail = DJPlanner.echoTailSeconds(targetBpm: 128)
+        #expect(abs(tail - 3.75) < 1e-9, "two bars at 128")
+        let rendered = try mixer.renderOffline(seconds: 8) { session.update(at: $0) }
 
         let times = clickTimes(in: rendered, threshold: 0.05, holdSeconds: 0.15)
-        // Repeats after the cut, one beat of the *outgoing* tempo apart, and
-        // gone within the tail.
-        let ring = times.filter { $0 > 2.05 && $0 < 2 + DJPlanner.echoTailSeconds + 0.5 }
-        #expect(ring.count >= 2, "heard \(ring.count) repeats")
+        // Repeats after the cut, one beat of the *outgoing* tempo apart,
+        // several of them — a tail, not a hiccup — and gone within it.
+        let ring = times.filter { $0 > 2.05 && $0 < 2 + tail + 0.5 }
+        #expect(ring.count >= 5, "heard \(ring.count) repeats")
         let gaps = zip(ring, ring.dropFirst()).map { $1 - $0 }
         #expect(gaps.allSatisfy { abs($0 - 60.0 / 128) < 0.015 }, "gaps \(gaps.map { Int($0 * 1000) })")
+        // The fader does not touch the first repeats: the third is still
+        // within a few decibels of what the feedback alone would give.
+        let peaks = clickPeaks(in: rendered, at: ring)
+        if peaks.count >= 3 {
+            let expected = pow(0.6, 2) * peaks[0]
+            #expect(peaks[2] > expected * 0.7, "third repeat \(peaks[2]) against \(expected) from feedback alone")
+        }
         // Silence once the tail is over.
-        let late = times.filter { $0 > 2 + DJPlanner.echoTailSeconds + 0.6 }
+        let late = times.filter { $0 > 2 + tail + 0.6 }
         #expect(late.isEmpty, "still ringing at \(late.first ?? 0)s")
     }
 }
