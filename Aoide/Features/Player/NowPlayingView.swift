@@ -295,6 +295,7 @@ struct QueueView: View {
 
 private struct QueueRow: View {
     let entry: QueueEntry
+    @State private var infinity = InfinityQueue.shared
 
     var body: some View {
         HStack(spacing: 12) {
@@ -306,6 +307,15 @@ private struct QueueRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                // Why Infinity put it here, when it did: the server's own
+                // figures, so a pick that feels wrong can be argued with by
+                // number rather than by ear.
+                if let reasons = infinity.reasons[entry.track.id] {
+                    Text(reasons.summary)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
         }
     }

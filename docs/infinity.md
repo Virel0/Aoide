@@ -301,6 +301,30 @@ failing is a number the next person will change.
 - **Not a change to sync.** No new entity. `queue_state` is not read; the
   request carries the queue.
 
+## As built (sidecar 1.16.0.0), and what the client does with it
+
+Shipped the same day, everything in the brief; the contract is in the sidecar's
+`client-integration.md`. The third planner port passed all 40 pairs first run
+(starts and entries within a nanosecond, totals to twelve decimals) and the
+taste ranking all 16 rows. Two readings worth knowing, both the sidecar's and
+both right:
+
+- **Arc** reads the last four of `recent` (oldest first) + seed + `queue`, so
+  with a queue the candidate follows the *end* of the queue, which is where it
+  will actually play. With an empty queue it is the seed and the three before
+  it, as written.
+- **A track heard lately pays both penalties** (−1.8), because it is also by an
+  artist heard lately. The phone's arithmetic does the same.
+- **Similarity** with only one answerable part comes out 1.0 or 0.0 outright.
+  A floor on how many parts must answer is a one-line change if the fixture
+  wants one; sparse genre tags are where it would show.
+
+On the phone, Infinity asks `/aoide/next` first and enqueues the answer in the
+server's order; a 404 turns the Instant Mix path back on for the session. Each
+row the server chose shows its figures in the queue — "Taste 71% · Fits 62% ·
+Mixes 79% · Arc 90%" — so a pick that feels wrong can be argued with by number.
+The fixture file for the new factors (§5) is still to be written.
+
 ## What the clients will do with it
 
 - Infinity asks `/aoide/next` instead of Jellyfin's Instant Mix, and enqueues

@@ -9,9 +9,11 @@ import os
 /// Off by default — a queue that ends is not a fault, and a player that quietly
 /// plays on for an hour after the album finished is one nobody asked for.
 ///
-/// What it finds comes from the server's own Instant Mix, seeded by whatever is
-/// playing, and is then ranked against what this listener has actually been
-/// listening to. See ``rank(_:seed:)``.
+/// What it finds comes from the sidecar, which scores the whole library
+/// against whatever is playing — see `docs/infinity.md` and ``NextChooser``.
+/// Against an older server it falls back to Jellyfin's own Instant Mix, ranked
+/// here against what this listener has actually been listening to; see
+/// ``rank(_:)``.
 @MainActor
 @Observable
 final class InfinityQueue: PlaybackReporter {
@@ -55,6 +57,20 @@ final class InfinityQueue: PlaybackReporter {
     /// and two stations arriving would double every top-up.
     private var isFetching = false
 
+    /// Whether the sidecar is the one choosing. Turned off for the session by
+    /// a 404 from `/aoide/next`, which is what an older sidecar answers; the
+    /// Instant Mix path then does what it did before the endpoint existed.
+    private(set) var sidecarChooses = true
+
+    /// Why each record the sidecar chose is where it is, by Jellyfin id, for
+    /// the queue to show. Kept for records still queued; nothing is ever
+    /// removed, and a session's worth of these is a few kilobytes.
+    private(set) var reasons: [String: NextChooser.Factors] = [:]
+
+    /// How many finished plays the sidecar's taste stood on, last time it
+    /// answered. Zero means it is still learning what this listener likes.
+    private(set) var tasteEvents: Int?
+
     private init() {}
 
     func setOn(_ on: Bool) {
@@ -85,6 +101,21 @@ final class InfinityQueue: PlaybackReporter {
         defer { isFetching = false }
 
         let known = Set(engine.queue.entries.map(\.track.id))
+
+        if sidecarChooses, let chosen = await askSidecar(seed: seed, client: client, known: known) {
+            let tracks = JellyfinPlaybackBridge.playableTracks(from: chosen, client: client).tracks
+            guard !tracks.isEmpty else { return }
+            engine.extendQueue(tracks)
+            // Fetched now rather than waited for: the first hand-over is at
+            // least a record away, and the decks ask again when they book.
+            if AutoDJPreference.isOn {
+                BeatGridSync.shared.prefetch(ids: tracks.map(\.id))
+                ArrangementSync.shared.prefetch(ids: tracks.map(\.id))
+            }
+            log.info("Infinity added \(tracks.count) songs after \(seed.title, privacy: .public), chosen by the server")
+            return
+        }
+
         do {
             // The station is the pool, not the answer: Jellyfin picks what is
             // *like* this song, and what follows is picked from that by what this
@@ -118,6 +149,43 @@ final class InfinityQueue: PlaybackReporter {
             // Nothing to tell anyone about. The queue simply ends, which is what
             // it would have done anyway.
             log.warning("Infinity couldn't reach the server: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Asks the sidecar what should follow `seed`, from the whole library.
+    ///
+    /// Nothing on a 404 — an older sidecar, remembered for the session — or on
+    /// any other failure, which is logged and left to the fallback; the queue
+    /// should keep going whichever server it is talking to. What comes back
+    /// is in the server's order and is kept in it.
+    private func askSidecar(seed: Track, client: JellyfinClient, known: Set<String>) async -> [JellyfinItem]? {
+        let engine = PlaybackEngine.shared
+        let recent = (try? CurationDatabase.shared?.recentlyPlayed(limit: NextChooser.Request.maxRecent)) ?? []
+        let request = NextChooser.Request(
+            seed: seed.id,
+            queue: engine.queue.upNext.map(\.track.id),
+            recent: recent,
+            mode: AutoDJPreference.isOn ? .autodj : .infinity,
+            limit: Self.batch
+        )
+        do {
+            let response = try NextChooser.decode(try await client.next(body: NextChooser.encode(request)))
+            tasteEvents = response.profile.events
+            if response.profile.events == 0 {
+                log.info("Infinity is still learning what this listener likes: no finished plays yet")
+            }
+            let chosen = response.candidates.filter { !known.contains($0.id) }
+            for candidate in chosen { reasons[candidate.id] = candidate.factors }
+            // Items come back in the order asked for, and the order asked for
+            // is the server's.
+            return try await client.items(ids: chosen.map(\.id))
+        } catch JellyfinError.notFound {
+            sidecarChooses = false
+            log.info("This server has no /aoide/next; Infinity is using Instant Mix for the session")
+            return nil
+        } catch {
+            log.warning("The server couldn't choose what plays next: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 

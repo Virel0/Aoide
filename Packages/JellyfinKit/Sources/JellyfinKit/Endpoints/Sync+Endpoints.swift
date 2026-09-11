@@ -69,6 +69,19 @@ public extension JellyfinClient {
         return try await send(request("GET", path: Self.arrangementPath, query: query), path: Self.arrangementPath)
     }
 
+    /// `POST /aoide/next`: what should play after the record playing, chosen
+    /// from the whole library by the server. The body is already-encoded JSON;
+    /// the answer comes back as bytes for the same reason the others do. A
+    /// `notFound` from this path is an older sidecar, not a missing record —
+    /// the server answers 404 for an unknown seed too, and the caller tells
+    /// them apart by whether the seed is a track it just played.
+    func next(body: Data) async throws -> Data {
+        var request = request("POST", path: Self.nextPath)
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return try await send(request, path: Self.nextPath)
+    }
+
     /// `GET /aoide/analysis/coverage`: how much of the library the server has
     /// measured, and how much of that came out with a beat grid.
     ///
@@ -129,5 +142,6 @@ public extension JellyfinClient {
     private static var beatGridPath: String { "aoide/beat-grid" }
     private static var coveragePath: String { "aoide/analysis/coverage" }
     private static var arrangementPath: String { "aoide/arrangement" }
+    private static var nextPath: String { "aoide/next" }
     private static var pullPath: String { "aoide/sync/pull" }
 }
