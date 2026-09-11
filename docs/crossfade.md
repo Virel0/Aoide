@@ -147,6 +147,10 @@ one repetition a room notices, and "most similar next" would pick it every
 time. The pool's grids and arrangements are fetched before it is ranked; a
 record still unread ranks by taste alone.
 
+The pool itself is the weak link — Jellyfin's Instant Mix is a random sample
+by genre — and [infinity.md](infinity.md) asks the sidecar to take the whole
+question over, from the whole library, for both clients.
+
 Off by default: a queue that ends is not a fault, and a player that quietly plays
 on for an hour after the album finished is one nobody asked for. It does nothing
 while the queue is looping, since a loop never runs out, and it never starts
