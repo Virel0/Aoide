@@ -2,8 +2,7 @@ import Foundation
 import Testing
 @testable import PlaybackKit
 
-/// The same thirty-nine pairs the desktop plans, with the same thirty-nine
-/// plans.
+/// The same forty pairs the desktop plans, with the same forty plans.
 ///
 /// "Both apps mix the same way" is a claim, and this table is the only thing
 /// that makes it one: it is duplicated verbatim in the desktop's
@@ -78,6 +77,10 @@ private let instrumental = arrangement([(.drop, 128, 0.9)])
 private let noPhrases = arrangement([(.unknown, 128, 0.5)], phraseBars: nil)
 private let buildThenDrop = arrangement([(.build, 32, 0.4), (.drop, 96, 0.9)])
 private let singingThroughout = arrangement([(.build, 32, 0.4), (.drop, 96, 0.9)], vocals: [.init(startMs: 0, endMs: bar * 128)])
+/// A loud drop throughout, sung from bar 80 to bar 90 and nowhere else.
+private let singsAtEighty = arrangement([(.drop, 128, 1)], vocals: [.init(startMs: bar * 80, endMs: bar * 90)])
+/// A silent drop throughout: the worst energy match for the one above.
+private let quietDrop = arrangement([(.drop, 128, 0)])
 
 /// A record that has been read and found unremarkable: one section nobody
 /// could name, instrumental, no phrase grid. The planner refuses a record that
@@ -339,6 +342,17 @@ private let parityTable: [ParityCase] = [
         outgoingArrangement: buildThenDrop, incomingArrangement: singingThroughout,
         bars: 32, outgoingStartMs: 150_000, incomingStartMs: 0, incomingRate: 1, total: 0.7649999999999999, style: .filterFade
     ),
+    // The singing check covers exactly the stretch that would overlap, so the
+    // score can change with the length; the planner gives up on an entry the
+    // moment a length scores nothing rather than trying the shorter ones.
+    // Thirty-two bars from bar 80 hears the voice and scores 0.315; sixteen
+    // from bar 96 would not, and would have earned eight.
+    ParityCase(
+        why: "a score refused at thirty-two bars refuses the entry, though sixteen would have been clean",
+        outgoing: grid(key: "3B"), incoming: record(128 / 1.03, key: "10B", mixInMs: bar * 8, mixOutMs: bar * 112),
+        outgoingArrangement: singsAtEighty, incomingArrangement: quietDrop,
+        bars: nil
+    ),
 ]
 
 @Suite("DJ planner parity")
@@ -368,6 +382,6 @@ struct DJPlannerParityTests {
 
     @Test("answers every case in the table")
     func everyCase() {
-        #expect(parityTable.count == 39)
+        #expect(parityTable.count == 40)
     }
 }
