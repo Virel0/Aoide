@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         PlaybackEngine.shared.beatGridResolver = { track in
             BeatGridSync.shared.grid(for: track.id)
         }
+        PlaybackEngine.shared.arrangementResolver = { track in
+            ArrangementSync.shared.arrangement(for: track.id)
+        }
         }
         return true
     }

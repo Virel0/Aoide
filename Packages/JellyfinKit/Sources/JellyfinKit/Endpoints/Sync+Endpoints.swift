@@ -61,6 +61,14 @@ public extension JellyfinClient {
         return try await send(request("GET", path: Self.beatGridPath, query: query), path: Self.beatGridPath)
     }
 
+    /// `GET /aoide/arrangement?ids=…`: what each track is made of — sections,
+    /// the phrase grid, and where somebody is singing. At most 200 ids per
+    /// call. See `docs/arrangement.md`.
+    func arrangements(ids: [String]) async throws -> Data {
+        let query = [URLQueryItem(name: "ids", value: ids.joined(separator: ","))]
+        return try await send(request("GET", path: Self.arrangementPath, query: query), path: Self.arrangementPath)
+    }
+
     /// `GET /aoide/analysis/coverage`: how much of the library the server has
     /// measured, and how much of that came out with a beat grid.
     ///
@@ -120,5 +128,6 @@ public extension JellyfinClient {
     private static var audioAnalysisPath: String { "aoide/audio-analysis" }
     private static var beatGridPath: String { "aoide/beat-grid" }
     private static var coveragePath: String { "aoide/analysis/coverage" }
+    private static var arrangementPath: String { "aoide/arrangement" }
     private static var pullPath: String { "aoide/sync/pull" }
 }

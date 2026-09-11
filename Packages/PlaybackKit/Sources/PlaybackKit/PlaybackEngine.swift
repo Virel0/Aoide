@@ -221,6 +221,11 @@ public final class PlaybackEngine {
     /// Where a track's beats are, as the server measured them.
     public var beatGridResolver: ((Track) -> BeatGrid?)?
 
+    /// What a track is made of — sections, phrases, singing — as the server
+    /// measured it. Optional in every sense: a mix planned without it is a mix
+    /// that cannot see the music, and refuses a little less than it should.
+    public var arrangementResolver: ((Track) -> Arrangement?)?
+
     /// The decks, made only if Auto DJ is ever turned on: an idle
     /// `AVAudioEngine` is a running audio graph, and there is no reason for one
     /// on a device whose owner never asked for this.
@@ -1066,7 +1071,9 @@ public final class PlaybackEngine {
         return DJPlanner.plan(
             outgoing: outgoingGrid,
             incoming: incomingGrid,
-            notBeforeMs: position.seconds * 1000 + 1_000
+            notBeforeMs: position.seconds * 1000 + 1_000,
+            outgoingArrangement: arrangementResolver?(outgoing),
+            incomingArrangement: arrangementResolver?(incoming)
         )
     }
 

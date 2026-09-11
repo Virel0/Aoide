@@ -58,5 +58,6 @@ enum QueueRestorer {
         SoundBoundsSync.shared.prefetch(ids: mapped.tracks.map(\.id))
         AudioAnalysisSync.shared.prefetch(ids: mapped.tracks.map(\.id))
         BeatGridSync.shared.prefetch(ids: mapped.tracks.map(\.id))
+        ArrangementSync.shared.prefetch(ids: mapped.tracks.map(\.id))
     }
 }

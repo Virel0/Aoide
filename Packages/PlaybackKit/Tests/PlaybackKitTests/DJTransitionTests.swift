@@ -141,12 +141,15 @@ struct DJTransitionTests {
         // and a half seconds of the incoming record. This one has thirty-one from
         // its mix-in — enough by the clock, not enough by the record, which is a
         // distinction only the rate makes.
-        let short = record(bpm: 121.9, lengthMs: 131_000, mixInMs: 100_000, mixOutMs: 120_000)
+        // The mix-in on a downbeat, as the contract has it, so the entry is not
+        // moved back onto one and handed extra room.
+        let mixIn = 60_000 / 121.9 * 4 * 50
+        let short = record(bpm: 121.9, lengthMs: mixIn + 31_000, mixInMs: mixIn, mixOutMs: 120_000)
         let cramped = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: short))
         #expect(cramped.bars == 8)
 
         // Two more seconds of record and the same pair gets the full sixteen.
-        let longer = record(bpm: 121.9, lengthMs: 133_000, mixInMs: 100_000, mixOutMs: 120_000)
+        let longer = record(bpm: 121.9, lengthMs: mixIn + 33_000, mixInMs: mixIn, mixOutMs: 120_000)
         let full = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: longer))
         #expect(full.bars == 16)
     }

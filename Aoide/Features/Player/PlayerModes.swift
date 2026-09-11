@@ -40,6 +40,7 @@ struct PlayerModesRow: View {
                 PlaybackEngine.shared.isAutoDJing = autoDJ
                 if autoDJ {
                     BeatGridSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+                    ArrangementSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
                 }
             }
 

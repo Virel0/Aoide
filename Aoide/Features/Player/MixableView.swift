@@ -102,6 +102,7 @@ struct MixableView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             BeatGridSync.shared.prefetch(ids: downloads.tracks.map(\.id))
+            ArrangementSync.shared.prefetch(ids: downloads.tracks.map(\.id))
             coverage = await BeatGridSync.shared.coverage()
         }
         .refreshable {

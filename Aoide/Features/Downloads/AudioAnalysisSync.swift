@@ -59,8 +59,13 @@ final class AudioAnalysisSync {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         // The generation before this one, from the estimator whose tempi were out
         // by an octave often enough to matter.
-        try? FileManager.default.removeItem(at: directory.appendingPathComponent("audio-analysis.json"))
-        return directory.appendingPathComponent("audio-analysis-2.json")
+        for previous in ["audio-analysis.json", "audio-analysis-2.json"] {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(previous))
+        }
+        // Generation three: 1.15.0.0 levelled the onset signal before
+        // correlating, after a loud sung passage was found deciding whole
+        // tracks' tempi, and dropped its own rows so they would be taken again.
+        return directory.appendingPathComponent("audio-analysis-3.json")
     }()
 
     private init() {

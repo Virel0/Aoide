@@ -75,7 +75,9 @@ public enum DJPlanner {
     public static func plan(
         outgoing: BeatGrid,
         incoming: BeatGrid,
-        notBeforeMs: Double = 0
+        notBeforeMs: Double = 0,
+        outgoingArrangement: Arrangement? = nil,
+        incomingArrangement: Arrangement? = nil
     ) -> DJTransition? {
         // Both records have to be gridded, metered, and have somewhere to mix.
         guard let outMixOut = outgoing.mixOutMs,
@@ -104,35 +106,63 @@ public enum DJPlanner {
         // and refusing on a guess is worse than a short mix.
         let clashes = outgoing.key != nil && incoming.key != nil
             && !CamelotKey.areCompatible(outgoing.key, incoming.key)
-        let lengths = clashes ? [minimumBars] : [preferredBars, minimumBars]
+
+        // Where the incoming record comes in: its mix-in point, moved back onto
+        // the start of the phrase it sits in when the record counts phrases. A
+        // mix is counted in phrases, and a record brought in three bars into one
+        // is a record brought in at the wrong moment however exactly its beats
+        // land.
+        let entry = incomingArrangement?.phraseStart(atOrBefore: inMixIn, barMs: inBar)
+            ?? incoming.downbeat(atOrBefore: inMixIn)
+            ?? inMixIn
+
+        // Two drops on top of each other is the mistake every DJ names first —
+        // a new chorus dropped onto somebody else's. Nothing here can find a
+        // better place to come in, but it can decline to sit there for long.
+        let dropOnDrop = outgoingArrangement?.section(at: outMixOut)?.kind == .drop
+            && incomingArrangement?.section(at: entry)?.kind == .drop
+
+        let lengths = clashes || dropOnDrop ? [minimumBars] : [preferredBars, minimumBars]
 
         for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
-            let startMs = outMixOut - outBar * Double(bars)
+            // Back from the mix-out point a whole number of bars, then onto the
+            // phrase line if the record has them. The mix may end a little before
+            // the mix-out point as a result; it will not start mid-phrase.
+            let counted = outMixOut - outBar * Double(bars)
+            let startMs = outgoingArrangement?.phraseStart(atOrBefore: counted, barMs: outBar) ?? counted
 
             guard startMs >= notBeforeMs else { continue }
+
+            // Two records singing at once is the other thing on every list of
+            // what not to do, and not something a client can hear for itself.
+            // Unknown counts as singing: a false positive costs a mix, and a
+            // false negative is the exact mistake this exists to prevent.
+            if let outgoingArrangement, let incomingArrangement {
+                let outgoingSings = outgoingArrangement.maySing(from: startMs, to: startMs + seconds * 1000)
+                let incomingSings = incomingArrangement.maySing(from: entry, to: entry + seconds * 1000 * rate)
+                if outgoingSings && incomingSings { continue }
+            }
             // The whole mix has to sit inside one tempo on both sides: a segment
             // boundary is a tempo change, and a grid fitted either side of one
             // describes neither half of what is playing.
             guard outgoing.canLock(at: startMs, blendSeconds: seconds) else { continue }
-            guard incoming.canLock(at: inMixIn, blendSeconds: seconds) else { continue }
+            guard incoming.canLock(at: entry, blendSeconds: seconds) else { continue }
             // And the incoming record must have that much of itself to give.
             // Measured in its own timeline, which a bend consumes faster or
             // slower than the clock: thirty seconds at 1.05 eats thirty-one and
             // a half seconds of record.
             let incomingNeeded = seconds * 1000 * rate
-            guard inMixIn + incomingNeeded <= inSegment.endMs else { continue }
+            guard entry + incomingNeeded <= inSegment.endMs else { continue }
 
-            // Both ends snapped to the grid rather than trusted.
-            //
-            // The contract says `mixOutMs` and `mixInMs` are downbeats, and the
-            // sidecar keeps that promise — but the arithmetic here inherits
-            // whatever phase they carry, so a mix point half a beat out would
-            // produce a mix that is half a beat out, silently and for every pair.
-            // Snapping costs a bar at most and makes the alignment true of the
-            // grid rather than of the promise.
+            // The outgoing side snapped to the grid rather than trusted. The
+            // contract says `mixOutMs` is a downbeat and the sidecar keeps that
+            // promise — but the arithmetic inherits whatever phase it carries,
+            // so a mix point half a beat out would produce a mix half a beat out,
+            // silently and for every pair. Snapping costs a bar at most and makes
+            // the alignment true of the grid rather than of the promise. (The
+            // incoming side was snapped when `entry` was chosen.)
             let start = outgoing.downbeat(atOrBefore: startMs) ?? startMs
-            let entry = incoming.downbeat(atOrBefore: inMixIn) ?? inMixIn
 
             return DJTransition(
                 outgoingStartMs: start,

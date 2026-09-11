@@ -1,6 +1,6 @@
 # Arrangement: what a mix still cannot see
 
-*Asked of the sidecar on 2026-09-10, after a listener said a beat-matched,
+*Asked of the sidecar on 2026-09-10 and **shipped in 1.15.0.0** the next day; the built contract is in the sidecar's own `client-integration.md`. Asked after a listener said a beat-matched,
 key-aware, bass-swapping transition still did not sound like a DJ had made it.
 He was right, and the reason is not in the grid.*
 
@@ -92,3 +92,34 @@ gamble on the two records being in compatible parts of themselves, and the safe
 response to a gamble is a shorter overlap. Every improvement here is an
 improvement in how *often* a mix can be attempted, not in whether one is
 possible at all.
+
+
+## As built (sidecar 1.15.0.0), and what the client does with it
+
+All three parts. Two things the rig caught on the way, both of which changed
+tempi the clients already held: a short loud passage had been deciding whole
+tracks' tempi (one file read 73 BPM with its sung bridge and 128 without), and a
+beat-free breakdown had been inventing tempo changes. The server dropped every
+tempo and grid it had measured so the levelled estimator could take them again;
+iOS drops its own caches of both for the same reason.
+
+Decisions relayed and honoured:
+
+- `verse` and `chorus` are never returned; `unknown` is common and real.
+- `vocals` has three states. **`null` is treated as singing throughout.**
+- A build must sit between something quieter and something louder, or every
+  breakdown before a drop would have been one.
+
+The planner (`DJTransition.swift`) now does three things it could not:
+
+1. **Starts a mix on a phrase line**, not merely a bar line, on both records —
+   the outgoing start goes back to the phrase it sits in, and the incoming entry
+   does the same from its mix-in point.
+2. **Refuses a mix where both records may be singing** during the overlap. An
+   unknown counts as singing: a false positive costs a mix, a false negative is
+   two voices over each other.
+3. **Gives a drop-onto-a-drop eight bars rather than sixteen.** Nothing here can
+   yet find a better place to come in; it can decline to sit there for long.
+
+Energy is not used yet. It is the ingredient for choosing *where* to come in —
+a build rather than a drop — which is the next thing.
