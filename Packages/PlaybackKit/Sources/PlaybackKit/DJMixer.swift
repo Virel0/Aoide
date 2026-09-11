@@ -257,6 +257,17 @@ public final class DJMixer {
         setBassCut(db / DJAutomation.bassCutDb, on: side)
     }
 
+    /// Brings the echo in under a record that is still playing: the delay is
+    /// set to one beat and the mix moved from dry towards wet, so the repeats
+    /// build as the record itself goes. `wet` is 0…100.
+    public func armEcho(_ side: Side, beatSeconds: Double, wet: Double) {
+        guard let deck = decks[side] else { return }
+        deck.echo.delayTime = max(0.05, min(2, beatSeconds))
+        let wanted = Float(max(0, min(100, wet)))
+        guard abs(deck.echo.wetDryMix - wanted) > 0.01 else { return }
+        deck.echo.wetDryMix = wanted
+    }
+
     /// Leaves a deck's last beat ringing: the dry signal is cut and the delay,
     /// set to one beat, repeats what it holds with feedback until it fades. The
     /// player is stopped at the same instant, so what rings is exactly what was
@@ -268,6 +279,9 @@ public final class DJMixer {
         deck.isRunning = false
         deck.player.stop()
     }
+
+    /// How far into the echo a deck is, 0…100.
+    public func echoWet(on side: Side) -> Double { Double(decks[side]?.echo.wetDryMix ?? 0) }
 
     /// Back to dry, for the next record on this deck.
     public func clearEcho(_ side: Side) {

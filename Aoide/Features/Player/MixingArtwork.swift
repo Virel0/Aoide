@@ -22,7 +22,7 @@ struct PlayerArtwork: View {
     var cornerRadius: CGFloat = 6
 
     var body: some View {
-        if case .mixing(_, _, let progress) = mixState, let outgoing {
+        if case .mixing(_, let progress) = mixState, let outgoing {
             MixingArtwork(
                 incoming: track.artworkURL,
                 outgoing: outgoing.artworkURL,

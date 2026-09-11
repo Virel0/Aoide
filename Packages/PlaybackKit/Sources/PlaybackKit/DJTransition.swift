@@ -203,6 +203,19 @@ public enum DJPlanner {
         return echoGapBars * 4 * 60 / targetBpm
     }
 
+    /// How long before the cut the echo is brought in under the record: two
+    /// beats. The record does not stop and *then* start repeating — the
+    /// repeats build under its last two beats as the dry signal goes, so by
+    /// the phrase line there is nothing left to stop. A record that stopped
+    /// dead on the line and then echoed sounded like a fault followed by an
+    /// effect, which is what it was.
+    public static let echoLeadBeats = 2.0
+
+    public static func echoLeadSeconds(targetBpm: Double) -> Double {
+        guard targetBpm > 0 else { return 0 }
+        return echoLeadBeats * 60 / targetBpm
+    }
+
     /// Where the tail's high-pass corner ends up, and the low end with it:
     /// swept there across the gap so the repeats have no kick left in them by
     /// the time the new record's does.
@@ -232,7 +245,10 @@ public enum DJPlanner {
               let inBar = incoming.barMs(at: inMixIn)
         else { return nil }
 
-        let exit = outgoingArrangement.phraseStart(atOrBefore: outMixOut, barMs: outBar)
+        // A cut stops the record dead, so the line has to be one nobody is
+        // singing across — a mix fades the outgoing voice under the new
+        // record and can afford a line mid-word; a cut cannot.
+        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar)
             ?? outgoing.downbeat(atOrBefore: outMixOut)
             ?? outMixOut
         guard exit >= notBeforeMs else { return nil }

@@ -191,15 +191,26 @@ public final class PlaybackEngine {
     /// scrubber, and the difference is the whole feature — so the player says
     /// so, the way Apple's own does. `booked` also answers the question people
     /// actually have, which is not "is it mixing" but "is it *going* to".
+    /// What one record becomes the next by.
+    public enum HandOver: Equatable, Sendable {
+        /// Beat-matched on the decks: a blend, a filter fade, a cut, or an
+        /// echo-out, over this many bars (none for the last two).
+        case mix(DJTransition.Style, bars: Int)
+        /// A plain crossfade of this many seconds, on the decks or the player.
+        case crossfade(seconds: Double)
+        /// One record ending exactly as the next begins.
+        case join
+    }
+
     public enum MixState: Equatable, Sendable {
         case off
         /// The decks have this record but nothing is planned after it.
         case ready
-        /// A mix into the next record is booked, and this is how long it will be.
-        case booked(bars: Int, style: DJTransition.Style)
+        /// A hand-over into the next record is booked, and this is what it is.
+        case booked(HandOver)
         /// Two records are playing, and this is how far through it is — enough
         /// for a screen to draw a crossfader that means something.
-        case mixing(bars: Int, style: DJTransition.Style, progress: Double)
+        case mixing(HandOver, progress: Double)
     }
 
     public private(set) var mixState: MixState = .off
@@ -1260,7 +1271,7 @@ public final class PlaybackEngine {
         switch session.phase {
         case .mixing:
             if let mixing {
-                mixState = .mixing(bars: mixing.bars, style: mixing.style, progress: session.mixProgress(at: now) ?? 0)
+                mixState = .mixing(mixing, progress: session.mixProgress(at: now) ?? 0)
             } else {
                 mixState = .ready
             }
@@ -1269,7 +1280,7 @@ public final class PlaybackEngine {
             mixing = nil
             outgoingTrack = nil
             if let booked {
-                mixState = .booked(bars: booked.bars, style: booked.style)
+                mixState = .booked(booked)
             } else {
                 mixState = .ready
             }
@@ -1283,14 +1294,14 @@ public final class PlaybackEngine {
     }
 
     /// What is booked, if anything: how long and of what kind.
-    private var booked: (bars: Int, style: DJTransition.Style)?
+    private var booked: HandOver?
 
     /// The booking that is now being heard, kept from the moment the queue
     /// moves on to the incoming record until the outgoing one has stopped.
     /// The booking itself is cleared then — the *next* hand-over is booked
     /// against the new record — and without this the screen would have
     /// nothing to draw for the whole of the mix.
-    private var mixing: (bars: Int, style: DJTransition.Style)?
+    private var mixing: HandOver?
 
     /// Books whatever hand-over the next record has earned, once it is close
     /// enough to be worth opening a second file for.
@@ -1326,14 +1337,14 @@ public final class PlaybackEngine {
         do {
             if let transition = plannedMix(from: track, to: next.track, position: elapsed) {
                 try session.schedule(transition, into: item, at: now)
-                booked = (transition.bars, transition.style)
+                booked = .mix(transition.style, bars: transition.bars)
                 log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
             } else if let cut = plannedCut(from: track, to: next.track, position: elapsed) {
                 // Read, and refused a mix: too far apart in tempo, or both
                 // singing. A pair like that is cut on the phrase line, the way a
                 // DJ would, rather than crossfaded across each other's voices.
                 try session.schedule(cut, into: item, at: now)
-                booked = (0, cut.style)
+                booked = .mix(cut.style, bars: 0)
                 log.info("Cutting \(track.title, privacy: .public) into \(next.track.title, privacy: .public)")
             } else {
                 let plan = MixPlanner.plan(
@@ -1342,13 +1353,17 @@ public final class PlaybackEngine {
                     automix: isCrossfading,
                     albumLock: isAlbumLocked
                 )
+                // Named too, so the screen can say "Crossfade" rather than
+                // nothing when that is what is coming — a listener who has
+                // both switches on wants to know which one is about to act.
                 switch plan {
                 case .blend(let overlap):
                     try session.scheduleBlend(seconds: overlap.seconds, into: item, at: now)
+                    booked = .crossfade(seconds: overlap.seconds)
                 case .gapless, .cut:
                     try session.scheduleJoin(into: item, at: now)
+                    booked = .join
                 }
-                booked = nil
             }
             djScheduledEntryId = next.entryId
         } catch {
@@ -1471,6 +1486,7 @@ public final class PlaybackEngine {
     /// advance to.
     private func armBlend(_ slot: RenderSlot, overlap: Duration) {
         blend = Blend(entryId: slot.entryId, track: slot.track, overlap: overlap)
+        mixState = .booked(.crossfade(seconds: overlap.seconds))
         syncPlayer()
 
         let item = makeItem(for: slot.track, entryId: slot.entryId)
@@ -1540,9 +1556,10 @@ public final class PlaybackEngine {
         fadeObserver = deck.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
             queue: .main
-        ) { time in
+        ) { [weak self] time in
             let progress = (time.seconds - (fadeEnd - overlap)) / overlap
             deck.volume = base * Float(MixCurve.outgoing(progress: progress))
+            self?.mixState = .mixing(.crossfade(seconds: overlap), progress: max(0, min(1, progress)))
         }
 
         spareDeck.play()
@@ -1584,6 +1601,7 @@ public final class PlaybackEngine {
         _ = queue.jump(to: running.entryId)
 
         blend = nil
+        mixState = .off
         lastReportedSecond = -1
         elapsed = player.currentTime().validDuration ?? .zero
         duration = assetDurations[key]
@@ -1636,6 +1654,7 @@ public final class PlaybackEngine {
         guard let cancelled = blend else { return }
         endFadeOut(restoringVolumeOn: player)
         blend = nil
+        if !isUsingDecks { mixState = .off }
         spareDeck.pause()
         spareDeck.removeAllItems()
         if let key = cancelled.itemKey { release(key: key) }

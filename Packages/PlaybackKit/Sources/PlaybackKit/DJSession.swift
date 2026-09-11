@@ -140,10 +140,14 @@ public final class DJSession {
         /// echo-out's bridge. Zero for everything else: the mix begins when
         /// the incoming record does.
         var cutLead: Double = 0
+        /// How long before the cut the echo is brought in under the record.
+        var echoLead: Double = 0
 
         /// When the automation begins: the cut, for an echo-out; otherwise
         /// the incoming record's start.
         var beginsAt: Double { startsAt - cutLead }
+        /// When the echo starts to build under the record, before the cut.
+        var armsAt: Double { beginsAt - echoLead }
 
         var transition: DJTransition? {
             if case let .mixed(transition) = kind { return transition }
@@ -266,12 +270,14 @@ public final class DJSession {
             let echo = transition.style == .echoOut
             let tail = echo ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
             let gap = echo ? DJPlanner.echoGapSeconds(targetBpm: transition.targetBpm) : 0
+            let lead = echo ? DJPlanner.echoLeadSeconds(targetBpm: transition.targetBpm) : 0
             try book(
                 .cut(transition, tail: tail),
                 into: incoming,
                 from: transition.incomingStartMs / 1000,
                 startingIn: untilStart + gap,
                 cutLead: gap,
+                echoLead: lead,
                 lasting: tail,
                 rate: 1,
                 at: sessionSeconds
@@ -335,6 +341,7 @@ public final class DJSession {
         from offset: Double,
         startingIn lead: Double,
         cutLead: Double = 0,
+        echoLead: Double = 0,
         lasting seconds: Double,
         rate incomingRate: Double,
         at sessionSeconds: Double
@@ -362,7 +369,8 @@ public final class DJSession {
             // echo-out — so a tail is a tail from the moment the record stops.
             endsAt: sessionSeconds + lead - cutLead + seconds,
             incomingOffset: offset,
-            cutLead: cutLead
+            cutLead: cutLead,
+            echoLead: echoLead
         )
     }
 
@@ -375,7 +383,16 @@ public final class DJSession {
             endTrackIfFinished(at: sessionSeconds)
             return
         }
-        guard sessionSeconds >= mix.beginsAt else { return }
+        guard sessionSeconds >= mix.beginsAt else {
+            // An echo-out's approach: the record still playing, the echo
+            // building under its last beats, so that by the line the dry
+            // signal has already gone and the cut stops nothing audible.
+            if case .cut(let transition, _) = mix.kind, mix.echoLead > 0, sessionSeconds >= mix.armsAt {
+                let approach = (sessionSeconds - mix.armsAt) / mix.echoLead
+                mixer.armEcho(side, beatSeconds: 60 / transition.targetBpm, wet: 100 * max(0, min(1, approach)))
+            }
+            return
+        }
         guard sessionSeconds < mix.endsAt else {
             finish(mix, at: sessionSeconds)
             return
@@ -494,6 +511,8 @@ public final class DJSession {
     public func pause(at sessionSeconds: Double) {
         if phase == .playing, mix != nil {
             mixer.stopDeck(other)
+            // An echo already building under the record goes with the booking.
+            mixer.clearEcho(side)
             mix = nil
         }
         pausedAt = sessionSeconds
@@ -534,6 +553,7 @@ public final class DJSession {
     public func seek(to seconds: Double, at sessionSeconds: Double) throws {
         guard let current else { return }
         mixer.stopDeck(other)
+        mixer.clearEcho(side)
         mix = nil
         try mixer.load(current.url, on: side, from: seconds)
         mixer.play(side)

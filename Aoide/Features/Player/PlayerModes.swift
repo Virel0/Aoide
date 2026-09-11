@@ -170,8 +170,10 @@ struct ModeChipLabel<Icon: View>: View {
 /// "is it mixing" but "is it *going* to": a mix is booked half a minute before
 /// anybody hears it, and that half minute is when somebody wonders.
 ///
-/// Nothing at all when Auto DJ is off, or when this record simply is not one to
-/// mix — a badge that says "no" on every track is a badge nobody reads.
+/// Nothing at all when no hand-over is planned, or when the plan is a plain
+/// join — a badge that says "no" or "gapless" on every track is a badge
+/// nobody reads. A crossfade is named, with or without Auto DJ, so somebody
+/// with both switches on can see which one is about to act.
 struct MixBadge: View {
     let state: PlaybackEngine.MixState
 
@@ -179,34 +181,49 @@ struct MixBadge: View {
         switch state {
         case .off, .ready:
             EmptyView()
-        case .booked(let bars, let style):
-            HStack(spacing: 6) {
-                Turntable(isSpinning: false, progress: 0.8, tint: .secondary)
-                    .frame(width: 14, height: 14)
-                label("\(Self.name(style)) ready\(Self.length(bars))", isLive: false)
+        case .booked(let handOver):
+            if let name = Self.name(handOver, live: false) {
+                HStack(spacing: 6) {
+                    Turntable(isSpinning: false, progress: 0.8, tint: .secondary)
+                        .frame(width: 14, height: 14)
+                    label("\(name) ready\(Self.length(handOver))", isLive: false)
+                }
+                .padding(.bottom, 6)
             }
-            .padding(.bottom, 6)
-        case .mixing(let bars, let style, let progress):
-            VStack(spacing: 5) {
-                MixDecks(progress: progress)
-                label("\(Self.name(style, live: true))\(Self.length(bars))", isLive: true)
+        case .mixing(let handOver, let progress):
+            if let name = Self.name(handOver, live: true) {
+                VStack(spacing: 5) {
+                    MixDecks(progress: progress)
+                    label("\(name)\(Self.length(handOver))", isLive: true)
+                }
+                .padding(.bottom, 6)
+                .transition(.opacity)
             }
-            .padding(.bottom, 6)
-            .transition(.opacity)
         }
     }
 
-    private static func name(_ style: DJTransition.Style, live: Bool = false) -> String {
-        switch style {
-        case .blend: live ? "Mixing" : "Mix"
-        case .filterFade: live ? "Filter fade" : "Filter fade"
-        case .cut: "Cut"
-        case .echoOut: "Echo out"
+    /// What to call it, or nothing for a join: "Gapless" on every album
+    /// track is a badge nobody reads.
+    private static func name(_ handOver: PlaybackEngine.HandOver, live: Bool) -> String? {
+        switch handOver {
+        case .mix(let style, _):
+            switch style {
+            case .blend: live ? "Mixing" : "Mix"
+            case .filterFade: "Filter fade"
+            case .cut: "Cut"
+            case .echoOut: "Echo out"
+            }
+        case .crossfade: live ? "Crossfading" : "Crossfade"
+        case .join: nil
         }
     }
 
-    private static func length(_ bars: Int) -> String {
-        bars > 0 ? " · \(bars) bars" : ""
+    private static func length(_ handOver: PlaybackEngine.HandOver) -> String {
+        switch handOver {
+        case .mix(_, let bars): bars > 0 ? " · \(bars) bars" : ""
+        case .crossfade(let seconds): " · \(Int(seconds.rounded())) s"
+        case .join: ""
+        }
     }
 
     private func label(_ title: String, isLive: Bool) -> some View {

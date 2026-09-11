@@ -80,6 +80,37 @@ public struct Arrangement: Equatable, Sendable {
         return vocals.contains { $0.overlaps(from, to) }
     }
 
+    /// How far before a line somebody has to have stopped singing for the
+    /// line to be a clean place to stop the record: a syllable's worth.
+    public static let lineClearanceMs = 150.0
+
+    /// How many phrases back a cut will look for a line nobody is singing
+    /// across, before giving up and cutting on the one it was given.
+    public static let lineSearchPhrases = 4
+
+    /// The latest phrase line at or before `ms` that is not mid-word.
+    ///
+    /// A cut on a phrase line is on the grid, but the grid does not know
+    /// where the words are: a line that falls in the middle of a sung
+    /// phrase leaves the tail repeating half a syllable — "-er-er-er". When
+    /// the vocal spans are known, the line is moved back, a phrase at a
+    /// time, to the latest one with ``lineClearanceMs`` of nobody singing
+    /// before it. Unknown vocals, or no clean line within
+    /// ``lineSearchPhrases``, and the line stands where it was.
+    public func cleanLine(atOrBefore ms: Double, barMs: Double) -> Double? {
+        guard let line = phraseStart(atOrBefore: ms, barMs: barMs) else { return nil }
+        // Unknown vocals mean "may be singing throughout", so every line
+        // reads as sung and the given one stands — no separate case needed.
+        guard let phraseBars, barMs > 0 else { return line }
+        let phraseMs = barMs * Double(phraseBars)
+        for back in 0..<Self.lineSearchPhrases {
+            let candidate = line - Double(back) * phraseMs
+            guard candidate >= 0 else { break }
+            if !maySing(from: candidate - Self.lineClearanceMs, to: candidate) { return candidate }
+        }
+        return line
+    }
+
     /// The phrase boundary at or before `ms`, when the track counts phrases.
     public func phraseStart(atOrBefore ms: Double, barMs: Double) -> Double? {
         guard let phraseBars, let phraseAnchorMs, barMs > 0 else { return nil }

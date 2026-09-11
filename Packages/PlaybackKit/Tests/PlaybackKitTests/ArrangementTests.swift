@@ -240,6 +240,56 @@ struct ArrangementTests {
 struct CutTests {
     private let read = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)])
 
+    private let slow = BeatGrid(
+        segments: [BeatGrid.Segment(startMs: 0, endMs: 240_000, anchorMs: 0, bpm: 100, residualMs: 4, beats: 400)],
+        beatsPerBar: 4, downbeatIndex: 0, mixInMs: 2_400 * 8, mixOutMs: 2_400 * 90
+    )
+
+    @Test("A cut lands on a line nobody is singing across")
+    func cutClearOfTheWords() throws {
+        // Somebody singing right across the line at bar 112 — from a bar
+        // before it to a bar after — and again across the one at bar 96.
+        // The line at bar 80 has a rest before it.
+        let sung = arrangement(
+            [(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)],
+            vocals: [
+                .init(startMs: bar * 20, endMs: bar * 79.5),
+                .init(startMs: bar * 95, endMs: bar * 97),
+                .init(startMs: bar * 111, endMs: bar * 113),
+            ]
+        )
+        let cut = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: sung, incomingArrangement: read))
+        #expect(abs(cut.outgoingStartMs - bar * 80) < 0.01, "cut at bar \(cut.outgoingStartMs / bar)")
+
+        // A rest of less than a syllable before the line is not a rest.
+        let barely = arrangement(
+            [(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)],
+            vocals: [.init(startMs: bar * 97, endMs: bar * 112 - 130)]
+        )
+        let late = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: barely, incomingArrangement: read))
+        #expect(abs(late.outgoingStartMs - bar * 96) < 0.01, "cut at bar \(late.outgoingStartMs / bar)")
+        let rested = arrangement(
+            [(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)],
+            vocals: [.init(startMs: bar * 97, endMs: bar * 112 - 151)]
+        )
+        let onTime = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: rested, incomingArrangement: read))
+        #expect(abs(onTime.outgoingStartMs - bar * 112) < 0.01)
+
+        // Singing across every line in reach: the line stands where it was,
+        // because four phrases back is a different part of the record.
+        let throughout = arrangement(
+            [(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)],
+            vocals: [.init(startMs: bar * 20, endMs: bar * 120)]
+        )
+        let stands = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: throughout, incomingArrangement: read))
+        #expect(abs(stands.outgoingStartMs - bar * 112) < 0.01)
+
+        // Vocals unknown: nothing to go on, and the line stands.
+        let unknown = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: nil)
+        let asGiven = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: unknown, incomingArrangement: read))
+        #expect(abs(asGiven.outgoingStartMs - bar * 112) < 0.01)
+    }
+
     @Test("A pair that cannot be bent is cut on the phrase line, not blended")
     func cutWhenUnbendable() throws {
         // 100 into 128 is not a bend anybody makes.

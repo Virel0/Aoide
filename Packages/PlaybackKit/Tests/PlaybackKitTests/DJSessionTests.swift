@@ -569,10 +569,28 @@ struct DJCutTests {
         let gap = DJPlanner.echoGapSeconds(targetBpm: 128)
         #expect(abs(gap - 1.875) < 1e-9, "one bar at 128")
         var corners: [(Double, Double)] = []
+        var wet: [(Double, Double, Bool)] = []
         let rendered = try mixer.renderOffline(seconds: 8) { elapsed in
             session.update(at: elapsed)
             corners.append((elapsed, mixer.bassCornerHz(on: .a)))
+            wet.append((elapsed, mixer.echoWet(on: .a), mixer.isRunning(.a)))
         }
+
+        // The echo comes in under the record's last two beats: dry three
+        // beats before the line, half wet a beat before it, all wet on it —
+        // and the record itself plays right up to the line, not a beat less.
+        let beat = 60.0 / 128
+        let lead = DJPlanner.echoLeadSeconds(targetBpm: 128)
+        #expect(abs(lead - 2 * beat) < 1e-9)
+        let dry = wet.last { $0.0 <= 2 - 3 * beat }
+        let half = wet.first { $0.0 >= 2 - beat }
+        let onTheLine = wet.first { $0.0 >= 2 }
+        #expect(dry?.1 == 0, "echo already in three beats before the line")
+        #expect(dry?.2 == true)
+        #expect((half?.1 ?? 0) > 40 && (half?.1 ?? 0) < 60, "half wet a beat before the line: \(half?.1 ?? -1)")
+        #expect(half?.2 == true, "the record stopped before the line")
+        #expect(onTheLine?.1 == 100)
+        #expect(onTheLine?.2 == false, "the record still running after the line")
 
         let times = clickTimes(in: rendered, threshold: 0.05, holdSeconds: 0.15)
         // Repeats after the cut, one beat of the *outgoing* tempo apart,
@@ -665,6 +683,40 @@ struct DJCutTests {
         let peaks = clickPeaks(in: rendered, at: [2 + beat, 2 + 4 * beat])
         #expect(peaks[0] > 0.3, "first repeat \(peaks[0])")
         #expect(peaks[1] < 0.15 * peaks[0], "fourth repeat \(peaks[1]) against first \(peaks[0]): the kick is still in the tail")
+    }
+
+    @Test("A pause during the approach takes the echo away with the booking")
+    func pauseDuringApproach() throws {
+        let outgoing = try clicks(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        let echo = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: loud, incomingArrangement: quiet))
+
+        try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+        try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(echo, into: DJItem(url: incoming, grid: inGrid), at: 0)
+
+        // A beat before the line the echo is half in. Paused there, the
+        // booking goes — and the echo with it, or the record would come back
+        // from the pause half-drowned in repeats of itself.
+        _ = try mixer.renderOffline(seconds: 2 - 60.0 / 128) { session.update(at: $0) }
+        #expect(mixer.echoWet(on: .a) > 30)
+        session.pause(at: 2 - 60.0 / 128)
+        #expect(!session.hasScheduledMix)
+        #expect(mixer.echoWet(on: .a) == 0, "echo still in after the pause: \(mixer.echoWet(on: .a))")
     }
 
     @Test("The new record lands one bar after the cut, on its own downbeat")
