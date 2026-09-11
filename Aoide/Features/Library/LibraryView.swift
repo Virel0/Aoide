@@ -267,12 +267,19 @@ struct SongsListView: View {
     }
 
     /// Play from here through the rest of what's loaded, which is what tapping a
-    /// song in a long list is understood to mean.
+    /// song in a long list is understood to mean — unless Infinity is on. Then
+    /// the song plays alone and Infinity chooses what follows: the rest of this
+    /// list is every song in the library in whatever order it is sorted, and
+    /// queued it reads as a search for the song's name, not as a set.
     ///
     /// The play source stays `.unknown`: every song in the library is in this list, so
     /// it says nothing about what the listener chose. Calling it `.album` because the
     /// songs happen to have albums would fill a recap with albums nobody opened.
     private func play(_ song: JellyfinItem, in paged: PagedItems) {
+        if InfinityQueue.shared.isOn {
+            store.play([song])
+            return
+        }
         guard let index = paged.items.firstIndex(where: { $0.id == song.id }) else { return }
         store.play(paged.items, startingAt: index)
     }

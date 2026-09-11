@@ -190,12 +190,17 @@ struct SearchView: View {
 
             if !songs.isEmpty {
                 Section("Songs") {
-                    ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                    // A song found by name plays alone. The rows around it are
+                    // the other songs whose names match the words typed, which
+                    // says nothing about whether they belong after it — and
+                    // queued, they looked like Infinity's choices. Infinity fills
+                    // in from here when it is on; when it is off, the song ends.
+                    ForEach(songs, id: \.id) { song in
                         SongRow(song: song)
                             .contentShape(.rect)
                             .onTapGesture {
                                 recents = RecentSearches.add(trimmed)
-                                store.play(songs, startingAt: index, from: .search)
+                                store.play([song], from: .search)
                             }
                             .trackContextMenu(song, from: .search)
                     }
