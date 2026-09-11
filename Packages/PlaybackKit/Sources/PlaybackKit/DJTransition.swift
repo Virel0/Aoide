@@ -61,6 +61,24 @@ public struct DJTransition: Equatable, Sendable {
         /// key, or where one of them is singing: the two never have their notes
         /// on top of each other, which is the whole point of it.
         case filterFade
+        /// No overlap at all: the outgoing record stops on a phrase line and
+        /// the incoming one starts on its own, that instant. For a pair whose
+        /// tempi are too far apart to bend, or that both sing — a jolt, on the
+        /// beat, rather than a blend that was never going to work.
+        case cut
+        /// A cut, with the outgoing record's last beat left ringing in a
+        /// delay under the first bar of the new one. What a DJ reaches for
+        /// when the tempos will not live together and the room should not
+        /// hear a wall: the old record ends *into* the new one.
+        case echoOut
+
+        /// Whether the two records overlap at all.
+        public var overlaps: Bool {
+            switch self {
+            case .blend, .filterFade: true
+            case .cut, .echoOut: false
+            }
+        }
     }
 }
 
@@ -151,6 +169,71 @@ public enum DJPlanner {
             }
         }
         return best
+    }
+
+    /// How long the last beat rings after an echo-out.
+    public static let echoTailSeconds = 2.0
+
+    /// Plans a cut — or an echo-out — for a pair that has been read but cannot
+    /// be mixed: tempi too far apart to bend, or both records singing. The
+    /// outgoing record stops on the phrase line at its exit; the incoming one
+    /// starts, that instant, on the phrase line at its entry.
+    ///
+    /// Nothing for a pair that has not been read, which crossfades instead — a
+    /// cut is a decision about two records, and a decision needs to know them.
+    public static func planCut(
+        outgoing: BeatGrid,
+        incoming: BeatGrid,
+        notBeforeMs: Double = 0,
+        outgoingArrangement: Arrangement?,
+        incomingArrangement: Arrangement?,
+        outgoingExitMs: Double? = nil
+    ) -> DJTransition? {
+        guard let outgoingArrangement, let incomingArrangement else { return nil }
+        guard let outMixOut = outgoingExitMs ?? outgoing.mixOutMs,
+              let inMixIn = incoming.mixInMs,
+              let outSegment = outgoing.segment(at: outMixOut),
+              outgoing.beatsPerBar != nil, incoming.beatsPerBar != nil,
+              let outBar = outgoing.barMs(at: outMixOut),
+              let inBar = incoming.barMs(at: inMixIn)
+        else { return nil }
+
+        let exit = outgoingArrangement.phraseStart(atOrBefore: outMixOut, barMs: outBar)
+            ?? outgoing.downbeat(atOrBefore: outMixOut)
+            ?? outMixOut
+        guard exit >= notBeforeMs else { return nil }
+        let entry = entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
+
+        // Ending out of something loud into something quieter is a hit worth
+        // letting ring; anything else is cleaner cut dead.
+        let exitEnergy = outgoingArrangement.section(at: exit)?.energy ?? 0.5
+        let entryEnergy = incomingArrangement.section(at: entry)?.energy ?? 0.5
+        let style: DJTransition.Style = exitEnergy > entryEnergy + 0.2 ? .echoOut : .cut
+
+        let rate = bendableRate(from: incoming.segment(at: entry)?.bpm ?? 0, to: outSegment.bpm) ?? 1
+        return DJTransition(
+            outgoingStartMs: exit,
+            incomingStartMs: entry,
+            bars: 0,
+            seconds: 0,
+            targetBpm: outSegment.bpm,
+            outgoingRate: 1,
+            // A record that cannot be bent is played at its own speed; one
+            // that could be is not, since nothing is running alongside it.
+            incomingRate: 1,
+            restoreSeconds: 0,
+            isKeyCompatible: CamelotKey.areCompatible(outgoing.key, incoming.key),
+            score: MixScore(
+                tempo: MixScore.tempo(rate: rate),
+                key: MixScore.key(outgoing.key, incoming.key),
+                vocals: 0.5, energy: MixScore.energy(exitEnergy, entryEnergy),
+                sections: MixScore.sections(
+                    exit: outgoingArrangement.section(at: exit)?.kind,
+                    entry: incomingArrangement.section(at: entry)?.kind
+                )
+            ),
+            style: style
+        )
     }
 
     /// A candidate entry, put on the phrase line it sits in when the record
@@ -376,6 +459,9 @@ public enum DJAutomation {
             let progress = clamp(progress)
             let fraction = min(1, progress / swapPoint)
             return sweep(from: openHz, to: filterFadeHz, fraction: fraction)
+        case .cut, .echoOut:
+            // Nothing overlaps, so nothing is filtered.
+            return openHz
         }
     }
 

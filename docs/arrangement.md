@@ -203,3 +203,21 @@ deserves.
 The scrubber runs to the exit rather than to the file's end, because a bar
 that stops at sixty per cent is a bar lying. And Infinity is on whenever Auto DJ
 is: a set that ends is not a set.
+
+
+## Cuts and echo-outs
+
+A pair that has been read but cannot be mixed — tempi too far apart to bend, or
+both records singing — used to crossfade, which for two singers is the vocal
+clash by another route. It is **cut** now, the way a DJ would: the outgoing
+record stops on the phrase line at its exit and the incoming one starts on the
+phrase line at its entry, that instant, at its own tempo. Out of something loud
+into something quieter, the last beat is left **ringing** in a delay set to one
+beat of the outgoing tempo, with feedback, for two seconds under the first bar
+of the new record — an echo-out. Both rendered and measured: after the cut the
+clicks arrive at the new record's tempo and none at the old one's; after an
+echo-out the repeats fall one beat of the old tempo apart and are gone within
+the tail.
+
+A pair that has not been read still crossfades. A cut is a decision about two
+records, and a decision needs to know them.

@@ -91,6 +91,10 @@ public final class DJSession {
     /// The session time at which a bend must be finished being eased out.
     private var restoreEndsAt: Double?
 
+    /// Whether a booked cut has fallen. Set on the first tick past its moment,
+    /// so the echo is started exactly once.
+    private var cutStarted = false
+
     /// A hand-over booked onto the other deck.
     ///
     /// Three kinds, and the decks perform all three. That is the point of them
@@ -105,12 +109,22 @@ public final class DJSession {
             case blended(Double)
             /// One record ending exactly as the next begins.
             case joined
+            /// The outgoing record stops on a phrase line as the incoming one
+            /// starts, its last beat left ringing for `tail` seconds if the
+            /// transition is an echo-out, or not at all if it is a cut.
+            case cut(DJTransition, tail: Double)
 
             /// Only a mix holds the incoming record's low end back; a crossfade
             /// that did would be taking the bottom out of a fade for no reason.
             var cutsIncomingBass: Bool {
                 if case .mixed = self { return true }
                 return false
+            }
+
+            /// Whether the two records sound together at all.
+            var overlaps: Bool {
+                if case .cut = self { return false }
+                return true
             }
         }
 
@@ -196,6 +210,19 @@ public final class DJSession {
     /// nothing that happens on the main thread can pull them apart.
     public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws {
         let untilStart = (transition.outgoingStartMs / 1000 - position(at: sessionSeconds)) / rate
+        guard transition.style.overlaps else {
+            let tail = transition.style == .echoOut ? DJPlanner.echoTailSeconds : 0
+            try book(
+                .cut(transition, tail: tail),
+                into: incoming,
+                from: transition.incomingStartMs / 1000,
+                startingIn: untilStart,
+                lasting: tail,
+                rate: 1,
+                at: sessionSeconds
+            )
+            return
+        }
         try book(
             .mixed(transition),
             into: incoming,
@@ -259,12 +286,14 @@ public final class DJSession {
         guard phase == .playing, mix == nil, lead > 0 else { return }
 
         try mixer.load(incoming.url, on: other, from: offset)
+        mixer.clearEcho(other)
         // The state the deck must be in for its first instant, before any
         // automation has run. `update` overwrites both a tick later, so this only
         // governs the moment between the deck starting and the first tick after
         // it — which is exactly the moment a record would otherwise arrive at
-        // full volume.
-        mixer.setVolume(seconds > 0 ? 0 : incoming.linearGain, on: other)
+        // full volume. A cut is the exception: the new record arrives at full
+        // on purpose, that being the point of a cut.
+        mixer.setVolume(seconds > 0 && kind.overlaps ? 0 : incoming.linearGain, on: other)
         mixer.setBassCut(kind.cutsIncomingBass ? 1 : 0, on: other)
         mixer.setRate(incomingRate, on: other)
         mixer.play(other, inSeconds: lead)
@@ -294,9 +323,22 @@ public final class DJSession {
         }
 
         phase = .mixing
-        let progress = (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt)
+        let progress = mix.endsAt > mix.startsAt ? (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt) : 1
 
         switch mix.kind {
+        case .cut(let transition, let tail):
+            // A plain cut never reaches here: it ends the instant it begins and
+            // `finish` stops the outgoing deck. Only an echo-out has a tail to
+            // run, and its first tick is where the ring is started.
+            if !cutStarted, tail > 0 {
+                cutStarted = true
+                mixer.echoOut(side, beatSeconds: 60 / transition.targetBpm)
+            }
+            // The ring dies away on the deck's own fader, so it ends rather
+            // than being cut off a second time.
+            if tail > 0 {
+                mixer.setVolume((1 - progress) * (current?.linearGain ?? 1), on: side)
+            }
         case .mixed(let transition):
             // The levelling sits underneath the mix's own curve, so two records
             // brought to one loudness stay there while they cross.
@@ -321,6 +363,8 @@ public final class DJSession {
     private func finish(_ mix: Mix, at sessionSeconds: Double) {
         mixer.setVolume(0, on: side)
         mixer.stopDeck(side)
+        mixer.clearEcho(side)
+        cutStarted = false
         mixer.setBassCut(0, on: other)
         mixer.setVolume(mix.incoming.linearGain, on: other)
 

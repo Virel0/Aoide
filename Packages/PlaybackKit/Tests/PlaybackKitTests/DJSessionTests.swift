@@ -276,3 +276,137 @@ struct DJSessionTests {
         #expect(abs(mixer.rate(on: .b) - 1) < 0.001)
     }
 }
+
+@Suite("A cut, end to end")
+struct DJCutTests {
+    private static let rate = 44_100.0
+
+    /// A record of clicks at `bpm`, so what rings after a cut can be counted.
+    private func clicks(bpm: Double, seconds: Double = 120) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("cut-\(UUID()).caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: Self.rate, channels: 1)!
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let total = Int(seconds * Self.rate)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total))!
+        buffer.frameLength = AVAudioFrameCount(total)
+        let samples = buffer.floatChannelData![0]
+        for frame in 0..<total { samples[frame] = 0 }
+        let beatMs = 60_000 / bpm
+        let clickFrames = Int(0.002 * Self.rate)
+        var index = 0
+        while true {
+            let start = Int(Double(index) * beatMs / 1000 * Self.rate)
+            guard start + clickFrames < total else { break }
+            for frame in 0..<clickFrames {
+                samples[start + frame] = Float(0.8 * (1 - Double(frame) / Double(clickFrames)) * sin(2 * .pi * 1_500 * Double(frame) / Self.rate))
+            }
+            index += 1
+        }
+        try file.write(from: buffer)
+        return url
+    }
+
+    private func grid(bpm: Double, mixOutMs: Double) -> BeatGrid {
+        BeatGrid(
+            segments: [BeatGrid.Segment(startMs: 0, endMs: 120_000, anchorMs: 0, bpm: bpm, residualMs: 4, beats: Int(120_000 / (60_000 / bpm)))],
+            beatsPerBar: 4, downbeatIndex: 0, mixInMs: 0, mixOutMs: mixOutMs
+        )
+    }
+
+    /// Clicks, with a hold long enough that an echo's darkened, lengthened
+    /// repeat still counts as one click and not two.
+    private func clickTimes(in buffer: AVAudioPCMBuffer, threshold: Float = 0.1, holdSeconds: Double = 0.03) -> [Double] {
+        let samples = buffer.floatChannelData![0]
+        var times: [Double] = []
+        var frame = 0
+        while frame < Int(buffer.frameLength) {
+            if abs(samples[frame]) > threshold {
+                times.append(Double(frame) / buffer.format.sampleRate)
+                frame += Int(holdSeconds * buffer.format.sampleRate)
+            } else {
+                frame += 1
+            }
+        }
+        return times
+    }
+
+    @Test("The outgoing record stops on the line and the new one starts that instant")
+    func cutFalls() throws {
+        // 128 out, 100 in: unbendable, so a cut. Both instrumental and level, so
+        // a plain one rather than an echo.
+        let outgoing = try clicks(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        let read = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .unknown, energy: 0.5)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        let cut = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: read, incomingArrangement: read))
+        #expect(cut.style == .cut)
+
+        try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+        try session.seek(to: cut.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(cut, into: DJItem(url: incoming, grid: inGrid), at: 0)
+        let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
+
+        let times = clickTimes(in: rendered)
+        // Before the cut, clicks at 128; after it, at 100 — and nothing at 128
+        // any more, which is what "stops" means.
+        let before = times.filter { $0 < 2 }
+        let after = times.filter { $0 > 2.1 }
+        let gapsBefore = zip(before, before.dropFirst()).map { $1 - $0 }
+        let gapsAfter = zip(after, after.dropFirst()).map { $1 - $0 }
+        #expect(gapsBefore.allSatisfy { abs($0 - 60.0 / 128) < 0.005 })
+        #expect(gapsAfter.allSatisfy { abs($0 - 60.0 / 100) < 0.005 }, "gaps after the cut: \(gapsAfter.map { Int($0 * 1000) })")
+        #expect(session.playingSide == .b)
+        #expect(!mixer.isRunning(.a))
+    }
+
+    @Test("An echo-out leaves the last beat ringing, and then it stops")
+    func echoRings() throws {
+        let outgoing = try clicks(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        // Loud out, quiet in: an echo-out.
+        let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        let echo = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: loud, incomingArrangement: quiet))
+        #expect(echo.style == .echoOut)
+
+        // The incoming record silent, so only the ring is measured.
+        try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+        try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
+        let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
+
+        let times = clickTimes(in: rendered, threshold: 0.05, holdSeconds: 0.15)
+        // Repeats after the cut, one beat of the *outgoing* tempo apart, and
+        // gone within the tail.
+        let ring = times.filter { $0 > 2.05 && $0 < 2 + DJPlanner.echoTailSeconds + 0.5 }
+        #expect(ring.count >= 2, "heard \(ring.count) repeats")
+        let gaps = zip(ring, ring.dropFirst()).map { $1 - $0 }
+        #expect(gaps.allSatisfy { abs($0 - 60.0 / 128) < 0.015 }, "gaps \(gaps.map { Int($0 * 1000) })")
+        // Silence once the tail is over.
+        let late = times.filter { $0 > 2 + DJPlanner.echoTailSeconds + 0.6 }
+        #expect(late.isEmpty, "still ringing at \(late.first ?? 0)s")
+    }
+}

@@ -179,21 +179,34 @@ struct MixBadge: View {
         switch state {
         case .off, .ready:
             EmptyView()
-        case .booked(let bars):
+        case .booked(let bars, let style):
             HStack(spacing: 6) {
                 Turntable(isSpinning: false, progress: 0.8, tint: .secondary)
                     .frame(width: 14, height: 14)
-                label("Mix ready · \(bars) bars", isLive: false)
+                label("\(Self.name(style)) ready\(Self.length(bars))", isLive: false)
             }
             .padding(.bottom, 6)
-        case .mixing(let bars, let progress):
+        case .mixing(let bars, let style, let progress):
             VStack(spacing: 5) {
                 MixDecks(progress: progress)
-                label("Mixing · \(bars) bars", isLive: true)
+                label("\(Self.name(style, live: true))\(Self.length(bars))", isLive: true)
             }
             .padding(.bottom, 6)
             .transition(.opacity)
         }
+    }
+
+    private static func name(_ style: DJTransition.Style, live: Bool = false) -> String {
+        switch style {
+        case .blend: live ? "Mixing" : "Mix"
+        case .filterFade: live ? "Filter fade" : "Filter fade"
+        case .cut: "Cut"
+        case .echoOut: "Echo out"
+        }
+    }
+
+    private static func length(_ bars: Int) -> String {
+        bars > 0 ? " · \(bars) bars" : ""
     }
 
     private func label(_ title: String, isLive: Bool) -> some View {

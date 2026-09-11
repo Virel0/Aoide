@@ -16,9 +16,12 @@ import Foundation
 /// the bass swap:
 ///
 /// ```
-/// player → time-pitch → high-pass ─┐
-///                                  ├→ main mixer → output
-/// player → time-pitch → high-pass ─┘
+/// player → time-pitch → high-pass → delay ─┐
+///                                          ├→ main mixer → output
+/// player → time-pitch → high-pass → delay ─┘
+///
+/// The delay is silent except for an echo-out, when the record's last beat is
+/// left ringing under the first bar of the next one.
 /// ```
 ///
 /// **Time-pitch rather than varispeed**, which reverses an earlier decision here
@@ -54,6 +57,7 @@ public final class DJMixer {
         let player = AVAudioPlayerNode()
         let speed = AVAudioUnitTimePitch()
         let shelf = AVAudioUnitEQ(numberOfBands: 1)
+        let echo = AVAudioUnitDelay()
         var file: AVAudioFile?
         /// Whether this deck is meant to be sounding, as distinct from whether it
         /// happens to be paused. A deck stopped at the end of a mix must not come
@@ -75,6 +79,12 @@ public final class DJMixer {
             band.frequency = DJMixer.bassOpenHz
             band.bandwidth = 0.7
             band.bypass = false
+            // Dry until asked. Feedback and the darkening of each repeat are
+            // what make it read as an echo rather than a stutter.
+            echo.wetDryMix = 0
+            echo.feedback = 45
+            echo.lowPassCutoff = 6_000
+            echo.delayTime = 0.5
         }
     }
 
@@ -86,9 +96,11 @@ public final class DJMixer {
             engine.attach(deck.player)
             engine.attach(deck.speed)
             engine.attach(deck.shelf)
+            engine.attach(deck.echo)
             engine.connect(deck.player, to: deck.speed, format: nil)
             engine.connect(deck.speed, to: deck.shelf, format: nil)
-            engine.connect(deck.shelf, to: engine.mainMixerNode, format: nil)
+            engine.connect(deck.shelf, to: deck.echo, format: nil)
+            engine.connect(deck.echo, to: engine.mainMixerNode, format: nil)
         }
     }
 
@@ -235,6 +247,23 @@ public final class DJMixer {
     /// onto the filter by how far down the cut the number sits.
     public func setBassDb(_ db: Double, on side: Side) {
         setBassCut(db / DJAutomation.bassCutDb, on: side)
+    }
+
+    /// Leaves a deck's last beat ringing: the dry signal is cut and the delay,
+    /// set to one beat, repeats what it holds with feedback until it fades. The
+    /// player is stopped at the same instant, so what rings is exactly what was
+    /// playing when the cut fell — nothing after it.
+    public func echoOut(_ side: Side, beatSeconds: Double) {
+        guard let deck = decks[side] else { return }
+        deck.echo.delayTime = max(0.05, min(2, beatSeconds))
+        deck.echo.wetDryMix = 100
+        deck.isRunning = false
+        deck.player.stop()
+    }
+
+    /// Back to dry, for the next record on this deck.
+    public func clearEcho(_ side: Side) {
+        decks[side]?.echo.wetDryMix = 0
     }
 
     /// Whether a deck is meant to be sounding. The end of a mix has to leave the

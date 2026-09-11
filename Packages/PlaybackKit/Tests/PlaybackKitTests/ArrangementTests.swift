@@ -235,3 +235,53 @@ struct ArrangementTests {
         #expect(Arrangement(sections: []).phraseStart(atOrBefore: 10, barMs: bar) == nil)
     }
 }
+
+@Suite("Cuts and echo-outs")
+struct CutTests {
+    private let read = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)])
+
+    @Test("A pair that cannot be bent is cut on the phrase line, not blended")
+    func cutWhenUnbendable() throws {
+        // 100 into 128 is not a bend anybody makes.
+        let slow = BeatGrid(
+            segments: [BeatGrid.Segment(startMs: 0, endMs: 240_000, anchorMs: 0, bpm: 100, residualMs: 4, beats: 400)],
+            beatsPerBar: 4, downbeatIndex: 0, mixInMs: 2_400 * 8, mixOutMs: 2_400 * 90
+        )
+        #expect(DJPlanner.plan(outgoing: grid(), incoming: slow, outgoingArrangement: read, incomingArrangement: read) == nil)
+
+        let cut = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: read, incomingArrangement: read
+        ))
+        #expect(cut.bars == 0)
+        #expect(cut.seconds == 0)
+        #expect(!cut.style.overlaps)
+        // On the phrase line at the outgoing record's mix-out, bar 112.
+        #expect(abs(cut.outgoingStartMs - bar * 112) < 0.01)
+        // And the new record is not bent to a tempo nothing is running beside.
+        #expect(cut.incomingRate == 1)
+    }
+
+    @Test("Out of something loud into something quiet, the last beat rings")
+    func echoWhenDropping() throws {
+        let loud = arrangement([(.intro, 16, 0.2), (.drop, 112, 1.0)])
+        let quiet = arrangement([(.intro, 32, 0.2), (.drop, 96, 0.9)])
+        let echo = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: grid(mixInMs: bar * 8),
+            outgoingArrangement: loud, incomingArrangement: quiet
+        ))
+        #expect(echo.style == .echoOut)
+
+        // Level into level is a plain cut.
+        let plain = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: grid(),
+            outgoingArrangement: read, incomingArrangement: read
+        ))
+        #expect(plain.style == .cut)
+    }
+
+    @Test("A pair that has not been read is not cut either")
+    func unreadIsNotCut() {
+        #expect(DJPlanner.planCut(outgoing: grid(), incoming: grid(), outgoingArrangement: nil, incomingArrangement: read) == nil)
+    }
+}

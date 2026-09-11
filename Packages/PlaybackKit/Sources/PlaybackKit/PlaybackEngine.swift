@@ -196,10 +196,10 @@ public final class PlaybackEngine {
         /// The decks have this record but nothing is planned after it.
         case ready
         /// A mix into the next record is booked, and this is how long it will be.
-        case booked(bars: Int)
+        case booked(bars: Int, style: DJTransition.Style)
         /// Two records are playing, and this is how far through it is — enough
         /// for a screen to draw a crossfader that means something.
-        case mixing(bars: Int, progress: Double)
+        case mixing(bars: Int, style: DJTransition.Style, progress: Double)
     }
 
     public private(set) var mixState: MixState = .off
@@ -1018,7 +1018,7 @@ public final class PlaybackEngine {
         takeover = DeckTakeover(startsAt: now + Self.takeoverLead, endsAt: now + Self.takeoverLead + Self.takeoverFade)
         djEntryId = entryId
         djScheduledEntryId = nil
-        bookedBars = nil
+        booked = nil
         mixState = .ready
         log.info("Taking \(track.title, privacy: .public) onto the decks at \(self.elapsed.seconds, privacy: .public)s")
         startDJTimer()
@@ -1095,6 +1095,24 @@ public final class PlaybackEngine {
         )
     }
 
+    /// The cut from one record into another, for a pair that has been read but
+    /// cannot be mixed.
+    private func plannedCut(from outgoing: Track, to incoming: Track, position: Duration) -> DJTransition? {
+        guard isAutoDJing,
+              let outgoingGrid = beatGridResolver?(outgoing),
+              let incomingGrid = beatGridResolver?(incoming),
+              localFileResolver?(incoming) != nil
+        else { return nil }
+        return DJPlanner.planCut(
+            outgoing: outgoingGrid,
+            incoming: incomingGrid,
+            notBeforeMs: position.seconds * 1000 + 1_000,
+            outgoingArrangement: arrangementResolver?(outgoing),
+            incomingArrangement: arrangementResolver?(incoming),
+            outgoingExitMs: programmedExit(for: outgoing)
+        )
+    }
+
     /// Starts a record on the decks.
     private func startOnDecks(_ track: Track, entryId: UUID, autoplay: Bool) {
         let mixer = djMixer ?? DJMixer()
@@ -1126,7 +1144,7 @@ public final class PlaybackEngine {
 
         djEntryId = entryId
         djScheduledEntryId = nil
-        bookedBars = nil
+        booked = nil
         mixState = .ready
         // The scrubber runs to where the set leaves the record, not to where
         // the file ends; a bar that stops at sixty per cent is a bar lying.
@@ -1182,7 +1200,7 @@ public final class PlaybackEngine {
         djMixer = nil
         djEntryId = nil
         djScheduledEntryId = nil
-        bookedBars = nil
+        booked = nil
         mixState = .off
         // A take-over abandoned halfway would otherwise leave the player turned
         // down for good.
@@ -1222,12 +1240,11 @@ public final class PlaybackEngine {
         elapsed = .seconds(session.position(at: now))
         bookHandoverIfDue(at: now)
 
-        let bars = bookedBars
-        switch (session.phase, bars) {
-        case (.mixing, let bars?):
-            mixState = .mixing(bars: bars, progress: session.mixProgress(at: now) ?? 0)
-        case (_, let bars?):
-            mixState = .booked(bars: bars)
+        switch (session.phase, booked) {
+        case (.mixing, let booked?):
+            mixState = .mixing(bars: booked.bars, style: booked.style, progress: session.mixProgress(at: now) ?? 0)
+        case (_, let booked?):
+            mixState = .booked(bars: booked.bars, style: booked.style)
         default:
             mixState = .ready
         }
@@ -1239,8 +1256,8 @@ public final class PlaybackEngine {
         }
     }
 
-    /// How many bars the booked mix runs for, if one is booked.
-    private var bookedBars: Int?
+    /// What is booked, if anything: how long and of what kind.
+    private var booked: (bars: Int, style: DJTransition.Style)?
 
     /// Books whatever hand-over the next record has earned, once it is close
     /// enough to be worth opening a second file for.
@@ -1255,15 +1272,15 @@ public final class PlaybackEngine {
 
         guard window.count == 2, window[1].entryId != window[0].entryId else {
             djScheduledEntryId = nil
-            bookedBars = nil
+            booked = nil
             return
         }
         let next = window[1]
         // The queue moved under a booking: the record booked is not the one
         // coming any more.
-        if let booked = djScheduledEntryId, booked != next.entryId {
+        if let scheduled = djScheduledEntryId, scheduled != next.entryId {
             djScheduledEntryId = nil
-            bookedBars = nil
+            booked = nil
         }
         guard djScheduledEntryId == nil, !session.hasScheduledMix else { return }
         guard let track = queue.currentTrack, let item = djItem(for: next.track) else { return }
@@ -1276,8 +1293,15 @@ public final class PlaybackEngine {
         do {
             if let transition = plannedMix(from: track, to: next.track, position: elapsed) {
                 try session.schedule(transition, into: item, at: now)
-                bookedBars = transition.bars
+                booked = (transition.bars, transition.style)
                 log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
+            } else if let cut = plannedCut(from: track, to: next.track, position: elapsed) {
+                // Read, and refused a mix: too far apart in tempo, or both
+                // singing. A pair like that is cut on the phrase line, the way a
+                // DJ would, rather than crossfaded across each other's voices.
+                try session.schedule(cut, into: item, at: now)
+                booked = (0, cut.style)
+                log.info("Cutting \(track.title, privacy: .public) into \(next.track.title, privacy: .public)")
             } else {
                 let plan = MixPlanner.plan(
                     from: mixTrack(track),
@@ -1291,7 +1315,7 @@ public final class PlaybackEngine {
                 case .gapless, .cut:
                     try session.scheduleJoin(into: item, at: now)
                 }
-                bookedBars = nil
+                booked = nil
             }
             djScheduledEntryId = next.entryId
         } catch {
@@ -1305,7 +1329,7 @@ public final class PlaybackEngine {
         _ = queue.jump(to: entryId)
         djEntryId = entryId
         djScheduledEntryId = nil
-        bookedBars = nil
+        booked = nil
         lastReportedSecond = -1
         if let track = queue.currentTrack {
             duration = programmedExit(for: track).map { .seconds($0 / 1_000) }
