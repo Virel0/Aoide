@@ -248,8 +248,7 @@ public enum DJPlanner {
         // A cut stops the record dead, so the line has to be one nobody is
         // singing across — a mix fades the outgoing voice under the new
         // record and can afford a line mid-word; a cut cannot.
-        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar)
-            ?? outgoing.downbeat(atOrBefore: outMixOut)
+        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar) { outgoing.downbeat(atOrBefore: $0) }
             ?? outMixOut
         guard exit >= notBeforeMs else { return nil }
         let entry = entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
@@ -291,7 +290,7 @@ public enum DJPlanner {
     /// bars into a phrase is a record brought in at the wrong moment however
     /// exactly its beats land.
     private static func entryPoint(_ ms: Double, in grid: BeatGrid, arrangement: Arrangement?, barMs: Double) -> Double {
-        arrangement?.phraseStart(atOrBefore: ms, barMs: barMs)
+        arrangement?.phraseLine(near: ms, barMs: barMs)
             ?? grid.downbeat(atOrBefore: ms)
             ?? ms
     }
@@ -329,10 +328,13 @@ public enum DJPlanner {
         for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
             // Back from the mix-out point a whole number of bars, then onto the
-            // phrase line if the record has them. The mix may end a little before
-            // the mix-out point as a result; it will not start mid-phrase.
+            // phrase line if one is close, else the bar line. The mix may end a
+            // little before the mix-out point as a result — never seven bars
+            // before it, which would fade the hook out under the new record.
             let counted = outMixOut - outBar * Double(bars)
-            let startMs = outgoingArrangement?.phraseStart(atOrBefore: counted, barMs: outBar) ?? counted
+            let startMs = outgoingArrangement?.phraseLine(atOrBefore: counted, barMs: outBar)
+                ?? outgoing.downbeat(atOrBefore: counted)
+                ?? counted
 
             guard startMs >= notBeforeMs else { continue }
             guard outgoing.canLock(at: startMs, blendSeconds: seconds) else { continue }

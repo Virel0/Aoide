@@ -97,8 +97,8 @@ public struct Arrangement: Equatable, Sendable {
     /// time, to the latest one with ``lineClearanceMs`` of nobody singing
     /// before it. Unknown vocals, or no clean line within
     /// ``lineSearchPhrases``, and the line stands where it was.
-    public func cleanLine(atOrBefore ms: Double, barMs: Double) -> Double? {
-        guard let line = phraseStart(atOrBefore: ms, barMs: barMs) else { return nil }
+    public func cleanLine(atOrBefore ms: Double, barMs: Double, downbeat: (Double) -> Double?) -> Double? {
+        guard let line = phraseLine(atOrBefore: ms, barMs: barMs) ?? downbeat(ms) else { return nil }
         // Unknown vocals mean "may be singing throughout", so every line
         // reads as sung and the given one stands — no separate case needed.
         guard let phraseBars, barMs > 0 else { return line }
@@ -115,6 +115,30 @@ public struct Arrangement: Equatable, Sendable {
             if !maySing(from: candidate - Self.lineClearanceMs, to: candidate) { return candidate }
         }
         return line
+    }
+
+    /// How far a moment may be moved to sit on a phrase line: two bars, the
+    /// server's own rule for its section boundaries. Further than that and
+    /// the line is not where the music changes — a section boundary five
+    /// bars past a phrase line is on a bar line for a reason, and dragging
+    /// it back seven bars puts the exit inside the hook it was meant to end.
+    public static let phraseReachBars = 2.0
+
+    /// The phrase line at or before `ms` if one is within ``phraseReachBars``,
+    /// else nil. For moments that must not move later: an exit.
+    public func phraseLine(atOrBefore ms: Double, barMs: Double) -> Double? {
+        guard let line = phraseStart(atOrBefore: ms, barMs: barMs) else { return nil }
+        return ms - line <= Self.phraseReachBars * barMs + 0.5 ? line : nil
+    }
+
+    /// The nearest phrase line to `ms`, either side, if one is within
+    /// ``phraseReachBars``; else nil. For moments that may move either way:
+    /// an entry.
+    public func phraseLine(near ms: Double, barMs: Double) -> Double? {
+        guard let phraseBars, barMs > 0, let before = phraseStart(atOrBefore: ms, barMs: barMs) else { return nil }
+        let after = before + barMs * Double(phraseBars)
+        let nearest = ms - before <= after - ms ? before : after
+        return abs(ms - nearest) <= Self.phraseReachBars * barMs + 0.5 ? nearest : nil
     }
 
     /// The phrase boundary at or before `ms`, when the track counts phrases.

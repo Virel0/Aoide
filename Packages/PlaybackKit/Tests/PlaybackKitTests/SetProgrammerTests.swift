@@ -46,6 +46,22 @@ struct SetProgrammerTests {
         #expect(abs(exit - bar * 96) < 0.01)
     }
 
+    @Test("An exit on a bar line stays on it: the hook ends where it ends")
+    func exitStaysOnItsBar() throws {
+        // The second drop ends at bar 101 — five bars past the phrase line at
+        // 96. The server put that boundary on a bar because the music changed
+        // there, not on the phrase line; pulling it back to 96 would leave in
+        // the last five bars of the hook, which is leaving early. Within two
+        // bars of a phrase line, though, the line is taken.
+        let late = arrangement([(.intro, 16, 0.2), (.drop, 32, 0.9), (.breakdown, 21, 0.4), (.drop, 32, 1.0), (.outro, 27, 0.2)])
+        let exit = try #require(SetProgrammer.exitMs(grid: grid(mixOutMs: bar * 120), arrangement: late, durationMs: bar * 128))
+        #expect(abs(exit - bar * 101) < 0.01, "exit at bar \(exit / bar)")
+
+        let near = arrangement([(.intro, 16, 0.2), (.drop, 32, 0.9), (.breakdown, 18, 0.4), (.drop, 32, 1.0), (.outro, 30, 0.2)])
+        let snapped = try #require(SetProgrammer.exitMs(grid: grid(mixOutMs: bar * 120), arrangement: near, durationMs: bar * 128))
+        #expect(abs(snapped - bar * 96) < 0.01, "exit at bar \(snapped / bar)")
+    }
+
     @Test("Never before forty per cent, never after the record's own mix-out")
     func bounds() throws {
         // A drop that ends at bar 24 (19%) is too early to leave on; the next

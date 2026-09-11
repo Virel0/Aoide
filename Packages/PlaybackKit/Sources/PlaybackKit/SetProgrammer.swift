@@ -60,10 +60,11 @@ public enum SetProgrammer {
         let usable = candidates.filter { $0 >= floor && $0 <= mixOut }
         guard let chosen = usable.min(by: { abs($0 - target) < abs($1 - target) }) else { return nil }
 
-        // Onto the phrase line at or before it, then the bar line; the section
-        // boundary is already on a bar, but the phrase is what a DJ counts in.
+        // Onto the phrase line at or before it if one is close, else the bar
+        // line. The boundary is where the hook ends; a phrase line seven bars
+        // back is inside the hook, and leaving there is leaving early.
         let barMs = grid.barMs(at: chosen) ?? 0
-        return arrangement.phraseStart(atOrBefore: chosen, barMs: barMs)
+        return arrangement.phraseLine(atOrBefore: chosen, barMs: barMs)
             ?? grid.downbeat(atOrBefore: chosen)
             ?? chosen
     }

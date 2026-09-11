@@ -34,12 +34,14 @@ private let plain = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 1
 
 @Suite("What a mix can see, now that it can see the music")
 struct ArrangementTests {
-    @Test("A mix starts on a phrase, not merely on a bar")
+    @Test("A mix starts on a phrase when one is close, and on the bar when it is not")
     func phraseAligned() throws {
         // A pair with everything going for it earns thirty-two bars. Mix-out at
         // bar 112; thirty-two back is bar 80, a phrase line. Move the mix-out to
-        // bar 115 and thirty-two back is bar 83 — a bar line and not a phrase
-        // line — so the start goes back to 80.
+        // bar 115 and thirty-two back is bar 83 — three bars past the phrase
+        // line, further than the two the server itself allows a boundary to
+        // move — so the start stays on bar 83 and the mix ends where the
+        // record's mix-out says, not seven bars into it.
         let crooked = BeatGrid(
             segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0,
             mixInMs: bar * 8, mixOutMs: bar * 115
@@ -49,7 +51,18 @@ struct ArrangementTests {
             outgoingArrangement: plain, incomingArrangement: plain
         ))
         #expect(plan.bars == 32)
-        #expect(abs(plan.outgoingStartMs - bar * 80) < 0.01)
+        #expect(abs(plan.outgoingStartMs - bar * 83) < 0.01)
+
+        // Two bars past a phrase line, the start does move onto it.
+        let nearly = BeatGrid(
+            segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0,
+            mixInMs: bar * 8, mixOutMs: bar * 114
+        )
+        let snapped = try #require(DJPlanner.plan(
+            outgoing: nearly, incoming: grid(),
+            outgoingArrangement: plain, incomingArrangement: plain
+        ))
+        #expect(abs(snapped.outgoingStartMs - bar * 80) < 0.01)
 
         // And the entry: mix-in at bar 8 sits on the phrase line already. At bar
         // 11 it would come in three bars into a phrase, so it comes in at 0.

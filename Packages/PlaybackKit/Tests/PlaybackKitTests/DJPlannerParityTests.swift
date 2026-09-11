@@ -253,16 +253,22 @@ private let parityTable: [ParityCase] = [
         bars: nil
     ),
     ParityCase(
-        why: "a mix starts on a phrase, not merely on a bar",
+        why: "a mix starts on the bar when the phrase line is more than two bars back",
         outgoing: grid(mixOutMs: bar * 115), incoming: grid(),
         outgoingArrangement: plain, incomingArrangement: plain,
-        bars: 32, outgoingStartMs: 150_000, incomingStartMs: 0, incomingRate: 1, total: 0.7600000000000001
+        bars: 32, outgoingStartMs: 155_625, incomingStartMs: 0, incomingRate: 1, total: 0.7600000000000001
     ),
     ParityCase(
         why: "and comes in on one",
         outgoing: grid(), incoming: grid(mixInMs: bar * 11),
         outgoingArrangement: plain, incomingArrangement: plain,
         bars: 32, outgoingStartMs: 150_000, incomingStartMs: 0, incomingRate: 1, total: 0.7600000000000001
+    ),
+    ParityCase(
+        why: "an entry a bar short of a phrase line moves forward onto it",
+        outgoing: grid(), incoming: grid(mixInMs: bar * 15),
+        outgoingArrangement: plain, incomingArrangement: plain,
+        bars: 32, outgoingStartMs: 150_000, incomingStartMs: 30_000, incomingRate: 1, total: 0.8000000000000002
     ),
     ParityCase(
         why: "without a phrase grid, a bar line is the best there is",
@@ -280,7 +286,7 @@ private let parityTable: [ParityCase] = [
         why: "one voice is fine, and gets the filter fade",
         outgoing: grid(), incoming: grid(),
         outgoingArrangement: singingOut, incomingArrangement: singsLater,
-        bars: 8, outgoingStartMs: 180_000, incomingStartMs: 0, incomingRate: 1, total: 0.665, style: .filterFade
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 15_000, incomingRate: 1, total: 0.665, style: .filterFade
     ),
     ParityCase(
         why: "not being able to tell counts as singing",
@@ -292,13 +298,13 @@ private let parityTable: [ParityCase] = [
         why: "looked and found none is not the same as could not tell",
         outgoing: grid(), incoming: grid(),
         outgoingArrangement: cannotTell, incomingArrangement: instrumental,
-        bars: 8, outgoingStartMs: 180_000, incomingStartMs: 0, incomingRate: 1, total: 0.665, style: .filterFade
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 15_000, incomingRate: 1, total: 0.665, style: .filterFade
     ),
     ParityCase(
         why: "a drop onto a drop gets eight bars, not sixteen",
         outgoing: grid(), incoming: grid(),
         outgoingArrangement: dropOut, incomingArrangement: dropIn,
-        bars: 8, outgoingStartMs: 180_000, incomingStartMs: 0, incomingRate: 1, total: 0.7250000000000001
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 15_000, incomingRate: 1, total: 0.7250000000000001
     ),
     ParityCase(
         why: "coming in on a build keeps the sixteen",
@@ -328,7 +334,7 @@ private let parityTable: [ParityCase] = [
         why: "clashing keys are a capped filter fade",
         outgoing: grid(key: "3B"), incoming: grid(key: "10B"),
         outgoingArrangement: buildThenDrop, incomingArrangement: buildThenDrop,
-        bars: 8, outgoingStartMs: 180_000, incomingStartMs: 0, incomingRate: 1, total: 0.625, style: .filterFade
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 0, incomingRate: 1, total: 0.625, style: .filterFade
     ),
     ParityCase(
         why: "the outgoing record singing is a filter fade, uncapped",
@@ -382,6 +388,6 @@ struct DJPlannerParityTests {
 
     @Test("answers every case in the table")
     func everyCase() {
-        #expect(parityTable.count == 40)
+        #expect(parityTable.count == 41)
     }
 }
