@@ -76,14 +76,31 @@ struct NowPlayingView: View {
     }
 
     private func titleBlock(_ track: Track) -> some View {
-        VStack(spacing: 2) {
-            Text(track.title)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-            Text(track.artist)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+                Text(track.artist)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Where Apple Music keeps it: the record's own menu, beside its
+            // name. "Not Interested" lives here because the record playing is
+            // the one Infinity chose, and this is where you tell it not to.
+            Menu {
+                TrackTasteButtons(track: track, skips: true)
+            } label: {
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .contentShape(.circle)
+            }
+            .accessibilityLabel("More")
         }
         .padding(.horizontal, 32)
         .padding(.bottom, 12)
@@ -316,6 +333,17 @@ private struct QueueRow: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
+            }
+        }
+        // A pick that is wrong is told so here, where it was seen: the flag
+        // keeps it out of every set from now on, and the row goes with it.
+        .contextMenu {
+            TrackTasteButtons(track: entry.track) {
+                PlaybackEngine.shared.remove(entryId: entry.id)
+            }
+            Divider()
+            Button("Remove from Queue", systemImage: "minus.circle", role: .destructive) {
+                PlaybackEngine.shared.remove(entryId: entry.id)
             }
         }
     }

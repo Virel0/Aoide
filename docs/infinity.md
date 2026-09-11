@@ -356,6 +356,12 @@ The readings the fixture pins, where the prose left room:
 - **`mixability` is `null` throughout** — no grids in the fixture — and is
   written, not omitted. The planner's forty pairs pin it.
 
+One reading the sidecar changed to match the fixture, worth knowing: a
+decided listen is one that was completed or skipped, whether or not it
+carries `endedAt`. The phone's `finishCounts` SQL still says `endedAt IS NOT
+NULL`; on real data a completed or skipped event always has one, so the two
+cannot diverge, but the fixture and the SQL do not say quite the same thing.
+
 On the phone, Infinity asks `/aoide/next` first and enqueues the answer in the
 server's order; a 404 turns the Instant Mix path back on for the session. Each
 row the server chose shows its figures in the queue — "Taste 71% · Fits 62% ·
