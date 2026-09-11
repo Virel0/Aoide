@@ -243,3 +243,26 @@ gap is for.
 
 A pair that has not been read still crossfades. A cut is a decision about two
 records, and a decision needs to know them.
+
+## Where the exit actually falls
+
+Two rules found by a listener hearing a record leave *right before its
+chorus* into a slower song — twice, for two different reasons:
+
+- **A cut looks for a line nobody is singing across, but only inside the
+  part the exit was chosen in.** The cleanest rest anywhere near a chorus is
+  the breath before it; a search that could reach it would leave the record
+  on the brink of the hook. The search stays inside the section; a rest in
+  the hook is taken, the breath before it is not.
+- **A moment moves onto a phrase line only when one is within two bars** —
+  the server's own rule for its section boundaries. An exit is the end of the
+  hook on the bar the server put it on; snapping it to the phrase line *at
+  or before* it moved it up to seven bars back, into the hook. The same for a
+  mix's start, which is counted back from the exit; an entry may move either
+  way, onto the nearest. Five rows of the planner's parity table moved with
+  this and a forty-first pins the forward snap: the desktop and the sidecar
+  carry the same rows.
+
+The lyrics were also fixed in passing: on the decks they read the idle
+player's clock and froze. And the scrubber runs the whole record now, with a
+mark where the set will leave it, rather than ending at the exit.
