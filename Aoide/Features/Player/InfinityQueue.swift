@@ -199,6 +199,13 @@ final class InfinityQueue: PlaybackReporter {
     /// screen — so it is the one place a top-up cannot be missed.
     func playbackDidStart(_ track: Track) async {
         await topUpIfNeeded()
+        // What is coming, fetched for the decks before it is needed — after the
+        // top-up, so the records it just chose are the ones fetched.
+        let queue = PlaybackEngine.shared.queue
+        let ahead = [queue.current].compactMap { $0 } + queue.upNext
+        TransientTracks.shared.prepare(ahead.map(\.track))
+        BeatGridSync.shared.prefetch(ids: ahead.prefix(TransientTracks.capacity).map(\.track.id))
+        ArrangementSync.shared.prefetch(ids: ahead.prefix(TransientTracks.capacity).map(\.track.id))
     }
 
     func playbackDidProgress(_ track: Track, position: Duration, isPaused: Bool) async {}

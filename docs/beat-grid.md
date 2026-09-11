@@ -243,10 +243,13 @@ changing speed and is audibly artefacted above 1.0. Varispeed resamples, so
 speed and pitch move together — which is what a turntable's pitch fader does,
 and at ±6% it is how records have been mixed since 1975.
 
-**Local files only**, which is the shape of the feature rather than a gap:
-`AVAudioFile` reads from disk, the phone already converts every download to
-Apple Lossless, and a mix that might stall halfway is not a mix. Streamed tracks
-crossfade.
+**Files only** — `AVAudioFile` reads from disk, and a mix that might stall
+halfway is not a mix — but no longer *downloads* only. With Auto DJ on, the
+next record or two in the queue are fetched to a cache the system may reclaim,
+well before they are needed, and forgotten once the queue has moved past them.
+That is what lets the decks follow Infinity's choices rather than only what
+happened to be on the phone. A record that has not arrived by the time it is
+needed crossfades.
 
 ### Measured, not asserted
 

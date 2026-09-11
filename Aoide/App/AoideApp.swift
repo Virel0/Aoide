@@ -47,7 +47,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // files, and a mix that might stall halfway is not a mix.
         PlaybackEngine.shared.isAutoDJing = AutoDJPreference.isOn
         PlaybackEngine.shared.localFileResolver = { track in
-            DownloadStore.localURLIfPresent(for: track.id)
+            DownloadStore.localURLIfPresent(for: track.id) ?? TransientTracks.shared.url(for: track.id)
         }
         PlaybackEngine.shared.beatGridResolver = { track in
             BeatGridSync.shared.grid(for: track.id)
