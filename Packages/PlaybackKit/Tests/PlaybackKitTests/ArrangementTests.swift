@@ -361,12 +361,13 @@ struct CutTests {
         ))
         #expect(echo.style == .echoOut)
 
-        // Level into level is a plain cut.
-        let plain = try #require(DJPlanner.planCut(
+        // Level into level too: a dead cut was the harshest thing the set
+        // did, and nothing plans one now.
+        let level = try #require(DJPlanner.planCut(
             outgoing: grid(), incoming: grid(),
             outgoingArrangement: read, incomingArrangement: read
         ))
-        #expect(plain.style == .cut)
+        #expect(level.style == .echoOut)
     }
 
     @Test("A pair that has not been read is not cut either")

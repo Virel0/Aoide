@@ -79,6 +79,12 @@ public final class DJSession {
 
     public private(set) var phase: Phase = .idle
 
+    /// How many records have been handed over since the session began. A
+    /// hand-over with no length — a join, a plain cut — begins and ends
+    /// between two ticks, so nobody watching ``phase`` sees it; this does not
+    /// go back.
+    public private(set) var handOvers = 0
+
     /// The session clock, in seconds, at which the record now playing began.
     private var startedAt: Double = 0
     /// Where in that record playback began.
@@ -456,6 +462,7 @@ public final class DJSession {
 
         side = other
         current = mix.incoming
+        handOvers += 1
         startOffset = mix.incomingOffset
         // The incoming deck has been running since the mix began, at its bent
         // rate, so its clock did not start now — it started then.

@@ -191,16 +191,18 @@ public enum DJPlanner {
     public static let echoFadeFrom = 0.6
 
     /// How long after the outgoing record is cut the incoming one comes in:
-    /// one bar of the outgoing tempo. The tail is a bridge, not a backdrop —
-    /// the room hears the record stop, its last hit repeat across a bar of
-    /// nothing else, and the new record land on the next one as the repeats
-    /// are fading. Starting the new record on the cut itself buried the tail
-    /// under it, and what that sounded like was a cut.
-    public static let echoGapBars = 1.0
+    /// two beats of the outgoing tempo. The tail is a bridge, not a backdrop —
+    /// the room hears the record stop, its last hit repeat across two beats
+    /// of nothing else, and the new record land while the repeats are still
+    /// going. Starting the new record on the cut itself buried the tail under
+    /// it; a whole bar's gap let the tail finish first, and the new record
+    /// arrived after a silence. Two beats is where the repeats are still
+    /// audible under the new record's first bar.
+    public static let echoGapBeats = 2.0
 
     public static func echoGapSeconds(targetBpm: Double) -> Double {
         guard targetBpm > 0 else { return 0 }
-        return echoGapBars * 4 * 60 / targetBpm
+        return echoGapBeats * 60 / targetBpm
     }
 
     /// How long before the cut the echo is brought in under the record: two
@@ -253,11 +255,14 @@ public enum DJPlanner {
         guard exit >= notBeforeMs else { return nil }
         let entry = entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
 
-        // Ending out of something loud into something quieter is a hit worth
-        // letting ring; anything else is cleaner cut dead.
-        let exitEnergy = outgoingArrangement.section(at: exit)?.energy ?? 0.5
-        let entryEnergy = incomingArrangement.section(at: entry)?.energy ?? 0.5
-        let style: DJTransition.Style = exitEnergy > entryEnergy + 0.2 ? .echoOut : .cut
+        // Always the echo-out. A dead cut was the plan for a pair at level
+        // energy, and it was the harshest thing the set did: the exit for a
+        // pair that cannot be mixed is the tail as a bridge, whatever the
+        // energies. `.cut` stays a style the decks can perform; nothing plans
+        // it.
+        let style: DJTransition.Style = .echoOut
+        let exitEnergy = outgoingArrangement.section(at: exit)?.energy
+        let entryEnergy = incomingArrangement.section(at: entry)?.energy
 
         let rate = bendableRate(from: incoming.segment(at: entry)?.bpm ?? 0, to: outSegment.bpm) ?? 1
         return DJTransition(
@@ -324,6 +329,11 @@ public enum DJPlanner {
         let keysClash = outgoing.key != nil && incoming.key != nil
             && !CamelotKey.areCompatible(outgoing.key, incoming.key)
         let capped = dropOnDrop || keysClash
+        // And a filter fade — which is what a pair with a voice on either
+        // side gets — is capped too: the filter takes the melody out of the
+        // outgoing record progressively, and thirty-two bars of a voice being
+        // slowly filtered under another record is thirty-two bars of clash.
+        // Eight is long enough for the sweep to read as a move.
 
         for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
@@ -383,6 +393,7 @@ public enum DJPlanner {
             let clashes = outgoing.key != nil && incoming.key != nil && !compatible
             let anyoneSings = outgoingSings == true || incomingSings == true
             let style: DJTransition.Style = (clashes || anyoneSings) ? .filterFade : .blend
+            guard style == .blend || bars <= minimumBars else { continue }
 
             return DJTransition(
                 outgoingStartMs: start,

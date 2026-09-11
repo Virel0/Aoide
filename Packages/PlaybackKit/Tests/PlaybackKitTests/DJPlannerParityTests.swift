@@ -337,16 +337,16 @@ private let parityTable: [ParityCase] = [
         bars: 8, outgoingStartMs: 195_000, incomingStartMs: 0, incomingRate: 1, total: 0.625, style: .filterFade
     ),
     ParityCase(
-        why: "the outgoing record singing is a filter fade, uncapped",
+        why: "the outgoing record singing is a filter fade, capped at eight",
         outgoing: grid(key: "8A"), incoming: grid(key: "9A"),
         outgoingArrangement: singingThroughout, incomingArrangement: buildThenDrop,
-        bars: 32, outgoingStartMs: 150_000, incomingStartMs: 0, incomingRate: 1, total: 0.7649999999999999, style: .filterFade
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 0, incomingRate: 1, total: 0.7649999999999999, style: .filterFade
     ),
     ParityCase(
         why: "and so is the incoming one",
         outgoing: grid(key: "8A"), incoming: grid(key: "9A"),
         outgoingArrangement: buildThenDrop, incomingArrangement: singingThroughout,
-        bars: 32, outgoingStartMs: 150_000, incomingStartMs: 0, incomingRate: 1, total: 0.7649999999999999, style: .filterFade
+        bars: 8, outgoingStartMs: 195_000, incomingStartMs: 0, incomingRate: 1, total: 0.7649999999999999, style: .filterFade
     ),
     // The singing check covers exactly the stretch that would overlap, so the
     // score can change with the length; the planner gives up on an entry the

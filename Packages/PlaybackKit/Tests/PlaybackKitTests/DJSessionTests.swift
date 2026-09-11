@@ -500,8 +500,9 @@ struct DJCutTests {
 
     @Test("The outgoing record stops on the line and the new one starts that instant")
     func cutFalls() throws {
-        // 128 out, 100 in: unbendable, so a cut. Both instrumental and level, so
-        // a plain one rather than an echo.
+        // A plain cut, performed by the decks: 128 out, 100 in. Nothing plans
+        // one any more, but the decks still have to do it right, and the
+        // hand-over count is how a zero-length hand-over is noticed at all.
         let outgoing = try clicks(bpm: 128)
         let incoming = try clicks(bpm: 100)
         defer {
@@ -517,13 +518,26 @@ struct DJCutTests {
         let read = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .unknown, energy: 0.5)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
         let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
         let inGrid = grid(bpm: 100, mixOutMs: 100_000)
-        let cut = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: read, incomingArrangement: read))
-        #expect(cut.style == .cut)
+        let planned = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: read, incomingArrangement: read))
+        let cut = DJTransition(
+            outgoingStartMs: planned.outgoingStartMs, incomingStartMs: planned.incomingStartMs,
+            bars: 0, seconds: 0, targetBpm: planned.targetBpm, outgoingRate: 1, incomingRate: 1,
+            restoreSeconds: 0, isKeyCompatible: planned.isKeyCompatible, score: planned.score, style: .cut
+        )
 
         try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
         try session.seek(to: cut.outgoingStartMs / 1_000 - 2, at: 0)
         try session.schedule(cut, into: DJItem(url: incoming, grid: inGrid), at: 0)
-        let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
+        #expect(session.handOvers == 0)
+        var sawMixing = false
+        let rendered = try mixer.renderOffline(seconds: 6) { elapsed in
+            session.update(at: elapsed)
+            if session.phase == .mixing { sawMixing = true }
+        }
+        // Nobody watching the phase ever sees a cut; the count is the only
+        // sign of it.
+        #expect(!sawMixing)
+        #expect(session.handOvers == 1)
 
         let times = clickTimes(in: rendered)
         // Before the cut, clicks at 128; after it, at 100 — and nothing at 128
@@ -567,7 +581,7 @@ struct DJCutTests {
         let tail = DJPlanner.echoTailSeconds(targetBpm: 128)
         #expect(abs(tail - 3.75) < 1e-9, "two bars at 128")
         let gap = DJPlanner.echoGapSeconds(targetBpm: 128)
-        #expect(abs(gap - 1.875) < 1e-9, "one bar at 128")
+        #expect(abs(gap - 0.9375) < 1e-9, "two beats at 128")
         var corners: [(Double, Double)] = []
         var wet: [(Double, Double, Bool)] = []
         let rendered = try mixer.renderOffline(seconds: 8) { elapsed in
@@ -601,13 +615,16 @@ struct DJCutTests {
         #expect(gaps.allSatisfy { abs($0 - 60.0 / 128) < 0.015 }, "gaps \(gaps.map { Int($0 * 1000) })")
         // The fader does not touch the first repeats: the third is still
         // within a few decibels of what the feedback alone would give.
+        // Clicks at 1.5 kHz are above both the tail's high-pass and the
+        // delay's own darkening, so the third repeat is the feedback squared
+        // to within a few per cent — which pins the feedback itself.
         let peaks = clickPeaks(in: rendered, at: ring)
         if peaks.count >= 3 {
-            let expected = pow(0.65, 2) * peaks[0]
-            #expect(peaks[2] > expected * 0.7, "third repeat \(peaks[2]) against \(expected) from feedback alone")
+            let ratio = peaks[2] / peaks[0]
+            #expect(abs(ratio - 0.49) < 0.04, "third repeat at \(ratio) of the first; 70% feedback gives 0.49")
         }
-        // The repeats are still going where the new record comes in, a bar
-        // after the cut — the bridge — and are gone once the tail is over.
+        // The repeats are still going where the new record comes in, two
+        // beats after the cut — the bridge — and are gone once the tail is over.
         #expect(ring.contains { abs($0 - (2 + gap)) < 0.1 }, "no repeat under the new record's first beat: \(ring)")
         let late = times.filter { $0 > 2 + tail + 0.6 }
         #expect(late.isEmpty, "still ringing at \(late.first ?? 0)s")
@@ -675,10 +692,10 @@ struct DJCutTests {
         let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
 
         // The first repeat, a beat after the cut, still has its weight: the
-        // filter has barely started to move. The fourth — where the new
-        // record lands — has lost it: on the feedback alone it would be
-        // 0.65³ of the first, and the filter at 200 Hz takes a 60 Hz thump
-        // down by another twenty decibels or so.
+        // filter is halfway. The fourth — a bar into the new record — has
+        // lost it: on the feedback alone it would be 0.7³ of the first, and
+        // the filter at 200 Hz takes a 60 Hz thump down by another twenty
+        // decibels or so.
         let beat = 60.0 / 128
         let peaks = clickPeaks(in: rendered, at: [2 + beat, 2 + 4 * beat])
         #expect(peaks[0] > 0.3, "first repeat \(peaks[0])")
@@ -719,7 +736,7 @@ struct DJCutTests {
         #expect(mixer.echoWet(on: .a) == 0, "echo still in after the pause: \(mixer.echoWet(on: .a))")
     }
 
-    @Test("The new record lands one bar after the cut, on its own downbeat")
+    @Test("The new record lands two beats after the cut, on its own downbeat")
     func newRecordLandsOnTheNextOne() throws {
         let outgoing = try clicks(bpm: 128)
         let incoming = try clicks(bpm: 100)

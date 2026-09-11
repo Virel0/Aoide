@@ -82,9 +82,11 @@ public final class DJMixer {
             // Dry until asked. Feedback and the darkening of each repeat are
             // what make it read as an echo rather than a stutter.
             echo.wetDryMix = 0
-            // Each repeat 3.7 dB under the last: the fourth, where the next
-            // record comes in, is fifteen down — fading, not gone.
-            echo.feedback = 65
+            // Each repeat 3.1 dB under the last: the third, where the next
+            // record comes in, is six down, and the seventh — a bar and a
+            // half into the new record — twenty. Fading under it, not gone
+            // before it.
+            echo.feedback = 70
             echo.lowPassCutoff = 6_000
             echo.delayTime = 0.5
         }

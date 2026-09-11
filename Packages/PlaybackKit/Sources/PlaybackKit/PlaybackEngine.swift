@@ -266,6 +266,10 @@ public final class PlaybackEngine {
     /// The entry a mix has been booked into, so the same one is not booked twice
     /// and a changed queue can cancel it.
     private var djScheduledEntryId: UUID?
+    /// The session's hand-over count when the current booking was made, so a
+    /// hand-over that begins and ends between two ticks — a join — is still
+    /// noticed by the count moving past it.
+    private var djHandOversAtBooking = 0
 
     /// How long before a mix the incoming record is put on the other deck.
     ///
@@ -1276,7 +1280,8 @@ public final class PlaybackEngine {
         // A mix that has begun means the queue has moved: the record the listener
         // is hearing arrive is the next one, and everything that reads the queue
         // — the lock screen, the car, the history — has to agree.
-        if session.phase == .mixing, let scheduled = djScheduledEntryId, scheduled != entryId {
+        if let scheduled = djScheduledEntryId, scheduled != entryId,
+           session.phase == .mixing || session.handOvers != djHandOversAtBooking {
             adoptMixedTrack(scheduled, at: now)
             return
         }
@@ -1382,6 +1387,7 @@ public final class PlaybackEngine {
                 }
             }
             djScheduledEntryId = next.entryId
+            djHandOversAtBooking = session.handOvers
         } catch {
             log.warning("Couldn't book a hand-over: \(error.localizedDescription, privacy: .public)")
         }
