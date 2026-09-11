@@ -275,6 +275,55 @@ struct DJSessionTests {
         #expect(session.playingSide == .b)
         #expect(abs(mixer.rate(on: .b) - 1) < 0.001)
     }
+
+    @Test("What is heard follows the incoming record from the moment the mix begins")
+    func heardPositionFollowsTheIncomingRecord() throws {
+        let outgoing = try record(bpm: 128)
+        let incoming = try record(bpm: 124)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
+        let incomingGrid = grid(bpm: 124, mixInMs: 0)
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+
+        try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
+        try session.seek(to: 79.5, at: 0)
+        try session.schedule(transition, into: DJItem(url: incoming, grid: incomingGrid), at: 0)
+
+        // Before the mix, heard and playing are the same record.
+        _ = try mixer.renderOffline(seconds: 0.5) { session.update(at: $0) }
+        #expect(session.phase == .playing)
+        #expect(abs(session.heardPosition(at: 0.5) - session.position(at: 0.5)) < 1e-9)
+
+        // Ten seconds in — the mix began when the outgoing record, started at
+        // 79.5 s, reached its mix-out point — the outgoing record is past
+        // ninety seconds, and what is heard is the incoming record, as far
+        // into itself as the mix is old, at its bent rate.
+        _ = try mixer.renderOffline(seconds: 9.5) { session.update(at: 0.5 + $0) }
+        #expect(session.phase == .mixing)
+        let heard = session.heardPosition(at: 10)
+        #expect(session.position(at: 10) > 88)
+        let mixBeganAt = transition.outgoingStartMs / 1000 - 79.5
+        let expected = transition.incomingStartMs / 1000 + (10 - mixBeganAt) * transition.incomingRate
+        #expect(abs(heard - expected) < 0.05, "heard \(heard), expected \(expected)")
+
+        // When the mix ends the incoming record is the record playing, and the
+        // figure does not jump: it is the same clock, read the same way.
+        let before = session.heardPosition(at: 15.99)
+        _ = try mixer.renderOffline(seconds: 6.5) { session.update(at: 10 + $0) }
+        #expect(session.phase == .playing)
+        #expect(session.playingSide == .b)
+        let after = session.heardPosition(at: 16.01)
+        #expect(abs(after - before) < 0.1, "jumped from \(before) to \(after)")
+    }
 }
 
 @Suite("A cut, end to end")

@@ -199,8 +199,24 @@ public final class DJSession {
     }
 
     /// Where the record playing has got to, in its own timeline.
+    ///
+    /// During a mix this is still the *outgoing* record: the booking and the
+    /// end-of-sound arithmetic are in its terms until it stops. A screen wants
+    /// ``heardPosition(at:)``.
     public func position(at sessionSeconds: Double) -> Double {
         startOffset + max(0, sessionSeconds - startedAt) * mixer.rate(on: side)
+    }
+
+    /// Where the record the listener is *arriving at* has got to.
+    ///
+    /// The same as ``position(at:)`` except during a mix, when it follows the
+    /// incoming record from the moment it started under the outgoing one. The
+    /// queue moves on to the incoming record as the mix begins, so a progress
+    /// bar reading the outgoing record's position against the incoming one's
+    /// length sat pinned at the end for the length of the mix, then jumped back.
+    public func heardPosition(at sessionSeconds: Double) -> Double {
+        guard phase == .mixing, let mix else { return position(at: sessionSeconds) }
+        return mix.incomingOffset + max(0, sessionSeconds - mix.startsAt) * mixer.rate(on: other)
     }
 
     /// Books a beat-matched mix somebody else planned.

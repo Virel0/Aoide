@@ -15,7 +15,7 @@ struct MiniPlayerView: View {
         // the moment music started — so the idle state gets real content instead.
         if let track = engine.currentTrack {
             HStack(spacing: 12) {
-                ArtworkView(url: track.artworkURL, cornerRadius: 4)
+                PlayerArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack, cornerRadius: 4)
                     .frame(width: Design.Size.miniPlayerArtwork, height: Design.Size.miniPlayerArtwork)
 
                 VStack(alignment: .leading, spacing: 1) {

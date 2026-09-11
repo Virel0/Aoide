@@ -204,6 +204,11 @@ public final class PlaybackEngine {
 
     public private(set) var mixState: MixState = .off
 
+    /// The record on its way out while ``mixState`` is `.mixing`: the queue has
+    /// already moved on to the one coming in, and a screen that wants to show
+    /// the two crossing needs to know what the first one was.
+    public private(set) var outgoingTrack: Track?
+
     /// Auto DJ: whether tracks that can be mixed are mixed.
     ///
     /// A different thing from ``isCrossfading`` and a stricter one. A crossfade
@@ -1020,6 +1025,7 @@ public final class PlaybackEngine {
         djScheduledEntryId = nil
         booked = nil
         mixing = nil
+        outgoingTrack = nil
         mixState = .ready
         log.info("Taking \(track.title, privacy: .public) onto the decks at \(self.elapsed.seconds, privacy: .public)s")
         startDJTimer()
@@ -1147,6 +1153,7 @@ public final class PlaybackEngine {
         djScheduledEntryId = nil
         booked = nil
         mixing = nil
+        outgoingTrack = nil
         mixState = .ready
         // The scrubber runs to where the set leaves the record, not to where
         // the file ends; a bar that stops at sixty per cent is a bar lying.
@@ -1204,6 +1211,7 @@ public final class PlaybackEngine {
         djScheduledEntryId = nil
         booked = nil
         mixing = nil
+        outgoingTrack = nil
         mixState = .off
         // A take-over abandoned halfway would otherwise leave the player turned
         // down for good.
@@ -1236,11 +1244,11 @@ public final class PlaybackEngine {
         // is hearing arrive is the next one, and everything that reads the queue
         // — the lock screen, the car, the history — has to agree.
         if session.phase == .mixing, let scheduled = djScheduledEntryId, scheduled != entryId {
-            adoptMixedTrack(scheduled)
+            adoptMixedTrack(scheduled, at: now)
             return
         }
 
-        elapsed = .seconds(session.position(at: now))
+        elapsed = .seconds(session.heardPosition(at: now))
         bookHandoverIfDue(at: now)
 
         switch session.phase {
@@ -1253,6 +1261,7 @@ public final class PlaybackEngine {
         default:
             // The mix is over; the booking it came from has nothing left to say.
             mixing = nil
+            outgoingTrack = nil
             if let booked {
                 mixState = .booked(bars: booked.bars, style: booked.style)
             } else {
@@ -1342,14 +1351,18 @@ public final class PlaybackEngine {
     }
 
     /// The queue catches up with what the decks are already playing.
-    private func adoptMixedTrack(_ entryId: UUID) {
+    private func adoptMixedTrack(_ entryId: UUID, at now: Double) {
         stopReportingCurrent()
+        outgoingTrack = queue.currentTrack
         _ = queue.jump(to: entryId)
         djEntryId = entryId
         djScheduledEntryId = nil
         mixing = booked
         booked = nil
         lastReportedSecond = -1
+        // The lock screen is told where the new record is *now*, not where the
+        // old one had got to — it extrapolates from whatever it was last given.
+        if let session = djSession { elapsed = .seconds(session.heardPosition(at: now)) }
         if let track = queue.currentTrack {
             duration = programmedExit(for: track).map { .seconds($0 / 1_000) }
                 ?? (track.sound ?? soundResolver?(track))?.soundEnd

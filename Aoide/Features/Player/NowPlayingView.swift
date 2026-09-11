@@ -24,7 +24,7 @@ struct NowPlayingView: View {
             if let track {
                 Spacer(minLength: 8)
 
-                ArtworkView(url: track.artworkURL, cornerRadius: 10)
+                PlayerArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack, cornerRadius: 10)
                     .padding(.horizontal, 32)
                     .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
                     // The cover shrinks while paused, the way Apple Music does.
