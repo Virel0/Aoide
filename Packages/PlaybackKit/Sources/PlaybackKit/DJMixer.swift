@@ -82,9 +82,9 @@ public final class DJMixer {
             // Dry until asked. Feedback and the darkening of each repeat are
             // what make it read as an echo rather than a stutter.
             echo.wetDryMix = 0
-            // Each repeat 4.4 dB under the last: eight of them across a
-            // two-bar tail before the fader takes the rest.
-            echo.feedback = 60
+            // Each repeat 3.7 dB under the last: the fourth, where the next
+            // record comes in, is fifteen down — fading, not gone.
+            echo.feedback = 65
             echo.lowPassCutoff = 6_000
             echo.delayTime = 0.5
         }
@@ -99,10 +99,15 @@ public final class DJMixer {
             engine.attach(deck.speed)
             engine.attach(deck.shelf)
             engine.attach(deck.echo)
+            // The delay sits *before* the filter, so the filter shapes the
+            // echo's repeats as well as the record: an echo-out takes the low
+            // end out of the tail so the next record's bass comes in clean.
+            // The delay is dry unless an echo-out is running, and a dry delay
+            // is a wire, so nothing else notices the order.
             engine.connect(deck.player, to: deck.speed, format: nil)
-            engine.connect(deck.speed, to: deck.shelf, format: nil)
-            engine.connect(deck.shelf, to: deck.echo, format: nil)
-            engine.connect(deck.echo, to: engine.mainMixerNode, format: nil)
+            engine.connect(deck.speed, to: deck.echo, format: nil)
+            engine.connect(deck.echo, to: deck.shelf, format: nil)
+            engine.connect(deck.shelf, to: engine.mainMixerNode, format: nil)
         }
     }
 

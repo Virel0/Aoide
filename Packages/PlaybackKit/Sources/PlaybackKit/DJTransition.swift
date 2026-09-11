@@ -190,6 +190,24 @@ public enum DJPlanner {
     /// fader only sees the last of them out so the ring does not stop dead.
     public static let echoFadeFrom = 0.6
 
+    /// How long after the outgoing record is cut the incoming one comes in:
+    /// one bar of the outgoing tempo. The tail is a bridge, not a backdrop —
+    /// the room hears the record stop, its last hit repeat across a bar of
+    /// nothing else, and the new record land on the next one as the repeats
+    /// are fading. Starting the new record on the cut itself buried the tail
+    /// under it, and what that sounded like was a cut.
+    public static let echoGapBars = 1.0
+
+    public static func echoGapSeconds(targetBpm: Double) -> Double {
+        guard targetBpm > 0 else { return 0 }
+        return echoGapBars * 4 * 60 / targetBpm
+    }
+
+    /// Where the tail's high-pass corner ends up, and the low end with it:
+    /// swept there across the gap so the repeats have no kick left in them by
+    /// the time the new record's does.
+    public static let echoHighPassHz = 200.0
+
     /// Plans a cut — or an echo-out — for a pair that has been read but cannot
     /// be mixed: tempi too far apart to bend, or both records singing. The
     /// outgoing record stops on the phrase line at its exit; the incoming one
@@ -489,7 +507,7 @@ public enum DJAutomation {
 
     /// Between two corners on a log scale, because that is how frequency is
     /// heard: halfway from 20 Hz to 220 is 66, not 120.
-    static func sweep(from: Double, to: Double, fraction: Double) -> Double {
+    public static func sweep(from: Double, to: Double, fraction: Double) -> Double {
         from * pow(to / from, clamp(fraction))
     }
 

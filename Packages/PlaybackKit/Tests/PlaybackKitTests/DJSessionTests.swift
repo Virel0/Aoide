@@ -566,7 +566,13 @@ struct DJCutTests {
         try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
         let tail = DJPlanner.echoTailSeconds(targetBpm: 128)
         #expect(abs(tail - 3.75) < 1e-9, "two bars at 128")
-        let rendered = try mixer.renderOffline(seconds: 8) { session.update(at: $0) }
+        let gap = DJPlanner.echoGapSeconds(targetBpm: 128)
+        #expect(abs(gap - 1.875) < 1e-9, "one bar at 128")
+        var corners: [(Double, Double)] = []
+        let rendered = try mixer.renderOffline(seconds: 8) { elapsed in
+            session.update(at: elapsed)
+            corners.append((elapsed, mixer.bassCornerHz(on: .a)))
+        }
 
         let times = clickTimes(in: rendered, threshold: 0.05, holdSeconds: 0.15)
         // Repeats after the cut, one beat of the *outgoing* tempo apart,
@@ -579,11 +585,122 @@ struct DJCutTests {
         // within a few decibels of what the feedback alone would give.
         let peaks = clickPeaks(in: rendered, at: ring)
         if peaks.count >= 3 {
-            let expected = pow(0.6, 2) * peaks[0]
+            let expected = pow(0.65, 2) * peaks[0]
             #expect(peaks[2] > expected * 0.7, "third repeat \(peaks[2]) against \(expected) from feedback alone")
         }
-        // Silence once the tail is over.
+        // The repeats are still going where the new record comes in, a bar
+        // after the cut — the bridge — and are gone once the tail is over.
+        #expect(ring.contains { abs($0 - (2 + gap)) < 0.1 }, "no repeat under the new record's first beat: \(ring)")
         let late = times.filter { $0 > 2 + tail + 0.6 }
         #expect(late.isEmpty, "still ringing at \(late.first ?? 0)s")
+        // The low end leaves the tail across the gap: open at the cut, at
+        // the echo corner by the time the new record lands, open again after.
+        let atCut = corners.last { $0.0 <= 2.0 }?.1 ?? 0
+        // Read at the first tick on or after the entry: the automation runs
+        // once a block offline, and the sweep is still climbing a tick before.
+        let atEntry = corners.first { $0.0 >= 2 + gap }?.1 ?? 0
+        let after = corners.last?.1 ?? 0
+        #expect(abs(atCut - 20) < 1)
+        #expect(atEntry > 150, "corner at the new record's entry: \(atEntry) Hz")
+        #expect(abs(after - 20) < 1, "corner after the tail: \(after) Hz")
+    }
+
+    /// A record of low thumps at `bpm` — a kick with nothing above it — so
+    /// what the tail's filter takes out can be measured.
+    private func thumps(bpm: Double, seconds: Double = 120) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("thump-\(UUID()).caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: Self.rate, channels: 1)!
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let total = Int(seconds * Self.rate)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total))!
+        buffer.frameLength = AVAudioFrameCount(total)
+        let samples = buffer.floatChannelData![0]
+        for frame in 0..<total { samples[frame] = 0 }
+        let beatMs = 60_000 / bpm
+        let thumpFrames = Int(0.06 * Self.rate)
+        var index = 0
+        while true {
+            let start = Int(Double(index) * beatMs / 1000 * Self.rate)
+            guard start + thumpFrames < total else { break }
+            for frame in 0..<thumpFrames {
+                samples[start + frame] = Float(0.8 * (1 - Double(frame) / Double(thumpFrames)) * sin(2 * .pi * 60 * Double(frame) / Self.rate))
+            }
+            index += 1
+        }
+        try file.write(from: buffer)
+        return url
+    }
+
+    @Test("The kick leaves the tail before the new record's arrives")
+    func tailLosesItsLowEnd() throws {
+        let outgoing = try thumps(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        let echo = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: loud, incomingArrangement: quiet))
+
+        try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+        try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
+        let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
+
+        // The first repeat, a beat after the cut, still has its weight: the
+        // filter has barely started to move. The fourth — where the new
+        // record lands — has lost it: on the feedback alone it would be
+        // 0.65³ of the first, and the filter at 200 Hz takes a 60 Hz thump
+        // down by another twenty decibels or so.
+        let beat = 60.0 / 128
+        let peaks = clickPeaks(in: rendered, at: [2 + beat, 2 + 4 * beat])
+        #expect(peaks[0] > 0.3, "first repeat \(peaks[0])")
+        #expect(peaks[1] < 0.15 * peaks[0], "fourth repeat \(peaks[1]) against first \(peaks[0]): the kick is still in the tail")
+    }
+
+    @Test("The new record lands one bar after the cut, on its own downbeat")
+    func newRecordLandsOnTheNextOne() throws {
+        let outgoing = try clicks(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        let echo = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: loud, incomingArrangement: quiet))
+
+        // The outgoing record silent this time, so only the new one is measured.
+        try session.start(DJItem(url: outgoing, gainDb: -60, grid: outGrid), at: 0)
+        try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(echo, into: DJItem(url: incoming, grid: inGrid), at: 0)
+        let rendered = try mixer.renderOffline(seconds: 8) { session.update(at: $0) }
+
+        let gap = DJPlanner.echoGapSeconds(targetBpm: 128)
+        let times = clickTimes(in: rendered, threshold: 0.35, holdSeconds: 0.03)
+        let first = try #require(times.first)
+        #expect(abs(first - (2 + gap)) < 0.005, "first beat of the new record at \(first), wanted \(2 + gap)")
+        let gaps = zip(times, times.dropFirst()).map { $1 - $0 }
+        #expect(gaps.allSatisfy { abs($0 - 60.0 / 100) < 0.005 }, "the new record at its own tempo: \(gaps.map { Int($0 * 1000) })")
+        // The queue moved on at the cut, not at the entry: what is heard is
+        // the incoming record from the moment the outgoing one stopped.
+        #expect(session.playingSide == .b)
     }
 }

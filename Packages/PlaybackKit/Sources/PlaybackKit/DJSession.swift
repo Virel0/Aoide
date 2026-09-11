@@ -73,8 +73,8 @@ public final class DJSession {
     /// How far through a mix the decks are, 0…1, or nothing if none is running.
     /// A screen can draw a crossfader with this.
     public func mixProgress(at sessionSeconds: Double) -> Double? {
-        guard let mix, mix.endsAt > mix.startsAt, sessionSeconds >= mix.startsAt else { return nil }
-        return min(1, max(0, (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt)))
+        guard let mix, mix.endsAt > mix.beginsAt, sessionSeconds >= mix.beginsAt else { return nil }
+        return min(1, max(0, (sessionSeconds - mix.beginsAt) / (mix.endsAt - mix.beginsAt)))
     }
 
     public private(set) var phase: Phase = .idle
@@ -136,6 +136,14 @@ public final class DJSession {
         var endsAt: Double
         /// Where the incoming record was started from.
         let incomingOffset: Double
+        /// How long before the incoming record the outgoing one is cut — an
+        /// echo-out's bridge. Zero for everything else: the mix begins when
+        /// the incoming record does.
+        var cutLead: Double = 0
+
+        /// When the automation begins: the cut, for an echo-out; otherwise
+        /// the incoming record's start.
+        var beginsAt: Double { startsAt - cutLead }
 
         var transition: DJTransition? {
             if case let .mixed(transition) = kind { return transition }
@@ -255,12 +263,15 @@ public final class DJSession {
     public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws {
         let untilStart = (transition.outgoingStartMs / 1000 - position(at: sessionSeconds)) / rate
         guard transition.style.overlaps else {
-            let tail = transition.style == .echoOut ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
+            let echo = transition.style == .echoOut
+            let tail = echo ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
+            let gap = echo ? DJPlanner.echoGapSeconds(targetBpm: transition.targetBpm) : 0
             try book(
                 .cut(transition, tail: tail),
                 into: incoming,
                 from: transition.incomingStartMs / 1000,
-                startingIn: untilStart,
+                startingIn: untilStart + gap,
+                cutLead: gap,
                 lasting: tail,
                 rate: 1,
                 at: sessionSeconds
@@ -323,11 +334,12 @@ public final class DJSession {
         into incoming: DJItem,
         from offset: Double,
         startingIn lead: Double,
+        cutLead: Double = 0,
         lasting seconds: Double,
         rate incomingRate: Double,
         at sessionSeconds: Double
     ) throws {
-        guard phase == .playing, mix == nil, lead > 0 else { return }
+        guard phase == .playing, mix == nil, lead - cutLead > 0 else { return }
 
         try mixer.load(incoming.url, on: other, from: offset)
         mixer.clearEcho(other)
@@ -346,8 +358,11 @@ public final class DJSession {
             kind: kind,
             incoming: incoming,
             startsAt: sessionSeconds + lead,
-            endsAt: sessionSeconds + lead + seconds,
-            incomingOffset: offset
+            // Measured from where the automation begins — the cut, for an
+            // echo-out — so a tail is a tail from the moment the record stops.
+            endsAt: sessionSeconds + lead - cutLead + seconds,
+            incomingOffset: offset,
+            cutLead: cutLead
         )
     }
 
@@ -360,14 +375,14 @@ public final class DJSession {
             endTrackIfFinished(at: sessionSeconds)
             return
         }
-        guard sessionSeconds >= mix.startsAt else { return }
+        guard sessionSeconds >= mix.beginsAt else { return }
         guard sessionSeconds < mix.endsAt else {
             finish(mix, at: sessionSeconds)
             return
         }
 
         phase = .mixing
-        let progress = mix.endsAt > mix.startsAt ? (sessionSeconds - mix.startsAt) / (mix.endsAt - mix.startsAt) : 1
+        let progress = mix.endsAt > mix.beginsAt ? (sessionSeconds - mix.beginsAt) / (mix.endsAt - mix.beginsAt) : 1
 
         switch mix.kind {
         case .cut(let transition, let tail):
@@ -380,10 +395,17 @@ public final class DJSession {
             }
             // The repeats decay on the feedback; the fader stays open for
             // most of the tail and closes over the last of it, so the ring
-            // ends rather than being cut off a second time.
+            // ends rather than being cut off a second time. And the low end
+            // is swept out of the repeats across the gap, so by the time the
+            // new record's kick lands there is not one still ringing under it.
             if tail > 0 {
                 let fade = max(0, min(1, (progress - DJPlanner.echoFadeFrom) / (1 - DJPlanner.echoFadeFrom)))
                 mixer.setVolume((1 - fade) * (current?.linearGain ?? 1), on: side)
+                let gap = mix.cutLead > 0 ? (sessionSeconds - mix.beginsAt) / mix.cutLead : 1
+                mixer.setHighPass(
+                    hz: DJAutomation.sweep(from: Double(DJMixer.bassOpenHz), to: DJPlanner.echoHighPassHz, fraction: gap),
+                    on: side
+                )
             }
         case .mixed(let transition):
             // The levelling sits underneath the mix's own curve, so two records
@@ -410,6 +432,7 @@ public final class DJSession {
         mixer.setVolume(0, on: side)
         mixer.stopDeck(side)
         mixer.clearEcho(side)
+        mixer.setHighPass(hz: Double(DJMixer.bassOpenHz), on: side)
         cutStarted = false
         mixer.setBassCut(0, on: other)
         mixer.setVolume(mix.incoming.linearGain, on: other)

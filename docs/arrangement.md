@@ -211,19 +211,35 @@ A pair that has been read but cannot be mixed — tempi too far apart to bend, o
 both records singing — used to crossfade, which for two singers is the vocal
 clash by another route. It is **cut** now, the way a DJ would: the outgoing
 record stops on the phrase line at its exit and the incoming one starts on the
-phrase line at its entry, that instant, at its own tempo. Out of something loud
-into something quieter, the last beat is left **ringing** in a delay set to one
-beat of the outgoing tempo, with 60% feedback, for two bars under the start of
-the new record — an echo-out. The fader stays open for the first 60% of the
-tail so the repeats decay on the feedback alone (4.4 dB a repeat, eight of
-them), and closes over the rest so the ring ends rather than stopping dead.
-Both rendered and measured: after the cut the clicks arrive at the new
+phrase line at its entry, that instant, at its own tempo.
+
+Out of something loud into something quieter it is an **echo-out**, and an
+echo-out is a bridge, not a backdrop. The outgoing record stops on its phrase
+line and its last hit repeats — a delay of one beat of *its* tempo, 65%
+feedback, 3.7 dB down a repeat — across **one bar of nothing else**; the new
+record lands on the next downbeat, a bar after the cut, while the fourth
+repeat is still fading under it; the tail runs two bars in all. The fader
+stays open for the first 60% of the tail so the repeats decay on the feedback
+alone and closes over the rest so the ring ends rather than stopping dead.
+And the low end is swept out of the tail across the gap — the deck's
+high-pass sits *after* the delay and is run from 20 Hz to 200 by the time the
+new record's kick arrives — so there is not an old kick still ringing under
+the new one.
+
+All of it rendered and measured: after a cut the clicks arrive at the new
 record's tempo and none at the old one's; after an echo-out the repeats fall
-one beat of the old tempo apart, the third is within a few decibels of what
-the feedback alone would give, and they are gone within the tail. (The first
-version rang for two seconds at 45% with the fader closing from the start —
-one audible repeat, then the new record: a cut with a hiccup, which is what
-it sounded like.)
+one beat of the old tempo apart, the third is within a few decibels of the
+feedback's own decay, one is still sounding where the new record's first beat
+lands exactly a bar after the cut, a 60 Hz thump's fourth repeat is under 15%
+of its first, and the tail is silent once it is over.
+
+Two versions came before this one. The first rang for two seconds at 45%
+with the fader closing from the start: one audible repeat, then the new
+record — a cut with a hiccup. The second rang for two bars at 60% but
+started the new record *on* the cut, which buried the tail under it, and
+what that sounded like was still a cut. The listener's own account of the
+effect — *song → rhythmic ghost of the last hit → new song* — is what the
+gap is for.
 
 A pair that has not been read still crossfades. A cut is a decision about two
 records, and a decision needs to know them.
