@@ -59,15 +59,16 @@ final class BeatGridSync {
         (byTrack[trackId] ?? nil).flatMap { AutoDJPreference.isOn ? $0 : nil }
     }
 
-    /// Asks about tracks this device holds. Anything streamed is skipped, since
-    /// a grid could not be used for it.
+    /// Asks about tracks. Any of them, downloaded or not: with Auto DJ on the
+    /// set has to know whether a record it is considering can follow the one
+    /// playing, and a record it cannot yet play locally may be fetched before
+    /// it is needed.
     func prefetch(ids: [String]) {
         guard AutoDJPreference.isOn, let client = AppSession.shared.client else { return }
         if let absentUntil, absentUntil > Date() { return }
         let now = Date()
         let wanted = ids.filter { id in
-            DownloadStore.localURLIfPresent(for: id) != nil
-                && byTrack[id] == nil
+            byTrack[id] == nil
                 && !inFlight.contains(id)
                 && (pendingUntil[id] ?? .distantPast) <= now
         }
@@ -299,8 +300,7 @@ final class ArrangementSync {
         if let absentUntil, absentUntil > Date() { return }
         let now = Date()
         let wanted = ids.filter { id in
-            DownloadStore.localURLIfPresent(for: id) != nil
-                && byTrack[id] == nil
+            byTrack[id] == nil
                 && !inFlight.contains(id)
                 && (pendingUntil[id] ?? .distantPast) <= now
         }

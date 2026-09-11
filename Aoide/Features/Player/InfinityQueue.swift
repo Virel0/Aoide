@@ -97,6 +97,15 @@ final class InfinityQueue: PlaybackReporter {
                 return
             }
 
+            // With a set to program, the pool has to be readable before it can
+            // be ranked: the grids and arrangements are asked for and given a
+            // moment to arrive. A record still unread ranks by taste alone.
+            if AutoDJPreference.isOn {
+                BeatGridSync.shared.prefetch(ids: allowed.map(\.id))
+                ArrangementSync.shared.prefetch(ids: allowed.map(\.id))
+                try? await Task.sleep(for: .seconds(2))
+            }
+
             let chosen = rank(allowed)
             let tracks = JellyfinPlaybackBridge.playableTracks(from: chosen, client: client).tracks
             guard !tracks.isEmpty else { return }
@@ -138,11 +147,50 @@ final class InfinityQueue: PlaybackReporter {
         else { return Array(items.prefix(Self.batch)) }
 
         let finish = (try? store.finishCounts(jellyfinIds: candidates.map(\.id))) ?? [:]
-        let ranked = TasteRanking.rank(candidates, in: profile, finish: finish, limit: Self.batch)
+        let ranked = TasteRanking.rank(
+            candidates,
+            in: profile,
+            finish: finish,
+            compatibility: compatibility(of: items),
+            limit: Self.batch
+        )
 
         let byId = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return ranked.compactMap { byId[$0.id] }
     }
+
+    /// How well each candidate could follow the record playing, when a set is
+    /// being programmed — the same score the mix itself would get, asked ahead
+    /// of time. Nothing when Auto DJ is off: without it the question does not
+    /// arise, and the queue is ordered by taste alone.
+    ///
+    /// A pair that would be refused scores a little rather than nothing: it
+    /// can still crossfade, and a room would rather hear a good record faded in
+    /// than a mediocre one mixed.
+    private func compatibility(of items: [JellyfinItem]) -> [String: Double] {
+        guard AutoDJPreference.isOn,
+              let current = PlaybackEngine.shared.queue.currentTrack,
+              let grid = BeatGridSync.shared.grid(for: current.id),
+              let arrangement = ArrangementSync.shared.arrangement(for: current.id)
+        else { return [:] }
+
+        var scores: [String: Double] = [:]
+        for item in items {
+            guard let candidateGrid = BeatGridSync.shared.grid(for: item.id),
+                  let candidateArrangement = ArrangementSync.shared.arrangement(for: item.id)
+            else { continue }
+            let plan = DJPlanner.plan(
+                outgoing: grid, incoming: candidateGrid,
+                outgoingArrangement: arrangement, incomingArrangement: candidateArrangement
+            )
+            scores[item.id] = plan?.score.total ?? Self.crossfadeOnly
+        }
+        return scores
+    }
+
+    /// What a record that can only be crossfaded into is worth, against one
+    /// that can be mixed.
+    static let crossfadeOnly = 0.15
 
     // MARK: - PlaybackReporter
 

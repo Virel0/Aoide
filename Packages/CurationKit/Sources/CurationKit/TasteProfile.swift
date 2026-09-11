@@ -17,11 +17,20 @@ public struct TasteProfile: Equatable, Sendable {
     public let artists: [String: Double]
     /// Heard recently enough that hearing it again would feel like a repeat.
     public let recent: Set<String>
+    /// Whose records those were. A set that plays the same artist twice in a
+    /// row has stopped being a set.
+    public let recentArtists: Set<String>
 
-    public init(genres: [String: Double] = [:], artists: [String: Double] = [:], recent: Set<String> = []) {
+    public init(
+        genres: [String: Double] = [:],
+        artists: [String: Double] = [:],
+        recent: Set<String> = [],
+        recentArtists: Set<String> = []
+    ) {
         self.genres = genres
         self.artists = artists
         self.recent = recent
+        self.recentArtists = recentArtists
     }
 
     public var isEmpty: Bool { genres.isEmpty && artists.isEmpty }
@@ -64,7 +73,25 @@ public enum TasteRanking {
     /// twenty minutes.
     public static let recentPenalty = 1.4
 
-    public static func score(_ candidate: TasteCandidate, in profile: TasteProfile, finish: FinishCounts?) -> Double {
+    /// What it costs to be by an artist heard lately. Smaller than the record's
+    /// own penalty, and larger than the artist bonus: the same artist twice in
+    /// a row is the one repetition a room notices, and "most similar next"
+    /// picks it every time unless something says otherwise.
+    public static let sameArtistPenalty = 0.4
+
+    /// How much a record's mixability with the one playing is worth, when a
+    /// set is being programmed. Larger than any single taste factor, because
+    /// with Auto DJ on the question is not only "would they like this" but
+    /// "can it follow *that*" — a record the room would love that cannot be
+    /// mixed into what is playing is a record for later.
+    public static let compatibilityWeight = 0.6
+
+    public static func score(
+        _ candidate: TasteCandidate,
+        in profile: TasteProfile,
+        finish: FinishCounts?,
+        compatibility: Double? = nil
+    ) -> Double {
         // The best-matching genre rather than the sum of all of them: a track
         // tagged with six genres is not six times as relevant as one tagged with
         // the right one.
@@ -77,6 +104,8 @@ public enum TasteRanking {
 
         var score = genre * genreWeight + artist * artistWeight + finishBias * 2 * finishWeight
         if profile.recent.contains(candidate.id) { score -= recentPenalty }
+        if profile.recentArtists.contains(candidate.artist.lowercased()) { score -= sameArtistPenalty }
+        if let compatibility { score += max(0, min(1, compatibility)) * compatibilityWeight }
         return score
     }
 
@@ -89,13 +118,14 @@ public enum TasteRanking {
         _ candidates: [TasteCandidate],
         in profile: TasteProfile,
         finish: [String: FinishCounts] = [:],
+        compatibility: [String: Double] = [:],
         limit: Int
     ) -> [TasteCandidate] {
         guard limit > 0 else { return [] }
         var scored: [(candidate: TasteCandidate, score: Double)] = []
         scored.reserveCapacity(candidates.count)
         for candidate in candidates {
-            scored.append((candidate, score(candidate, in: profile, finish: finish[candidate.id])))
+            scored.append((candidate, score(candidate, in: profile, finish: finish[candidate.id], compatibility: compatibility[candidate.id])))
         }
         scored.sort { left, right in
             left.score == right.score ? left.candidate.id < right.candidate.id : left.score > right.score
@@ -156,11 +186,19 @@ public extension CurationStore {
         // Everything lately, finished or not: a song skipped an hour ago is still
         // a song you have just heard.
         let recent = try recentlyPlayed(limit: recentDepth)
+        let recentArtists = try read { db -> Set<String> in
+            guard !recent.isEmpty else { return [] }
+            let artists = try String.fetchAll(db, sql: """
+                SELECT artist FROM track WHERE jellyfinId IN (\(Self.placeholders(recent.count)))
+                """, arguments: StatementArguments(recent))
+            return Set(artists.map { $0.lowercased() }.filter { !$0.isEmpty })
+        }
 
         return TasteProfile(
             genres: normalised(genreCounts),
             artists: normalised(artistCounts),
-            recent: Set(recent)
+            recent: Set(recent),
+            recentArtists: recentArtists
         )
     }
 }

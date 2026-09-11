@@ -72,6 +72,34 @@ struct TasteRankingTests {
         #expect(TasteRanking.rank([perfect, worst], in: profile, limit: 1).map(\.id) == ["new"])
     }
 
+    @Test("A record that can follow what is playing outranks one that cannot")
+    func compatibilityCounts() {
+        let a = candidate("a", genres: ["Metal"])
+        let b = candidate("b", genres: ["Metal"])
+        // Same taste; b can be mixed into what is playing and a cannot.
+        let ranked = TasteRanking.rank([a, b], in: profile, compatibility: ["b": 0.9, "a": 0.1], limit: 2).map(\.id)
+        #expect(ranked == ["b", "a"])
+        // Worth more than a favourite artist: a record the room would love that
+        // cannot follow what is playing is a record for later.
+        let loved = candidate("loved", artist: "Sabaton", genres: ["Metal"])
+        let follows = candidate("follows", genres: ["Metal"])
+        let set = TasteRanking.rank([loved, follows], in: profile, compatibility: ["follows": 1.0, "loved": 0.2], limit: 2).map(\.id)
+        #expect(set == ["follows", "loved"])
+        // And nothing known about mixability changes nothing.
+        let alone = TasteRanking.score(a, in: profile, finish: nil)
+        #expect(TasteRanking.score(a, in: profile, finish: nil, compatibility: nil) == alone)
+    }
+
+    @Test("The same artist twice in a row is not a set")
+    func sameArtistSinks() {
+        let lately = TasteProfile(genres: ["metal": 1], artists: ["sabaton": 1], recent: [], recentArtists: ["sabaton"])
+        let again = candidate("again", artist: "Sabaton", genres: ["Metal"])
+        let someoneElse = candidate("else", artist: "Nobody", genres: ["Metal"])
+        // The artist bonus alone would put Sabaton first; having just been
+        // heard, they go second.
+        #expect(TasteRanking.rank([again, someoneElse], in: lately, limit: 2).map(\.id) == ["else", "again"])
+    }
+
     @Test("The same history twice gives the same order")
     func deterministic() {
         let candidates = [candidate("c"), candidate("a"), candidate("b")]
@@ -151,6 +179,8 @@ struct TasteProfileReadingTests {
         try play(store, id: "skipped", artist: "A", genres: ["G"], completed: false, at: 1_000)
         let profile = try store.tasteProfile()
         #expect(profile.recent.contains("skipped"))
+        // And whose record it was, lower-cased like everything else here.
+        #expect(profile.recentArtists.contains("a"))
     }
 
     @Test("Nothing listened to yet is a profile that says nothing")

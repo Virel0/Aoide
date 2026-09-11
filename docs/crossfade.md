@@ -136,6 +136,17 @@ It is arithmetic, not a recommender: every position it produces can be explained
 in a sentence, and when it is wrong it is wrong somewhere you can point at. With
 no history to read — a new install — the station's own order stands.
 
+**With Auto DJ on, Infinity is the set planner.** Two more terms join the score.
+Each candidate is asked, ahead of time, the same question the mix would ask —
+can it follow the record playing? — and the mix score it would earn is worth
+0.6, more than any single taste factor: a record the room would love that
+cannot be mixed into what is playing is a record for later, and one that can
+only be crossfaded scores a little rather than nothing. And a record by an
+artist heard lately loses 0.4, because the same artist twice in a row is the
+one repetition a room notices, and "most similar next" would pick it every
+time. The pool's grids and arrangements are fetched before it is ranked; a
+record still unread ranks by taste alone.
+
 Off by default: a queue that ends is not a fault, and a player that quietly plays
 on for an hour after the album finished is one nobody asked for. It does nothing
 while the queue is looping, since a loop never runs out, and it never starts
