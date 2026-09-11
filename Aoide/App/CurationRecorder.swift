@@ -280,8 +280,11 @@ actor CurationRecorder: PlaybackReporter {
                 // track while this track is the one playing.
                 // With a trailing silence trimmed, the sound's end is the end the
                 // listener reached; measuring completion against the file's full
-                // length would call every such play unfinished.
-                durationMs: (isCurrent ? engine.duration : track.duration)
+                // length would call every such play unfinished. The same for a
+                // record the set leaves early: where Auto DJ programmed the exit
+                // is the end the listener reached, and a record heard to its
+                // hook and mixed out of is a record finished, not abandoned.
+                durationMs: (isCurrent ? (engine.exitAt ?? engine.duration) : track.duration)
                     .map { full in track.sound.map { min(full, $0.soundEnd) } ?? full }
                     .map { Int(($0.seconds * 1000).rounded()) },
                 queue: Queue(

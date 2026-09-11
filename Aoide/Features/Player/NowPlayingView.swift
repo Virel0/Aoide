@@ -116,6 +116,7 @@ struct NowPlayingView: View {
             ScrubBar(
                 elapsed: engine.elapsed.seconds,
                 duration: total,
+                exit: engine.exitAt?.seconds,
                 dragPosition: $scrubPosition
             ) { position in
                 engine.seek(to: .seconds(position))

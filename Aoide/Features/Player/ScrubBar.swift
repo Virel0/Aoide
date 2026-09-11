@@ -17,6 +17,11 @@ struct ScrubBar: View {
     /// Where playback actually is.
     let elapsed: Double
     let duration: Double
+    /// Where the set will leave this record, in seconds, when Auto DJ has
+    /// programmed an exit before the end. Drawn as a mark on the bar: the bar
+    /// runs the whole record, so the length it shows is the record's, and the
+    /// mark is where the next one comes in.
+    var exit: Double? = nil
     /// Where the finger is, while there is one. Owned by the caller so it can also
     /// render the time labels from the dragged position rather than the real one.
     @Binding var dragPosition: Double?
@@ -33,11 +38,22 @@ struct ScrubBar: View {
             let position = dragPosition ?? elapsed
             let fraction = duration > 0 ? min(max(position / duration, 0), 1) : 0
 
+            let exitFraction = exit.flatMap { duration > 0 && $0 < duration ? $0 / duration : nil }
+
             ZStack(alignment: .leading) {
                 Capsule().fill(.fill.tertiary)
                 Capsule()
                     .fill(.primary.opacity(0.85))
                     .frame(width: width * fraction)
+                if let exitFraction {
+                    // A notch across the bar, in the tint so it reads as the
+                    // set's doing rather than a fault in the bar.
+                    Capsule()
+                        .fill(.tint)
+                        .frame(width: 3, height: (isDragging ? activeHeight : idleHeight) + 6)
+                        .offset(x: width * exitFraction - 1.5)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(height: isDragging ? activeHeight : idleHeight)
             // Centred inside a taller row: the bar itself is too thin to hit

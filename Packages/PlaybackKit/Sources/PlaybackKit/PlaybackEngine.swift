@@ -43,6 +43,12 @@ public final class PlaybackEngine {
     /// metadata — trust this one for the scrubber.
     public private(set) var duration: Duration?
 
+    /// Where the set will leave the record playing, when Auto DJ has
+    /// programmed an exit before its end. ``duration`` stays the record's own
+    /// length: a bar that stopped at sixty per cent read as a bar lying, and
+    /// the lyrics and the scrubber are in the record's time, not the set's.
+    public private(set) var exitAt: Duration?
+
     public var currentTrack: Track? { queue.currentTrack }
 
     /// Where the listener actually is in the track, as opposed to where the player
@@ -59,6 +65,12 @@ public final class PlaybackEngine {
     /// too coarse to follow a lyric line. Used for lyrics only: seeking and the
     /// scrubber stay on the raw clock, where a latency correction would be wrong.
     public var audibleElapsed: Duration? {
+        // On the decks the player is idle and its clock says nothing; what is
+        // heard is the session's position, read fresh for the same reason.
+        if isUsingDecks, let session = djSession {
+            let heard = session.heardPosition(at: djClock())
+            return .seconds(max(0, heard - outputLatency - lyricsOffset.seconds))
+        }
         let time = player.currentTime()
         guard time.isNumeric, time.seconds.isFinite else { return nil }
         return .seconds(max(0, time.seconds - outputLatency - lyricsOffset.seconds))
@@ -677,6 +689,7 @@ public final class PlaybackEngine {
 
         elapsed = .zero
         duration = track.duration
+        exitAt = nil
         lastReportedSecond = -1
         intendsToPlay = autoplay
         state = autoplay ? .buffering : .paused
@@ -711,6 +724,7 @@ public final class PlaybackEngine {
         guard let track = queue.currentTrack else { return }
 
         duration = track.duration
+        exitAt = nil
         lastReportedSecond = -1
         intendsToPlay = false
         state = .paused
@@ -751,6 +765,7 @@ public final class PlaybackEngine {
         state = .idle
         elapsed = .zero
         duration = nil
+        exitAt = nil
         updateNowPlayingInfo()
     }
 
@@ -1174,7 +1189,8 @@ public final class PlaybackEngine {
         mixState = .ready
         // The scrubber runs to where the set leaves the record, not to where
         // the file ends; a bar that stops at sixty per cent is a bar lying.
-        duration = item.exitSeconds.map { .seconds($0) } ?? item.sound.map { $0.soundEnd } ?? track.duration
+        duration = item.sound.map { $0.soundEnd } ?? track.duration
+        exitAt = item.exitSeconds.map { .seconds($0) }
         elapsed = .zero
         lastReportedSecond = -1
         intendsToPlay = autoplay
@@ -1385,9 +1401,8 @@ public final class PlaybackEngine {
         // old one had got to — it extrapolates from whatever it was last given.
         if let session = djSession { elapsed = .seconds(session.heardPosition(at: now)) }
         if let track = queue.currentTrack {
-            duration = programmedExit(for: track).map { .seconds($0 / 1_000) }
-                ?? (track.sound ?? soundResolver?(track))?.soundEnd
-                ?? track.duration
+            duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
+            exitAt = programmedExit(for: track).map { .seconds($0 / 1_000) }
             updateNowPlayingInfo()
             reportedStartFor = track.id
             let reporter = reporter
@@ -1604,6 +1619,7 @@ public final class PlaybackEngine {
         mixState = .off
         lastReportedSecond = -1
         elapsed = player.currentTime().validDuration ?? .zero
+        exitAt = nil
         duration = assetDurations[key]
             ?? player.currentItem?.duration.validDuration
             ?? running.track.duration
@@ -1745,6 +1761,7 @@ public final class PlaybackEngine {
         // Prefer the real decoded length. A look-ahead item reaches .readyToPlay
         // while it is still queued, so its duration was cached there rather than
         // arriving now.
+        exitAt = nil
         duration = assetDurations[key]
             ?? player.currentItem?.duration.validDuration
             ?? queue.currentTrack?.duration

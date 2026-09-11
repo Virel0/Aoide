@@ -284,6 +284,32 @@ struct CutTests {
         let stands = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: throughout, incomingArrangement: read))
         #expect(abs(stands.outgoingStartMs - bar * 112) < 0.01)
 
+        // The search stays inside the part the exit is in. Here the hook
+        // runs from bar 80 to 112 and is sung across every line in it, and
+        // the breath before it — the rest before bar 80 — is the cleanest
+        // rest in the record. Cutting there would leave on the brink of the
+        // chorus, so the line stands at the hook's end instead.
+        let hook = arrangement(
+            [(.intro, 16, 0.2), (.build, 64, 0.5), (.drop, 32, 0.95), (.outro, 16, 0.2)],
+            vocals: [
+                .init(startMs: bar * 20, endMs: bar * 78),
+                .init(startMs: bar * 80.5, endMs: bar * 113),
+            ]
+        )
+        let held = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: hook, incomingArrangement: read))
+        #expect(abs(held.outgoingStartMs - bar * 112) < 0.01, "cut at bar \(held.outgoingStartMs / bar)")
+        // Whereas a rest inside the hook — after its first phrase — is taken.
+        let breath = arrangement(
+            [(.intro, 16, 0.2), (.build, 64, 0.5), (.drop, 32, 0.95), (.outro, 16, 0.2)],
+            vocals: [
+                .init(startMs: bar * 20, endMs: bar * 78),
+                .init(startMs: bar * 80.5, endMs: bar * 95),
+                .init(startMs: bar * 97, endMs: bar * 113),
+            ]
+        )
+        let inside = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: breath, incomingArrangement: read))
+        #expect(abs(inside.outgoingStartMs - bar * 96) < 0.01, "cut at bar \(inside.outgoingStartMs / bar)")
+
         // Vocals unknown: nothing to go on, and the line stands.
         let unknown = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: nil)
         let asGiven = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: unknown, incomingArrangement: read))

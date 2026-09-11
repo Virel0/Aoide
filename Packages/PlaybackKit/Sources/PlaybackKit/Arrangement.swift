@@ -103,9 +103,15 @@ public struct Arrangement: Equatable, Sendable {
         // reads as sung and the given one stands — no separate case needed.
         guard let phraseBars, barMs > 0 else { return line }
         let phraseMs = barMs * Double(phraseBars)
+        // Never back out of the part the exit was chosen in. The exit is the
+        // end of a hook; the cleanest rest anywhere near it is the breath
+        // *before* the hook, and a search that could reach it would leave
+        // the record on the brink of its chorus — the one place to stay.
+        let part = section(at: max(0, line - 1))
+        let earliest = part.map { $0.startMs } ?? 0
         for back in 0..<Self.lineSearchPhrases {
             let candidate = line - Double(back) * phraseMs
-            guard candidate >= 0 else { break }
+            guard candidate >= 0, back == 0 || candidate > earliest else { break }
             if !maySing(from: candidate - Self.lineClearanceMs, to: candidate) { return candidate }
         }
         return line
