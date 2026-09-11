@@ -1055,8 +1055,25 @@ public final class PlaybackEngine {
             url: url,
             sound: track.sound ?? soundResolver?(track),
             gainDb: loudnessResolver?(track),
-            grid: beatGridResolver?(track)
+            grid: beatGridResolver?(track),
+            exitSeconds: programmedExit(for: track).map { $0 / 1_000 }
         )
+    }
+
+    /// Where the set leaves a record, in milliseconds, when one is being
+    /// programmed — which is whenever Auto DJ has the record.
+    ///
+    /// Not only how one record becomes the next, but when: a room hears the
+    /// first hook and moves on, and a record played to its last chorus and
+    /// fade-out is the tell of a playlist rather than a set. See
+    /// ``SetProgrammer``. Somebody who wants whole songs has Crossfade.
+    private func programmedExit(for track: Track) -> Double? {
+        guard isAutoDJing,
+              let grid = beatGridResolver?(track),
+              let arrangement = arrangementResolver?(track),
+              let duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
+        else { return nil }
+        return SetProgrammer.exitMs(grid: grid, arrangement: arrangement, durationMs: duration.seconds * 1_000)
     }
 
     /// The mix from one record into another, if there is one.
@@ -1073,7 +1090,8 @@ public final class PlaybackEngine {
             incoming: incomingGrid,
             notBeforeMs: position.seconds * 1000 + 1_000,
             outgoingArrangement: arrangementResolver?(outgoing),
-            incomingArrangement: arrangementResolver?(incoming)
+            incomingArrangement: arrangementResolver?(incoming),
+            outgoingExitMs: programmedExit(for: outgoing)
         )
     }
 
@@ -1110,7 +1128,9 @@ public final class PlaybackEngine {
         djScheduledEntryId = nil
         bookedBars = nil
         mixState = .ready
-        duration = item.sound.map { $0.soundEnd } ?? track.duration
+        // The scrubber runs to where the set leaves the record, not to where
+        // the file ends; a bar that stops at sixty per cent is a bar lying.
+        duration = item.exitSeconds.map { .seconds($0) } ?? item.sound.map { $0.soundEnd } ?? track.duration
         elapsed = .zero
         lastReportedSecond = -1
         intendsToPlay = autoplay
@@ -1288,7 +1308,9 @@ public final class PlaybackEngine {
         bookedBars = nil
         lastReportedSecond = -1
         if let track = queue.currentTrack {
-            duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
+            duration = programmedExit(for: track).map { .seconds($0 / 1_000) }
+                ?? (track.sound ?? soundResolver?(track))?.soundEnd
+                ?? track.duration
             updateNowPlayingInfo()
             reportedStartFor = track.id
             let reporter = reporter
@@ -1370,7 +1392,9 @@ public final class PlaybackEngine {
     /// the file's end when it has not.
     private func remainingSound(of track: Track) -> Duration? {
         let end: Duration
-        if let sound = track.sound ?? soundResolver?(track) {
+        if let exit = programmedExit(for: track) {
+            end = .seconds(exit / 1_000)
+        } else if let sound = track.sound ?? soundResolver?(track) {
             end = sound.soundEnd
         } else if let duration {
             end = duration

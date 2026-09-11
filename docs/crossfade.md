@@ -99,6 +99,19 @@ next" abandons whatever was prepared.
 A cut is the player's ordinary behaviour, so falling back to one is never worse
 than not having the feature. Two songs at full volume over each other would be.
 
+## The three things this player can be
+
+| | For | What it does |
+| --- | --- | --- |
+| **Crossfade** | Somebody listening to their music who does not want a gap | Every record, all of it, faded into the next |
+| **Infinity + Crossfade** | Somebody who never wants it to end | The same, and the queue keeps going |
+| **Auto DJ** | A room | Records mixed where they suit each other, played for their hook rather than to the fade-out, and the queue never runs out — Infinity is implied |
+
+The third is the one that plays *less* of each record. A radio edit is rarely
+used start to finish on a floor: the room hears the first hook, a second chorus
+if it is landing, and moves on — forty to seventy per cent of a three-minute
+record. Somebody who wants the whole song every time has the other two.
+
 ## Infinity
 
 The other toggle: Crossfade decides *how* one song becomes the next, Infinity

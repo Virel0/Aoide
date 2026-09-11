@@ -42,6 +42,7 @@ struct PlayerModesRow: View {
                     BeatGridSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
                     ArrangementSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
                 }
+                infinity.autoDJChanged()
             }
 
             ModeChip(
@@ -49,8 +50,12 @@ struct PlayerModesRow: View {
                 symbol: "infinity",
                 isOn: infinity.isOn
             ) {
-                infinity.setOn(!infinity.isOn)
+                // Auto DJ has it on; tapping it does nothing until Auto DJ is
+                // off, and the chip stays lit to say so.
+                guard !autoDJ else { return }
+                infinity.setOn(!infinity.isChosen)
             }
+            .opacity(autoDJ ? 0.7 : 1)
 
             Menu {
                 Button {

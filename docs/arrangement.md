@@ -188,3 +188,18 @@ how a robot announces itself.
 raises the new record's drums and top under the old one over eight to sixteen
 bars; the bass still arrives at the swap, so this only governs how the hats and
 the air get there.
+
+
+## Programming the set
+
+Auto DJ now decides *when* as well as *how*. `SetProgrammer` aims to play about
+sixty per cent of a record — never less than a minute and a half, never more
+than five minutes — and leaves at the closest section boundary to that target
+at which a loud part *ends*: a drop into a breakdown or an outro, on a phrase
+line, no earlier than forty per cent in and no later than the record's own
+mix-out point. A record with no drop plays out, which is what such a record
+deserves.
+
+The scrubber runs to the exit rather than to the file's end, because a bar
+that stops at sixty per cent is a bar lying. And Infinity is on whenever Auto DJ
+is: a set that ends is not a set.

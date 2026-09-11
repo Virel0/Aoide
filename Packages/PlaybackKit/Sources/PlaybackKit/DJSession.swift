@@ -11,16 +11,22 @@ public struct DJItem: Equatable, Sendable {
     public let gainDb: Double?
     /// Where its beats are, if the server has measured them.
     public let grid: BeatGrid?
+    /// Where the set leaves this record, when a set is being programmed. Before
+    /// the sound ends, usually well before: see ``SetProgrammer``.
+    public let exitSeconds: Double?
 
-    public init(url: URL, sound: SilenceBounds? = nil, gainDb: Double? = nil, grid: BeatGrid? = nil) {
+    public init(url: URL, sound: SilenceBounds? = nil, gainDb: Double? = nil, grid: BeatGrid? = nil, exitSeconds: Double? = nil) {
         self.url = url
         self.sound = sound
         self.gainDb = gainDb
         self.grid = grid
+        self.exitSeconds = exitSeconds
     }
 
     var startSeconds: Double { (sound?.soundStart.seconds).map { max(0, $0) } ?? 0 }
-    var endSeconds: Double? { sound?.soundEnd.seconds }
+    /// Where playing this record stops: the programmed exit if there is one,
+    /// otherwise the end of its sound.
+    var endSeconds: Double? { exitSeconds ?? sound?.soundEnd.seconds }
     var linearGain: Double {
         guard let gainDb, gainDb < 0 else { return 1 }
         return min(1, pow(10, gainDb / 20))

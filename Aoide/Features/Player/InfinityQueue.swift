@@ -40,7 +40,16 @@ final class InfinityQueue: PlaybackReporter {
 
     private let log = Logger(subsystem: "com.example.aoide", category: "infinity")
 
-    private(set) var isOn: Bool = UserDefaults.standard.bool(forKey: InfinityQueue.key)
+    /// The switch as the listener set it. Read ``isOn`` for what is in force.
+    private(set) var isChosen: Bool = UserDefaults.standard.bool(forKey: InfinityQueue.key)
+
+    /// Whether the queue keeps going.
+    ///
+    /// Auto DJ implies it. A set that ends is not a set, and somebody who put
+    /// a DJ on did not ask for silence when the playlist ran out — so with Auto
+    /// DJ on, Infinity is on, whatever its own switch says. The switch keeps
+    /// its own answer for when Auto DJ goes off again.
+    var isOn: Bool { isChosen || AutoDJPreference.isOn }
 
     /// One fetch at a time. Track changes and the toggle can both ask at once,
     /// and two stations arriving would double every top-up.
@@ -49,9 +58,15 @@ final class InfinityQueue: PlaybackReporter {
     private init() {}
 
     func setOn(_ on: Bool) {
-        isOn = on
+        isChosen = on
         UserDefaults.standard.set(on, forKey: Self.key)
-        if on { Task { await topUpIfNeeded() } }
+        if isOn { Task { await topUpIfNeeded() } }
+    }
+
+    /// Auto DJ was just switched on: the queue should start filling now rather
+    /// than at the next track change.
+    func autoDJChanged() {
+        if isOn { Task { await topUpIfNeeded() } }
     }
 
     /// Adds more songs if the queue is nearly out of them.

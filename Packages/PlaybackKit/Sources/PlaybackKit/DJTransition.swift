@@ -101,7 +101,8 @@ public enum DJPlanner {
         incoming: BeatGrid,
         notBeforeMs: Double = 0,
         outgoingArrangement: Arrangement? = nil,
-        incomingArrangement: Arrangement? = nil
+        incomingArrangement: Arrangement? = nil,
+        outgoingExitMs: Double? = nil
     ) -> DJTransition? {
         // Both records have to be gridded, metered, and have somewhere to mix —
         // and both have to have been *read*. Matching tempo is not a substitute
@@ -110,7 +111,9 @@ public enum DJPlanner {
         // bars of two singers in two keys is not a mix by any definition. A
         // record the server has not read yet crossfades, which is fine.
         guard outgoingArrangement != nil, incomingArrangement != nil else { return nil }
-        guard let outMixOut = outgoing.mixOutMs,
+        // Where the outgoing record leaves: where the set says, if a set is
+        // being programmed, and its own mix-out point otherwise.
+        guard let outMixOut = outgoingExitMs ?? outgoing.mixOutMs,
               let inMixIn = incoming.mixInMs,
               let outSegment = outgoing.segment(at: outMixOut),
               outgoing.beatsPerBar != nil,
