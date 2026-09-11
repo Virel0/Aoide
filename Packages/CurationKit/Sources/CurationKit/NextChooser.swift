@@ -33,7 +33,7 @@ public enum NextChooser {
         }
     }
 
-    public enum Mode: String, Encodable, Equatable {
+    public enum Mode: String, Codable, Equatable, Sendable {
         case infinity
         case autodj
     }
@@ -51,7 +51,7 @@ public enum NextChooser {
 
     /// Why a record was chosen, each in 0…1. `mixability` is absent outside
     /// Auto DJ and for a pair the server could not read.
-    public struct Factors: Decodable, Equatable {
+    public struct Factors: Codable, Equatable, Sendable {
         public var taste: Double
         public var freshness: Double
         public var similarity: Double
@@ -64,6 +64,22 @@ public enum NextChooser {
             self.similarity = similarity
             self.mixability = mixability
             self.arc = arc
+        }
+
+        /// Written the way the server writes it: `mixability` is always
+        /// present, `null` when absent, so the fixture reads the same in
+        /// every language.
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(taste, forKey: .taste)
+            try container.encode(freshness, forKey: .freshness)
+            try container.encode(similarity, forKey: .similarity)
+            if let mixability {
+                try container.encode(mixability, forKey: .mixability)
+            } else {
+                try container.encodeNil(forKey: .mixability)
+            }
+            try container.encode(arc, forKey: .arc)
         }
     }
 

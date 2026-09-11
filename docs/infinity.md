@@ -319,11 +319,47 @@ both right:
   A floor on how many parts must answer is a one-line change if the fixture
   wants one; sparse genre tags are where it would show.
 
+### The fixture (§5), as written
+
+`Packages/CurationKit/Tests/CurationKitTests/Fixtures/next-ranking-fixture.json`
+— the same bytes as the desktop's `src/shared/aoide/next-ranking-fixture.json`.
+Twenty records with tags, tempo, stability, key and sections; sixteen decided
+listens (twelve finished, four skipped, one of them 91 days old) on a fixed
+clock; one `notInterested` flag; and seven requests, each with `events` and
+every candidate's `score` and `factors` to six decimals, in order. The
+sidecar is asked to load the file and pass all seven. Two reference ports
+pass it now — Swift (`NextRanking`, which generated it) and TypeScript
+(`next-ranking.ts`) — and four of the rows are also worked by hand in
+`NextRankingFixtureTests`, so the file is not only what the code said.
+Seventeen mutations of the rule (each weight, each threshold, the window,
+the depth, the fold, the tie-break) fail it.
+
+The readings the fixture pins, where the prose left room:
+
+- **Finish counts** are decided listens (completed or skipped), all time —
+  the window is the taste profile's, not the finish rate's.
+- **`bpmStability` exactly 0.5 holds**; below it the tempo is left out. Null
+  holds.
+- **Tempo is folded**: 60 against 120 is one groove counted two ways, as the
+  planner has it. (The fixture's `t11`, an unread ambient record at 60 BPM
+  sharing one tag with the seed, ranks *first* on genre + tempo + key, with
+  energy unanswerable and arc 0.5. That is the rule as agreed and the first
+  thing to listen for on a real library; a floor of three answered parts
+  would not change it, and the fix if it grates is to fold only for
+  mixability, not for similarity.)
+- **A rise is four energies strictly rising; a fall is the last three
+  strictly falling.** A record without an arrangement is dropped from the
+  four before either is counted, so three rising values with an unread
+  record among them are not a rise.
+- **The artists of the last three queued** count as heard lately; the
+  fourth-last does not.
+- **`mixability` is `null` throughout** — no grids in the fixture — and is
+  written, not omitted. The planner's forty pairs pin it.
+
 On the phone, Infinity asks `/aoide/next` first and enqueues the answer in the
 server's order; a 404 turns the Instant Mix path back on for the session. Each
 row the server chose shows its figures in the queue — "Taste 71% · Fits 62% ·
 Mixes 79% · Arc 90%" — so a pick that feels wrong can be argued with by number.
-The fixture file for the new factors (§5) is still to be written.
 
 ## What the clients will do with it
 

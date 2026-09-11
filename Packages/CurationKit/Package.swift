@@ -32,6 +32,7 @@ let package = Package(
         .testTarget(
             name: "CurationKitTests",
             dependencies: ["CurationKit"],
+            resources: [.copy("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
