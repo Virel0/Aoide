@@ -274,6 +274,107 @@ struct DJSessionTests {
         // Eight seconds after the mix ends, the record has its own speed back.
         #expect(session.playingSide == .b)
         #expect(abs(mixer.rate(on: .b) - 1) < 0.001)
+
+        // And the position is where the record actually is: fifteen seconds of
+        // mix at the bent rate, eight seconds easing back to 1, the rest at 1.
+        // Multiplying the whole time by the rate it has *now* — which is what
+        // this used to do — puts it more than half a second ahead, for good.
+        let mixBeganAt = transition.outgoingStartMs / 1000 - 79.5
+        let mixLength = Double(transition.bars) * 4 * 60 / transition.targetBpm
+        let restore = transition.restoreSeconds
+        let expected = transition.incomingStartMs / 1000
+            + mixLength * transition.incomingRate
+            + restore * (transition.incomingRate + 1) / 2
+            + (28 - mixBeganAt - mixLength - restore)
+        let position = session.position(at: 28)
+        #expect(abs(position - expected) < 0.03, "position \(position), expected \(expected)")
+        let naive = transition.incomingStartMs / 1000 + (28 - mixBeganAt)
+        #expect(expected - naive > 0.5)
+    }
+
+    @Test("A pause is not time played, and a mix booked across it is booked again")
+    func pauseKeepsTime() throws {
+        let outgoing = try record(bpm: 128)
+        let incoming = try record(bpm: 124)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
+        let incomingGrid = grid(bpm: 124, mixInMs: 0)
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+
+        try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
+        try session.seek(to: 79.5, at: 0)
+        try session.schedule(transition, into: DJItem(url: incoming, grid: incomingGrid), at: 0)
+        #expect(session.hasScheduledMix)
+
+        // Half a second in, paused. The engine's clock keeps running for two
+        // seconds — through the moment the mix was booked to begin.
+        _ = try mixer.renderOffline(seconds: 0.5) { session.update(at: $0) }
+        session.pause(at: 0.5)
+        #expect(!session.hasScheduledMix, "a booking the clock would have honoured over silence is abandoned")
+        let silent = try mixer.renderOffline(seconds: 2) { session.update(at: 0.5 + $0) }
+        // The player node takes a pause at its next render; offline that is
+        // one block of 4096 frames, 93 ms. After that, nothing.
+        #expect(clickTimes(in: silent, threshold: 0.01).allSatisfy { $0 < 0.1 }, "nothing sounds while paused")
+        #expect(abs(session.position(at: 2.5) - 80.0) < 1e-6, "paused at 80.0, still 80.0")
+
+        session.resume(at: 2.5)
+        _ = try mixer.renderOffline(seconds: 1) { session.update(at: 2.5 + $0) }
+        // Three and a half seconds on the clock; one and a half played.
+        #expect(abs(session.position(at: 3.5) - 81.0) < 1e-6, "position \(session.position(at: 3.5))")
+        #expect(session.phase == .playing)
+        #expect(session.playingSide == .a)
+    }
+
+    @Test("A pause in the middle of a mix moves the mix, not the crossfader")
+    func pauseMidMix() throws {
+        let outgoing = try record(bpm: 128)
+        let incoming = try record(bpm: 124)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
+        let incomingGrid = grid(bpm: 124, mixInMs: 0)
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+
+        try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
+        try session.seek(to: 79.5, at: 0)
+        try session.schedule(transition, into: DJItem(url: incoming, grid: incomingGrid), at: 0)
+
+        // Five seconds in, well into the mix. Paused for three.
+        _ = try mixer.renderOffline(seconds: 5) { session.update(at: $0) }
+        #expect(session.phase == .mixing)
+        let before = try #require(session.mixProgress(at: 5))
+        let heardBefore = session.heardPosition(at: 5)
+        session.pause(at: 5)
+        _ = try mixer.renderOffline(seconds: 3) { session.update(at: 5 + $0) }
+        session.resume(at: 8)
+        // The crossfader is where it was, and so is the incoming record.
+        let after = try #require(session.mixProgress(at: 8))
+        #expect(abs(after - before) < 0.01, "progress \(before) → \(after)")
+        #expect(abs(session.heardPosition(at: 8) - heardBefore) < 0.02)
+        #expect(session.phase == .mixing)
+        // And the mix runs to its end from there, not three seconds early.
+        _ = try mixer.renderOffline(seconds: 8) { session.update(at: 8 + $0) }
+        #expect(session.phase == .mixing, "still mixing: the mix ends 15 s after it began plus the 3 s pause")
+        _ = try mixer.renderOffline(seconds: 5) { session.update(at: 16 + $0) }
+        #expect(session.phase == .playing)
+        #expect(session.playingSide == .b)
     }
 
     @Test("What is heard follows the incoming record from the moment the mix begins")
@@ -317,12 +418,19 @@ struct DJSessionTests {
 
         // When the mix ends the incoming record is the record playing, and the
         // figure does not jump: it is the same clock, read the same way.
-        let before = session.heardPosition(at: 15.99)
-        _ = try mixer.renderOffline(seconds: 6.5) { session.update(at: 10 + $0) }
+        let mixEndsAt = mixBeganAt + transition.seconds
+        _ = try mixer.renderOffline(seconds: mixEndsAt - 0.01 - 10) { session.update(at: 10 + $0) }
+        #expect(session.phase == .mixing)
+        let before = session.heardPosition(at: mixEndsAt - 0.01)
+        // Two hundred milliseconds on — the automation runs once a block
+        // offline, so the end is noticed within a block of it — and the record
+        // has moved by that at its bent rate, give or take the first few
+        // milliseconds of easing back. Nothing jumps.
+        _ = try mixer.renderOffline(seconds: 0.2) { session.update(at: mixEndsAt - 0.01 + $0) }
         #expect(session.phase == .playing)
         #expect(session.playingSide == .b)
-        let after = session.heardPosition(at: 16.01)
-        #expect(abs(after - before) < 0.1, "jumped from \(before) to \(after)")
+        let after = session.heardPosition(at: mixEndsAt + 0.19)
+        #expect(abs(after - before - 0.2 * transition.incomingRate) < 0.005, "jumped from \(before) to \(after)")
     }
 }
 

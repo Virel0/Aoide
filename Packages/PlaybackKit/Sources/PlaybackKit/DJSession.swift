@@ -130,10 +130,10 @@ public final class DJSession {
 
         let kind: Kind
         let incoming: DJItem
-        /// Session time the incoming record begins.
-        let startsAt: Double
-        /// Session time the outgoing record is finished with.
-        let endsAt: Double
+        /// Session time the incoming record begins. Moved later by a pause.
+        var startsAt: Double
+        /// Session time the outgoing record is finished with. Moved with it.
+        var endsAt: Double
         /// Where the incoming record was started from.
         let incomingOffset: Double
 
@@ -200,11 +200,21 @@ public final class DJSession {
 
     /// Where the record playing has got to, in its own timeline.
     ///
+    /// Computed from the session clock, not read off the deck: the player
+    /// node's own frame count runs ahead of what is audible by however much
+    /// the time-pitch unit has pulled in advance, and a booking made against
+    /// that would land the incoming record early by the same amount. The
+    /// clock is the output's clock, so this is exact for booking — provided
+    /// the arithmetic is honest about the two things that used to make it
+    /// drift: the rate is folded in every time it changes (a record eased
+    /// back to its own tempo is not "the whole time at the rate it has now"),
+    /// and a pause stops the count.
+    ///
     /// During a mix this is still the *outgoing* record: the booking and the
     /// end-of-sound arithmetic are in its terms until it stops. A screen wants
     /// ``heardPosition(at:)``.
     public func position(at sessionSeconds: Double) -> Double {
-        startOffset + max(0, sessionSeconds - startedAt) * mixer.rate(on: side)
+        startOffset + max(0, played(until: sessionSeconds) - startedAt) * mixer.rate(on: side)
     }
 
     /// Where the record the listener is *arriving at* has got to.
@@ -216,8 +226,26 @@ public final class DJSession {
     /// length sat pinned at the end for the length of the mix, then jumped back.
     public func heardPosition(at sessionSeconds: Double) -> Double {
         guard phase == .mixing, let mix else { return position(at: sessionSeconds) }
-        return mix.incomingOffset + max(0, sessionSeconds - mix.startsAt) * mixer.rate(on: other)
+        return mix.incomingOffset + max(0, played(until: sessionSeconds) - mix.startsAt) * mixer.rate(on: other)
     }
+
+    /// The clock as far as the records are concerned: it stops at a pause.
+    private func played(until sessionSeconds: Double) -> Double {
+        min(sessionSeconds, pausedAt ?? sessionSeconds)
+    }
+
+    /// Changes the playing deck's rate, first folding what it played at the
+    /// old rate into the offset so the position does not rewrite history.
+    private func setPlayingRate(_ rate: Double, at sessionSeconds: Double) {
+        guard abs(mixer.rate(on: side) - rate) > 0.0001 else { return }
+        startOffset = position(at: sessionSeconds)
+        startedAt = played(until: sessionSeconds)
+        mixer.setRate(rate, on: side)
+    }
+
+    /// The session clock when playback was paused, so what is booked against
+    /// that clock can be moved by exactly the time it stood still.
+    private var pausedAt: Double?
 
     /// Books a beat-matched mix somebody else planned.
     ///
@@ -413,12 +441,12 @@ public final class DJSession {
     private func easeRateBack(at sessionSeconds: Double) {
         guard let ends = restoreEndsAt else { return }
         guard sessionSeconds < ends else {
-            mixer.setRate(1, on: side)
+            setPlayingRate(1, at: sessionSeconds)
             restoreEndsAt = nil
             return
         }
         let progress = (sessionSeconds - restoreStartedAt) / (ends - restoreStartedAt)
-        mixer.setRate(restoreFrom + (1 - restoreFrom) * progress, on: side)
+        setPlayingRate(restoreFrom + (1 - restoreFrom) * progress, at: sessionSeconds)
     }
 
     private func endTrackIfFinished(at sessionSeconds: Double) {
@@ -431,8 +459,42 @@ public final class DJSession {
 
     // MARK: - Transport
 
-    public func pause() { mixer.pauseAll() }
-    public func resume() { mixer.resumeAll() }
+    /// Stops both decks where they are.
+    ///
+    /// A mix booked but not begun is abandoned: the incoming deck was told to
+    /// start at a moment on the engine's clock, and the clock does not pause
+    /// with the record — it would have come in on its own, over silence, at
+    /// the booked time. Whoever booked it books again after the resume, from
+    /// where the record then is.
+    public func pause(at sessionSeconds: Double) {
+        if phase == .playing, mix != nil {
+            mixer.stopDeck(other)
+            mix = nil
+        }
+        pausedAt = sessionSeconds
+        mixer.pauseAll()
+    }
+
+    /// Starts both decks again, and moves everything measured against the
+    /// session clock — a mix in progress, a tempo being eased back — later by
+    /// the time they stood still, so nothing finishes early.
+    public func resume(at sessionSeconds: Double) {
+        if let pausedAt {
+            let stood = max(0, sessionSeconds - pausedAt)
+            startedAt += stood
+            if mix != nil {
+                mix?.startsAt += stood
+                mix?.endsAt += stood
+            }
+            if restoreEndsAt != nil {
+                restoreEndsAt? += stood
+                restoreStartedAt += stood
+            }
+        }
+        pausedAt = nil
+        mixer.resumeAll()
+    }
+
 
     public func stop() {
         mixer.stopDeck(.a)

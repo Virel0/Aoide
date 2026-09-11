@@ -433,7 +433,13 @@ public final class PlaybackEngine {
 
         if isUsingDecks {
             intendsToPlay = true
-            djSession?.resume()
+            djSession?.resume(at: djClock())
+            // A hand-over booked before the pause was abandoned by it; the
+            // next tick books again from where the record now is.
+            if djSession?.hasScheduledMix == false {
+                djScheduledEntryId = nil
+                booked = nil
+            }
             state = .playing
             updateNowPlayingInfo()
             if let track = queue.currentTrack, reportedStartFor != track.id {
@@ -480,7 +486,7 @@ public final class PlaybackEngine {
     public func pause() {
         intendsToPlay = false
         if isUsingDecks {
-            djSession?.pause()
+            djSession?.pause(at: djClock())
             state = .paused
             updateNowPlayingInfo()
             report { await $0.playbackDidProgress($1, position: $2, isPaused: true) }
@@ -1162,7 +1168,7 @@ public final class PlaybackEngine {
         lastReportedSecond = -1
         intendsToPlay = autoplay
         state = autoplay ? .playing : .paused
-        if !autoplay { session.pause() }
+        if !autoplay { session.pause(at: djClock()) }
 
         // The player is not merely idle while the decks have it — it is emptied,
         // so nothing of the old queue is left buffered behind a record it is not
@@ -2205,7 +2211,7 @@ public final class PlaybackEngine {
             mixer.stop()
             try mixer.start()
             try session.seek(to: position, at: djClock())
-            if !wasPlaying { session.pause() }
+            if !wasPlaying { session.pause(at: djClock()) }
         } catch {
             log.error("Couldn't restart the decks: \(error.localizedDescription, privacy: .public)")
             stopDecks()
