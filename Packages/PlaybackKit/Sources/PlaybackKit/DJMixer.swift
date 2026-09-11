@@ -212,16 +212,22 @@ public final class DJMixer {
         deck.player.volume = wanted
     }
 
+    /// Where the high-pass corner sits, in hertz. 20 is the record untouched;
+    /// 220 is its bass out; 1,500 is rhythm and air.
+    public func setHighPass(hz: Double, on side: Side) {
+        guard let deck = decks[side], hz.isFinite else { return }
+        let wanted = Float(max(Double(Self.bassOpenHz), min(4_000, hz)))
+        guard abs(deck.shelf.bands[0].frequency - wanted) > 0.5 else { return }
+        deck.shelf.bands[0].frequency = wanted
+    }
+
     /// How much of the low end is out: 0 leaves the record alone, 1 takes the
     /// bass out entirely. In between, the filter's corner moves across the
     /// octaves between the two on a log scale, because that is how frequency
     /// is heard — halfway is a corner at about 66 Hz, not at 120.
     public func setBassCut(_ amount: Double, on side: Side) {
-        guard let deck = decks[side] else { return }
         let fraction = max(0, min(1, amount.isFinite ? amount : 0))
-        let wanted = Self.bassOpenHz * pow(Self.bassCutHz / Self.bassOpenHz, Float(fraction))
-        guard abs(deck.shelf.bands[0].frequency - wanted) > 0.5 else { return }
-        deck.shelf.bands[0].frequency = wanted
+        setHighPass(hz: Double(Self.bassOpenHz) * pow(Double(Self.bassCutHz / Self.bassOpenHz), fraction), on: side)
     }
 
     /// The older shape of the same control, in decibels of a shelf that no

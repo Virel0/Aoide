@@ -46,6 +46,22 @@ public struct DJTransition: Equatable, Sendable {
     public let isKeyCompatible: Bool
     /// How the pair scored, and why. See ``MixScore``.
     public let score: MixScore
+    /// How the outgoing record leaves.
+    public let style: Style
+
+    /// Two ways out.
+    public enum Style: Equatable, Sendable {
+        /// The standard blend: the outgoing record keeps its whole voice until
+        /// the swap, gives up its bass, and fades. For pairs that agree.
+        case blend
+        /// The filter fade: the outgoing record's low end *and* its middle are
+        /// swept away across the first half — melody, chords and the body of a
+        /// voice go, hats and snare stay — so by the time the incoming record
+        /// has its bass, the old one is rhythm and air. For pairs that clash in
+        /// key, or where one of them is singing: the two never have their notes
+        /// on top of each other, which is the whole point of it.
+        case filterFade
+    }
 }
 
 public enum DJPlanner {
@@ -87,7 +103,13 @@ public enum DJPlanner {
         outgoingArrangement: Arrangement? = nil,
         incomingArrangement: Arrangement? = nil
     ) -> DJTransition? {
-        // Both records have to be gridded, metered, and have somewhere to mix.
+        // Both records have to be gridded, metered, and have somewhere to mix —
+        // and both have to have been *read*. Matching tempo is not a substitute
+        // for knowing the arrangement: without it, two pop records with clashing
+        // keys and a voice on each were scoring eight bars together, and eight
+        // bars of two singers in two keys is not a mix by any definition. A
+        // record the server has not read yet crossfades, which is fine.
+        guard outgoingArrangement != nil, incomingArrangement != nil else { return nil }
         guard let outMixOut = outgoing.mixOutMs,
               let inMixIn = incoming.mixInMs,
               let outSegment = outgoing.segment(at: outMixOut),
@@ -159,8 +181,14 @@ public enum DJPlanner {
 
         // Two drops on top of each other is the mistake every DJ names first —
         // a new chorus dropped onto somebody else's. Whatever the rest of the
-        // score says, that pair does not get long together.
+        // score says, that pair does not get long together. Nor do two records
+        // whose keys are known to clash: the filter fade takes the melody out of
+        // the outgoing one, but progressively, and the shorter the overlap the
+        // less of it there is to hear.
         let dropOnDrop = exitKind == .drop && entryKind == .drop
+        let keysClash = outgoing.key != nil && incoming.key != nil
+            && !CamelotKey.areCompatible(outgoing.key, incoming.key)
+        let capped = dropOnDrop || keysClash
 
         for bars in lengths {
             let seconds = outBar * Double(bars) / 1000
@@ -198,7 +226,7 @@ public enum DJPlanner {
                 sections: MixScore.sections(exit: exitKind, entry: entryKind)
             )
             guard let earned = score.bars else { return nil }
-            let allowed = dropOnDrop ? min(earned, minimumBars) : earned
+            let allowed = capped ? min(earned, minimumBars) : earned
             guard bars <= allowed else { continue }
 
             // The outgoing side snapped to the grid rather than trusted. The
@@ -210,6 +238,14 @@ public enum DJPlanner {
             // incoming side was snapped when `entry` was chosen.)
             let start = outgoing.downbeat(atOrBefore: startMs) ?? startMs
 
+            // Something to hide — a key that is *known* to clash, or one record
+            // singing — gets the filter fade. Nothing to hide gets the blend. A
+            // key nobody measured is not a clash; most of a library has none.
+            let compatible = CamelotKey.areCompatible(outgoing.key, incoming.key)
+            let clashes = outgoing.key != nil && incoming.key != nil && !compatible
+            let anyoneSings = outgoingSings == true || incomingSings == true
+            let style: DJTransition.Style = (clashes || anyoneSings) ? .filterFade : .blend
+
             return DJTransition(
                 outgoingStartMs: start,
                 incomingStartMs: entry,
@@ -219,8 +255,9 @@ public enum DJPlanner {
                 outgoingRate: 1,
                 incomingRate: rate,
                 restoreSeconds: restoreSeconds,
-                isKeyCompatible: CamelotKey.areCompatible(outgoing.key, incoming.key),
-                score: score
+                isKeyCompatible: compatible,
+                score: score,
+                style: style
             )
         }
         return nil
@@ -284,8 +321,16 @@ public enum DJAutomation {
     /// return audible as a hole closing.
     public static let bassCutDb = -24.0
 
-    /// The incoming record is up to full within about a bar, and stays there.
-    public static let entryWidth = 0.1
+    /// The incoming record comes up over the first half of the mix — eight bars
+    /// of a sixteen-bar one — and holds there.
+    ///
+    /// It used to arrive within a bar, which is a fader shoved rather than
+    /// raised. A DJ brings the drums and the top of the new record in over
+    /// eight to sixteen bars *under* the old one, and the swap is the first
+    /// moment the room is meant to notice; the bass arrives at the swap point
+    /// whatever this says, so this only governs how the hats and the air get
+    /// there.
+    public static let entryWidth = 0.5
 
     /// The outgoing record holds its level until the bass leaves it, then goes.
     /// Before that point it is the record carrying the low end, and turning it
@@ -302,8 +347,50 @@ public enum DJAutomation {
         return MixCurve.incoming(progress: progress / entryWidth)
     }
 
+    /// Where the filter fade takes the outgoing record's corner to: above the
+    /// body of a voice and the chords under it, below the hats and the snare's
+    /// crack. What is left is rhythm and air.
+    public static let filterFadeHz = 1_500.0
+
+    /// The bottom of the sweep — below anything a speaker reproduces, so a
+    /// filter set here is in the chain but not in the sound.
+    public static let openHz = 20.0
+
+    /// Where the bass swap's corner sits when a record's low end is out.
+    public static let bassCutHz = 220.0
+
+    /// The outgoing record's high-pass corner, in hertz, across the mix.
+    ///
+    /// A blend leaves it open until the swap and takes the bass afterwards. A
+    /// filter fade sweeps it up to ``filterFadeHz`` across the first half, so
+    /// the melody has gone before the incoming record's bass arrives, and holds
+    /// it there while the record fades.
+    public static func outgoingHighPassHz(progress: Double, style: DJTransition.Style) -> Double {
+        switch style {
+        case .blend:
+            return sweep(from: openHz, to: bassCutHz, fraction: ramp(progress))
+        case .filterFade:
+            let progress = clamp(progress)
+            let fraction = min(1, progress / swapPoint)
+            return sweep(from: openHz, to: filterFadeHz, fraction: fraction)
+        }
+    }
+
+    /// The incoming record's, the same either way: its bass is out until the
+    /// swap and in after it.
+    public static func incomingHighPassHz(progress: Double) -> Double {
+        sweep(from: openHz, to: bassCutHz, fraction: 1 - ramp(progress))
+    }
+
+    /// Between two corners on a log scale, because that is how frequency is
+    /// heard: halfway from 20 Hz to 220 is 66, not 120.
+    static func sweep(from: Double, to: Double, fraction: Double) -> Double {
+        from * pow(to / from, clamp(fraction))
+    }
+
     /// How far out the outgoing record's low end is, 0…1: in until the swap,
-    /// out after it. What the decks' filters are driven by.
+    /// out after it. The blend's answer; the filter fade's is in
+    /// ``outgoingHighPassHz(progress:style:)``.
     public static func outgoingBassCut(progress: Double) -> Double {
         ramp(progress)
     }

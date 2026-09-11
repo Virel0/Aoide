@@ -296,8 +296,8 @@ public final class DJSession {
             // brought to one loudness stay there while they cross.
             mixer.setVolume(DJAutomation.outgoingGain(progress: progress) * (current?.linearGain ?? 1), on: side)
             mixer.setVolume(DJAutomation.incomingGain(progress: progress) * mix.incoming.linearGain, on: other)
-            mixer.setBassCut(DJAutomation.outgoingBassCut(progress: progress), on: side)
-            mixer.setBassCut(DJAutomation.incomingBassCut(progress: progress), on: other)
+            mixer.setHighPass(hz: DJAutomation.outgoingHighPassHz(progress: progress, style: transition.style), on: side)
+            mixer.setHighPass(hz: DJAutomation.incomingHighPassHz(progress: progress), on: other)
             mixer.setRate(transition.incomingRate, on: other)
         case .blended:
             // No bass swap and no bend: a crossfade between two records that were

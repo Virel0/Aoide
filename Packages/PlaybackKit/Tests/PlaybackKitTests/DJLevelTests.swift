@@ -3,6 +3,26 @@ import Foundation
 import Testing
 @testable import PlaybackKit
 
+/// A record that has been read and found unremarkable: one section nobody
+/// could name, instrumental, no phrase grid. The planner now refuses a record
+/// that has not been read at all — matching tempo is not a substitute for
+/// knowing the arrangement — so every pair here is handed one of these. The
+/// two energies differ so that a pair with nothing else going for it lands on
+/// sixteen bars rather than being flattered into thirty-two.
+private func read(energy: Double) -> Arrangement {
+    Arrangement(
+        sections: [Arrangement.Section(startMs: 0, endMs: 600_000, kind: .unknown, energy: energy)],
+        vocals: []
+    )
+}
+
+private func planned(outgoing: BeatGrid, incoming: BeatGrid, notBeforeMs: Double = 0) -> DJTransition? {
+    DJPlanner.plan(
+        outgoing: outgoing, incoming: incoming, notBeforeMs: notBeforeMs,
+        outgoingArrangement: read(energy: 0.8), incomingArrangement: read(energy: 0.2)
+    )
+}
+
 /// What a mix does to the level, measured rather than reasoned about.
 ///
 /// The complaint that produced this suite: "the volume lowered a lot and I had
@@ -94,7 +114,7 @@ struct DJLevelTests {
         let bar = 60_000 / 164.0 * 4
         let outgoingGrid = grid(bpm: 164, mixOutMs: (100_000 / bar).rounded(.down) * bar)
         let incomingGrid = grid(bpm: 170, mixOutMs: 100_000)
-        let transition = try #require(DJPlanner.plan(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 60_000))
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 60_000))
 
         try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
         try session.seek(to: transition.outgoingStartMs / 1_000 - 1, at: 0)
@@ -108,6 +128,47 @@ struct DJLevelTests {
         // The two records together cannot exceed about 0.1 between samples by
         // playing; anything past that is a parameter change with an edge on it.
         #expect(worst.jump < 0.12, "a jump of \(worst.jump) at \(worst.seconds)s")
+    }
+
+    @Test("The filter fade thins the outgoing record without the pair collapsing")
+    func filterFadeHolds() throws {
+        // Keys known to clash, so the pair gets the filter fade: the outgoing
+        // record's body goes before the swap and only its top is left.
+        let outgoing = try record(bpm: 128, bassHz: 55, bodyHz: 440)
+        let incoming = try record(bpm: 128, bassHz: 62, bodyHz: 587)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        var outgoingGrid = grid(bpm: 128, mixOutMs: (100_000 / bar).rounded(.down) * bar)
+        var incomingGrid = grid(bpm: 128, mixOutMs: 100_000)
+        outgoingGrid = BeatGrid(segments: outgoingGrid.segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: outgoingGrid.mixInMs, mixOutMs: outgoingGrid.mixOutMs, key: "3B")
+        incomingGrid = BeatGrid(segments: incomingGrid.segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: incomingGrid.mixInMs, mixOutMs: incomingGrid.mixOutMs, key: "10B")
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 60_000))
+        #expect(transition.style == .filterFade)
+
+        try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
+        try session.seek(to: transition.outgoingStartMs / 1_000 - 1, at: 0)
+        try session.schedule(transition, into: DJItem(url: incoming, grid: incomingGrid), at: 0)
+
+        let rendered = try mixer.renderOffline(seconds: transition.seconds + 3) { elapsed in
+            session.update(at: elapsed)
+        }
+
+        let envelope = envelope(rendered)
+        let reference = envelope.first { $0.seconds > 0.3 }?.db ?? 0
+        let during = envelope.filter { $0.seconds > 1.5 && $0.seconds < transition.seconds }
+        let quietest = during.min { $0.db < $1.db }
+        // Thinner than a blend by design, but never a hole: the incoming record
+        // is coming up as the outgoing one thins.
+        #expect((quietest?.db ?? 0) > reference - 6, "dropped to \((quietest?.db ?? 0) - reference) dB at \(quietest?.seconds ?? 0)s")
     }
 
     @Test("A mix never drops below one record playing on its own")
@@ -128,7 +189,7 @@ struct DJLevelTests {
         let bar = 60_000 / 164.0 * 4
         let outgoingGrid = grid(bpm: 164, mixOutMs: (100_000 / bar).rounded(.down) * bar)
         let incomingGrid = grid(bpm: 170, mixOutMs: 100_000)
-        let transition = try #require(DJPlanner.plan(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 60_000))
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 60_000))
 
         try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
         try session.seek(to: transition.outgoingStartMs / 1_000 - 1, at: 0)

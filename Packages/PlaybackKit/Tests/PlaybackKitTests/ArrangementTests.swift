@@ -127,12 +127,63 @@ struct ArrangementTests {
         #expect(long.bars == 16)
     }
 
-    @Test("Without an arrangement, nothing here applies, and nothing runs long")
-    func absentIsAbsent() throws {
-        let plan = try #require(DJPlanner.plan(outgoing: grid(), incoming: grid()))
-        // Sixteen, not thirty-two: half a minute together is earned by knowing
-        // the records suit each other, not by knowing nothing against them.
-        #expect(plan.bars == 16)
+    @Test("A record that has not been read is not mixed")
+    func unreadIsRefused() {
+        // Matching tempo is not a substitute for knowing the arrangement. Two
+        // pop records with clashing keys and a voice on each were scoring eight
+        // bars together on tempo and key alone — and eight bars of two singers
+        // in two keys is not a mix by any definition.
+        #expect(DJPlanner.plan(outgoing: grid(), incoming: grid()) == nil)
+        #expect(DJPlanner.plan(outgoing: grid(), incoming: grid(), outgoingArrangement: plain) == nil)
+        #expect(DJPlanner.plan(outgoing: grid(), incoming: grid(), incomingArrangement: plain) == nil)
+    }
+
+    @Test("Something to hide gets the filter fade; nothing to hide gets the blend")
+    func styleFollowsTheClash() throws {
+        let instrumental = arrangement([(.build, 32, 0.4), (.drop, 96, 0.9)])
+        // Compatible keys, nobody singing: a blend.
+        let agree = try #require(DJPlanner.plan(
+            outgoing: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "8A"),
+            incoming: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "9A"),
+            outgoingArrangement: instrumental, incomingArrangement: instrumental
+        ))
+        #expect(agree.style == .blend)
+
+        // Clashing keys: the outgoing record's melody has to be gone before the
+        // two overlap in earnest.
+        let clash = try #require(DJPlanner.plan(
+            outgoing: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "3B"),
+            incoming: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "10B"),
+            outgoingArrangement: instrumental, incomingArrangement: instrumental
+        ))
+        #expect(clash.style == .filterFade)
+
+        // One of them singing, keys fine: also the filter fade — the voice is
+        // the thing to keep out from under the other record.
+        let singing = arrangement([(.build, 32, 0.4), (.drop, 96, 0.9)], vocals: [.init(startMs: 0, endMs: bar * 128)])
+        let voice = try #require(DJPlanner.plan(
+            outgoing: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "8A"),
+            incoming: BeatGrid(segments: grid().segments, beatsPerBar: 4, downbeatIndex: 0, mixInMs: bar * 8, mixOutMs: bar * 112, key: "9A"),
+            outgoingArrangement: singing, incomingArrangement: instrumental
+        ))
+        #expect(voice.style == .filterFade)
+    }
+
+    @Test("The filter fade takes the outgoing record's middle away before the swap")
+    func filterFadeSweeps() {
+        // Open at the start; up to the fade's corner by the swap; held there.
+        #expect(DJAutomation.outgoingHighPassHz(progress: 0, style: .filterFade) == DJAutomation.openHz)
+        #expect(abs(DJAutomation.outgoingHighPassHz(progress: 0.5, style: .filterFade) - DJAutomation.filterFadeHz) < 0.01)
+        #expect(abs(DJAutomation.outgoingHighPassHz(progress: 0.9, style: .filterFade) - DJAutomation.filterFadeHz) < 0.01)
+        // Halfway there in octaves, not in hertz: 20 → 1,500 passes 173, not 760.
+        #expect(abs(DJAutomation.outgoingHighPassHz(progress: 0.25, style: .filterFade) - (20 * 1_500).squareRoot()) < 0.5)
+
+        // A blend leaves the record alone until the swap.
+        #expect(DJAutomation.outgoingHighPassHz(progress: 0.4, style: .blend) == DJAutomation.openHz)
+        #expect(abs(DJAutomation.outgoingHighPassHz(progress: 0.9, style: .blend) - DJAutomation.bassCutHz) < 0.01)
+        // And the incoming record comes in without its bass either way.
+        #expect(abs(DJAutomation.incomingHighPassHz(progress: 0.1) - DJAutomation.bassCutHz) < 0.01)
+        #expect(DJAutomation.incomingHighPassHz(progress: 0.9) == DJAutomation.openHz)
     }
 
     @Test("A record comes in on its build when it has one")

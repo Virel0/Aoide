@@ -2,6 +2,26 @@ import Foundation
 import Testing
 @testable import PlaybackKit
 
+/// A record that has been read and found unremarkable: one section nobody
+/// could name, instrumental, no phrase grid. The planner now refuses a record
+/// that has not been read at all — matching tempo is not a substitute for
+/// knowing the arrangement — so every pair here is handed one of these. The
+/// two energies differ so that a pair with nothing else going for it lands on
+/// sixteen bars rather than being flattered into thirty-two.
+private func read(energy: Double) -> Arrangement {
+    Arrangement(
+        sections: [Arrangement.Section(startMs: 0, endMs: 600_000, kind: .unknown, energy: energy)],
+        vocals: []
+    )
+}
+
+private func planned(outgoing: BeatGrid, incoming: BeatGrid, notBeforeMs: Double = 0) -> DJTransition? {
+    DJPlanner.plan(
+        outgoing: outgoing, incoming: incoming, notBeforeMs: notBeforeMs,
+        outgoingArrangement: read(energy: 0.8), incomingArrangement: read(energy: 0.2)
+    )
+}
+
 /// A four-minute record at `bpm`, gridded from `anchor`, mixable from its first
 /// downbeat to sixteen bars before the end.
 private func record(
@@ -35,7 +55,7 @@ private func record(
 struct DJTransitionTests {
     @Test("Two records at one tempo get sixteen bars")
     func straightforward() throws {
-        let plan = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
+        let plan = try #require(planned(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
         #expect(plan.bars == 16)
         // Sixteen bars at 128 is thirty seconds.
         #expect(abs(plan.seconds - 30) < 0.01)
@@ -47,14 +67,14 @@ struct DJTransitionTests {
     @Test("The mix ends where the outgoing record stops being mixable")
     func endsAtMixOut() throws {
         let outgoing = record(bpm: 128, mixOutMs: 180_000)
-        let plan = try #require(DJPlanner.plan(outgoing: outgoing, incoming: record(bpm: 128)))
+        let plan = try #require(planned(outgoing: outgoing, incoming: record(bpm: 128)))
         #expect(abs(plan.outgoingStartMs + plan.seconds * 1000 - 180_000) < 0.01)
     }
 
     @Test("It starts on a downbeat, a whole number of bars from the anchor")
     func startsOnADownbeat() throws {
         let outgoing = record(bpm: 128, anchorMs: 431.2, mixOutMs: 431.2 + 1875 * 64)
-        let plan = try #require(DJPlanner.plan(outgoing: outgoing, incoming: record(bpm: 128)))
+        let plan = try #require(planned(outgoing: outgoing, incoming: record(bpm: 128)))
         let bars = (plan.outgoingStartMs - 431.2) / 1875
         #expect(abs(bars - bars.rounded()) < 1e-6)
     }
@@ -62,24 +82,24 @@ struct DJTransitionTests {
     @Test("The incoming record is the one that bends, and only so far")
     func bending() throws {
         // 126 into 128 is a sixteenth of a semitone; well inside the fader.
-        let plan = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 126)))
+        let plan = try #require(planned(outgoing: record(bpm: 128), incoming: record(bpm: 126)))
         #expect(plan.outgoingRate == 1)
         #expect(abs(plan.incomingRate - 128.0 / 126.0) < 1e-9)
 
         // 100 into 128 is not a bend, it is a different record.
-        #expect(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 100)) == nil)
+        #expect(planned(outgoing: record(bpm: 128), incoming: record(bpm: 100)) == nil)
     }
 
     @Test("Double time counts, and is not slowed down to prove it")
     func doubleTime() throws {
-        let plan = try #require(DJPlanner.plan(outgoing: record(bpm: 85), incoming: record(bpm: 170)))
+        let plan = try #require(planned(outgoing: record(bpm: 85), incoming: record(bpm: 170)))
         // Played at its own speed: at 170 over 85, every other beat already
         // lands on the other record's, which is the whole reason the octave is
         // folded rather than the record slowed.
         #expect(abs(plan.incomingRate - 1) < 1e-9)
 
         // And the same in reverse — the slow record over the fast one.
-        let reversed = try #require(DJPlanner.plan(outgoing: record(bpm: 170), incoming: record(bpm: 85)))
+        let reversed = try #require(planned(outgoing: record(bpm: 170), incoming: record(bpm: 85)))
         #expect(abs(reversed.incomingRate - 1) < 1e-9)
     }
 
@@ -97,11 +117,11 @@ struct DJTransitionTests {
     func fallsBackToEight() throws {
         // Only twenty seconds of mixable record left: sixteen bars is thirty.
         let cramped = record(bpm: 128, mixOutMs: 20_000)
-        let plan = try #require(DJPlanner.plan(outgoing: cramped, incoming: record(bpm: 128)))
+        let plan = try #require(planned(outgoing: cramped, incoming: record(bpm: 128)))
         #expect(plan.bars == 8)
 
         let tooCramped = record(bpm: 128, mixOutMs: 10_000)
-        #expect(DJPlanner.plan(outgoing: tooCramped, incoming: record(bpm: 128)) == nil)
+        #expect(planned(outgoing: tooCramped, incoming: record(bpm: 128)) == nil)
     }
 
     @Test("A mix cannot start before the engine could have got ready")
@@ -109,9 +129,9 @@ struct DJTransitionTests {
         let outgoing = record(bpm: 128, mixOutMs: 180_000)
         // The mix would start at 150s; being told nothing may start before 160s
         // rules out sixteen bars, and eight bars starts at 165s.
-        let plan = DJPlanner.plan(outgoing: outgoing, incoming: record(bpm: 128), notBeforeMs: 160_000)
+        let plan = planned(outgoing: outgoing, incoming: record(bpm: 128), notBeforeMs: 160_000)
         #expect(plan?.bars == 8)
-        #expect(DJPlanner.plan(outgoing: outgoing, incoming: record(bpm: 128), notBeforeMs: 179_000) == nil)
+        #expect(planned(outgoing: outgoing, incoming: record(bpm: 128), notBeforeMs: 179_000) == nil)
     }
 
     @Test("No meter, no mix")
@@ -123,8 +143,8 @@ struct DJTransitionTests {
     @Test("A grid its own record does not sit on is not one to mix to")
     func looseGrid() {
         let sloppy = record(bpm: 128, residualMs: 60)
-        #expect(DJPlanner.plan(outgoing: sloppy, incoming: record(bpm: 128)) == nil)
-        #expect(DJPlanner.plan(outgoing: record(bpm: 128), incoming: sloppy) == nil)
+        #expect(planned(outgoing: sloppy, incoming: record(bpm: 128)) == nil)
+        #expect(planned(outgoing: record(bpm: 128), incoming: sloppy) == nil)
     }
 
     @Test("The incoming record must have the bars to give")
@@ -132,7 +152,7 @@ struct DJTransitionTests {
         // Mixable from 100s, but the record stops at 110s: ten seconds is not
         // sixteen bars, and not eight either.
         let stub = record(bpm: 128, lengthMs: 110_000, mixInMs: 100_000, mixOutMs: 105_000)
-        #expect(DJPlanner.plan(outgoing: record(bpm: 128), incoming: stub) == nil)
+        #expect(planned(outgoing: record(bpm: 128), incoming: stub) == nil)
     }
 
     @Test("A bent record is consumed faster than the clock, and must have that much")
@@ -146,12 +166,12 @@ struct DJTransitionTests {
         let bpm = 128 / 1.01
         let mixIn = 60_000 / bpm * 4 * 50
         let short = record(bpm: bpm, lengthMs: mixIn + 30_100, mixInMs: mixIn, mixOutMs: 120_000)
-        let cramped = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: short))
+        let cramped = try #require(planned(outgoing: record(bpm: 128), incoming: short))
         #expect(cramped.bars == 8)
 
         // Half a second more record and the same pair gets the full sixteen.
         let longer = record(bpm: bpm, lengthMs: mixIn + 30_600, mixInMs: mixIn, mixOutMs: 120_000)
-        let full = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: longer))
+        let full = try #require(planned(outgoing: record(bpm: 128), incoming: longer))
         #expect(full.bars == 16)
     }
 
@@ -159,7 +179,7 @@ struct DJTransitionTests {
     func clashingKeysShortenTheMix() throws {
         // 3B against 10B: seven steps apart on the wheel, which is two keys with
         // little in common held against each other for however long the mix runs.
-        let clashing = try #require(DJPlanner.plan(
+        let clashing = try #require(planned(
             outgoing: record(bpm: 128, key: "3B"),
             incoming: record(bpm: 128, key: "10B")
         ))
@@ -167,16 +187,18 @@ struct DJTransitionTests {
         #expect(!clashing.isKeyCompatible)
 
         // Neighbours keep the full sixteen.
-        let related = try #require(DJPlanner.plan(
+        let related = try #require(planned(
             outgoing: record(bpm: 128, key: "8A"),
             incoming: record(bpm: 128, key: "9A")
         ))
-        #expect(related.bars == DJPlanner.preferredBars)
+        // Neighbours are not capped: with a record this unremarkable in every
+        // other way, the score alone decides, and it decides on longer.
+        #expect(related.bars > clashing.bars)
 
         // And an unmeasured key is not a clash — most of a library has no key at
         // all, and shortening every mix on that basis would be shortening every
         // mix.
-        let unmeasured = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
+        let unmeasured = try #require(planned(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
         #expect(unmeasured.bars == DJPlanner.preferredBars)
     }
 
@@ -188,7 +210,7 @@ struct DJTransitionTests {
         let bar = 1_875.0
         let crooked = record(bpm: 128, anchorMs: 0, mixOutMs: 200_000 + 234)
         let incoming = record(bpm: 128, anchorMs: 100, mixInMs: 40_000 + 51)
-        let plan = try #require(DJPlanner.plan(outgoing: crooked, incoming: incoming))
+        let plan = try #require(planned(outgoing: crooked, incoming: incoming))
 
         let outBars = plan.outgoingStartMs / bar
         #expect(abs(outBars - outBars.rounded()) < 1e-6, "start at \(plan.outgoingStartMs)ms")
@@ -198,7 +220,7 @@ struct DJTransitionTests {
 
     @Test("Keys are noted, never enforced")
     func keys() throws {
-        let related = try #require(DJPlanner.plan(
+        let related = try #require(planned(
             outgoing: record(bpm: 128, key: "8A"),
             incoming: record(bpm: 128, key: "9A")
         ))
@@ -206,19 +228,19 @@ struct DJTransitionTests {
 
         // A clash still mixes. The estimator has never seen real music, and a
         // refusal on it would be a refusal on a guess.
-        let clashing = try #require(DJPlanner.plan(
+        let clashing = try #require(planned(
             outgoing: record(bpm: 128, key: "8A"),
             incoming: record(bpm: 128, key: "2B")
         ))
         #expect(!clashing.isKeyCompatible)
 
-        let unmeasured = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
+        let unmeasured = try #require(planned(outgoing: record(bpm: 128), incoming: record(bpm: 128)))
         #expect(!unmeasured.isKeyCompatible)
     }
 
     @Test("The bend does not outlive the mix")
     func restores() throws {
-        let plan = try #require(DJPlanner.plan(outgoing: record(bpm: 128), incoming: record(bpm: 126)))
+        let plan = try #require(planned(outgoing: record(bpm: 128), incoming: record(bpm: 126)))
         #expect(plan.restoreSeconds == DJPlanner.restoreSeconds)
         #expect(plan.restoreSeconds > 0)
     }

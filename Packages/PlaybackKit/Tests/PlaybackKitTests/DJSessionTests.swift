@@ -3,6 +3,26 @@ import Foundation
 import Testing
 @testable import PlaybackKit
 
+/// A record that has been read and found unremarkable: one section nobody
+/// could name, instrumental, no phrase grid. The planner now refuses a record
+/// that has not been read at all — matching tempo is not a substitute for
+/// knowing the arrangement — so every pair here is handed one of these. The
+/// two energies differ so that a pair with nothing else going for it lands on
+/// sixteen bars rather than being flattered into thirty-two.
+private func read(energy: Double) -> Arrangement {
+    Arrangement(
+        sections: [Arrangement.Section(startMs: 0, endMs: 600_000, kind: .unknown, energy: energy)],
+        vocals: []
+    )
+}
+
+private func planned(outgoing: BeatGrid, incoming: BeatGrid, notBeforeMs: Double = 0) -> DJTransition? {
+    DJPlanner.plan(
+        outgoing: outgoing, incoming: incoming, notBeforeMs: notBeforeMs,
+        outgoingArrangement: read(energy: 0.8), incomingArrangement: read(energy: 0.2)
+    )
+}
+
 /// A whole mix, rendered offline and measured.
 ///
 /// The suite that says whether Auto DJ works. Everything else about it is
@@ -118,7 +138,7 @@ struct DJSessionTests {
         // a second before that, or there would be no mix to book.
         let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
         let incomingGrid = grid(bpm: 128, anchorMs: 234, mixInMs: 234 + 1_875 * 4)
-        let transition = try #require(DJPlanner.plan(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
         #expect(transition.bars == 8)
 
         try session.start(
@@ -191,7 +211,7 @@ struct DJSessionTests {
 
         let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
         let incomingGrid = grid(bpm: 128, anchorMs: 234, mixInMs: 234 + 1_875 * 4)
-        let transition = try #require(DJPlanner.plan(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
 
         try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)
         try session.seek(to: 79.5, at: 0)
@@ -238,7 +258,7 @@ struct DJSessionTests {
 
         let outgoingGrid = grid(bpm: 128, mixOutMs: 95_625)
         let incomingGrid = grid(bpm: 124, mixInMs: 0)
-        let transition = try #require(DJPlanner.plan(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
+        let transition = try #require(planned(outgoing: outgoingGrid, incoming: incomingGrid, notBeforeMs: 80_000))
         #expect(abs(transition.incomingRate - 128.0 / 124.0) < 1e-9)
 
         try session.start(DJItem(url: outgoing, grid: outgoingGrid), at: 0)

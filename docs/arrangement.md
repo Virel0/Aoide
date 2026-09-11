@@ -156,3 +156,35 @@ given its bass up.
 **Not taken:** ramping the bend in over the first bars. The incoming record is
 bent before it is audible and eased back over eight seconds after the mix, so
 there is no moment at which a listener could hear the bend arrive.
+
+
+## Homewrecker into Birds of a Feather
+
+Two pop records, ~100 into ~105, 3B into 10B, a voice on each. A listener
+reported the result as "mashing the beats and vocals together", and a DJ's
+account of how the pair *should* be handled — a short, EQ-managed hand-off,
+never a long harmonic blend — found exactly where this was wrong.
+
+**It had mixed them on tempo and key alone.** The arrangements had not been
+fetched (the server had just dropped its rows to re-measure), and without them
+the score treated "nothing known" as neutral: eight bars, two singers, two keys.
+So: **a record that has not been read is not mixed.** Matching tempo is not a
+substitute for knowing the arrangement, and a record the server has not got to
+yet crossfades, which is fine.
+
+**A known key clash is capped at eight bars**, whatever the score says.
+
+**Something to hide gets the filter fade.** When the keys are known to clash or
+either record is singing across the overlap, the outgoing record's high-pass
+corner sweeps up to 1.5 kHz across the first half of the mix — bass, chords and
+the body of a voice go; hats, snare and air stay — so by the time the incoming
+record has its bass, the old one is rhythm. Its melody and the new one's are
+never on top of each other, which is the whole point. Rendered and measured:
+the pair thins by design and never drops more than six decibels below one record
+alone. Pairs with nothing to hide keep the blend; a filter on every hand-over is
+how a robot announces itself.
+
+**The incoming record comes up over half the mix**, not within a bar. A DJ
+raises the new record's drums and top under the old one over eight to sixteen
+bars; the bass still arrives at the swap, so this only governs how the hats and
+the air get there.
