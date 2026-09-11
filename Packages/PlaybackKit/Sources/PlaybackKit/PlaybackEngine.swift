@@ -1019,6 +1019,7 @@ public final class PlaybackEngine {
         djEntryId = entryId
         djScheduledEntryId = nil
         booked = nil
+        mixing = nil
         mixState = .ready
         log.info("Taking \(track.title, privacy: .public) onto the decks at \(self.elapsed.seconds, privacy: .public)s")
         startDJTimer()
@@ -1145,6 +1146,7 @@ public final class PlaybackEngine {
         djEntryId = entryId
         djScheduledEntryId = nil
         booked = nil
+        mixing = nil
         mixState = .ready
         // The scrubber runs to where the set leaves the record, not to where
         // the file ends; a bar that stops at sixty per cent is a bar lying.
@@ -1201,6 +1203,7 @@ public final class PlaybackEngine {
         djEntryId = nil
         djScheduledEntryId = nil
         booked = nil
+        mixing = nil
         mixState = .off
         // A take-over abandoned halfway would otherwise leave the player turned
         // down for good.
@@ -1240,13 +1243,21 @@ public final class PlaybackEngine {
         elapsed = .seconds(session.position(at: now))
         bookHandoverIfDue(at: now)
 
-        switch (session.phase, booked) {
-        case (.mixing, let booked?):
-            mixState = .mixing(bars: booked.bars, style: booked.style, progress: session.mixProgress(at: now) ?? 0)
-        case (_, let booked?):
-            mixState = .booked(bars: booked.bars, style: booked.style)
+        switch session.phase {
+        case .mixing:
+            if let mixing {
+                mixState = .mixing(bars: mixing.bars, style: mixing.style, progress: session.mixProgress(at: now) ?? 0)
+            } else {
+                mixState = .ready
+            }
         default:
-            mixState = .ready
+            // The mix is over; the booking it came from has nothing left to say.
+            mixing = nil
+            if let booked {
+                mixState = .booked(bars: booked.bars, style: booked.style)
+            } else {
+                mixState = .ready
+            }
         }
 
         let whole = Int(elapsed.seconds)
@@ -1258,6 +1269,13 @@ public final class PlaybackEngine {
 
     /// What is booked, if anything: how long and of what kind.
     private var booked: (bars: Int, style: DJTransition.Style)?
+
+    /// The booking that is now being heard, kept from the moment the queue
+    /// moves on to the incoming record until the outgoing one has stopped.
+    /// The booking itself is cleared then — the *next* hand-over is booked
+    /// against the new record — and without this the screen would have
+    /// nothing to draw for the whole of the mix.
+    private var mixing: (bars: Int, style: DJTransition.Style)?
 
     /// Books whatever hand-over the next record has earned, once it is close
     /// enough to be worth opening a second file for.
@@ -1329,6 +1347,7 @@ public final class PlaybackEngine {
         _ = queue.jump(to: entryId)
         djEntryId = entryId
         djScheduledEntryId = nil
+        mixing = booked
         booked = nil
         lastReportedSecond = -1
         if let track = queue.currentTrack {
