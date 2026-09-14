@@ -50,6 +50,15 @@ final class LyricsStore {
         PlaybackEngine.shared.lyricLinesResolver = { [weak self] track in
             self?.lineStartsMs(for: track.id)
         }
+        Diagnostics.lyricsState = { [weak self] trackId in
+            switch self?.entries[trackId] {
+            case .loaded(let lyrics): lyrics.isSynced ? "synced, \(lyrics.lines.count) lines" : "unsynced"
+            case .absent: "absent"
+            case .loading: "loading"
+            case .failed(let message): "failed: \(message)"
+            case nil: "not asked"
+            }
+        }
     }
 
     /// Where each synced line starts, in milliseconds, or nil when the track

@@ -431,13 +431,16 @@ struct LyricCutTests {
             outgoingLyricLinesMs: [bar * 100, bar * 112 + 300]
         ))
         #expect(clean.style == .echoOut)
-        // No lyrics, spans clear: a throw, as before.
+        // No lyrics: a throw, whatever the spans say — they are too coarse
+        // to refuse on. They still place the line.
         let bySpans = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: sung, incomingArrangement: read))
         #expect(bySpans.style == .echoOut)
-        // No lyrics, spans unknown — may be singing throughout: no throw.
+        let throughout = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [.init(startMs: 0, endMs: bar * 128)])
+        let sungThrough = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: throughout, incomingArrangement: read))
+        #expect(sungThrough.style == .echoOut)
         let unknown = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: nil)
         let guess = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: unknown, incomingArrangement: read))
-        #expect(guess.style == .cut)
+        #expect(guess.style == .echoOut)
     }
 
     @Test("The new record lands on its first line when that is near its start")

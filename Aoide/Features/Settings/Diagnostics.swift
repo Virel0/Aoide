@@ -15,6 +15,9 @@ import UIKit
 enum Diagnostics {
     static let window: TimeInterval = 30 * 60
 
+    /// What the lyrics store holds for a track, in a word, set by the store.
+    @MainActor static var lyricsState: ((String) -> String)?
+
     /// Writes the report and returns where it is.
     @MainActor
     static func write() throws -> URL {
@@ -42,12 +45,12 @@ enum Diagnostics {
         lines.append("Elapsed: \(engine.elapsed.seconds.formatted(.number.precision(.fractionLength(1))))s  duration: \(engine.duration.map { "\($0.seconds.formatted(.number.precision(.fractionLength(1))))s" } ?? "?")  exit: \(engine.exitAt.map { "\($0.seconds.formatted(.number.precision(.fractionLength(1))))s" } ?? "none")")
         if let track = engine.currentTrack {
             lines.append("Playing: \(track.title) — \(track.artist) [\(track.id)]")
-            lines.append("  local: \(engine.localFileResolver?(track) != nil)  grid: \(engine.beatGridResolver?(track) != nil)  arrangement: \(engine.arrangementResolver?(track) != nil)  lyrics: \(engine.lyricLinesResolver?(track) != nil)")
+            lines.append("  local: \(engine.localFileResolver?(track) != nil)  grid: \(engine.beatGridResolver?(track) != nil)  arrangement: \(engine.arrangementResolver?(track) != nil)  lyrics: \(lyricsState?(track.id) ?? "?")")
         }
         for (index, entry) in engine.queue.upNext.prefix(3).enumerated() {
             let track = entry.track
             lines.append("Next \(index + 1): \(track.title) — \(track.artist) [\(track.id)]")
-            lines.append("  local: \(engine.localFileResolver?(track) != nil)  grid: \(engine.beatGridResolver?(track) != nil)  arrangement: \(engine.arrangementResolver?(track) != nil)")
+            lines.append("  local: \(engine.localFileResolver?(track) != nil)  grid: \(engine.beatGridResolver?(track) != nil)  arrangement: \(engine.arrangementResolver?(track) != nil)  lyrics: \(lyricsState?(track.id) ?? "?")")
         }
         return lines.joined(separator: "\n")
     }

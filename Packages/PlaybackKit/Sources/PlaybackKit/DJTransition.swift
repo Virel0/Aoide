@@ -328,14 +328,18 @@ public enum DJPlanner {
         let entry = Arrangement.landmarkMs(lyricLinesMs: incomingLyricLinesMs, mixInMs: inMixIn, barMs: inBar) { incoming.downbeat(atOrBefore: $0) }
             ?? entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
 
-        // An echo-out repeats whatever the last beat held, so it is only
-        // planned when that is a finished thing — a line's last word, a hit
-        // with a rest after it. The lyrics say, when the record has them,
-        // and the vocal spans otherwise. When nothing clean is in reach the
+        // An echo-out repeats whatever the last beat held, so with lyrics to
+        // read it is only planned when that is a finished thing — a line's
+        // last word, with the next line starting on the beat after the cut,
+        // or a rest. When the lyrics say every line in reach is mid-line the
         // pair is cut with the top rolled off over the last two beats
         // instead: a smeared syllable repeated four times is worse than no
-        // echo, and a clean filtered cut beats a bad one.
-        let style: DJTransition.Style = (judged?.clean ?? false) ? .echoOut : .cut
+        // echo. Without lyrics the throw stands: the vocal spans place the
+        // line as well as they can, but they are blocks of "somebody is
+        // singing", too coarse to refuse on — every pop hook read as sung
+        // throughout, and a set that filtered-cut every pair was a set with
+        // no echo in it at all.
+        let style: DJTransition.Style = outgoingLyricLinesMs == nil || (judged?.clean ?? false) ? .echoOut : .cut
         let exitEnergy = outgoingArrangement.section(at: exit)?.energy
         let entryEnergy = incomingArrangement.section(at: entry)?.energy
 
