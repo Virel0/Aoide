@@ -56,30 +56,46 @@ public enum SetProgrammer {
         exit(grid: grid, arrangement: arrangement, durationMs: durationMs, late: true)
     }
 
+    /// Every place the set could leave, best first: each end of a hook
+    /// inside the window, on its line, ordered by closeness to the target.
+    /// The planner tries them all against the next record and takes the one
+    /// that mixes best — but only when it is clearly better than the first,
+    /// which is the set's own choice. See ``DJPlanner/plan``.
+    public static func exitCandidatesMs(grid: BeatGrid, arrangement: Arrangement, durationMs: Double) -> [Double] {
+        guard let mixOut = grid.mixOutMs else { return [] }
+        let target = targetMs(durationMs: durationMs)
+        return hookEnds(grid: grid, arrangement: arrangement, durationMs: durationMs, mixOut: mixOut)
+            .sorted { abs($0 - target) < abs($1 - target) }
+    }
+
     private static func exit(grid: BeatGrid, arrangement: Arrangement, durationMs: Double, late: Bool) -> Double? {
         guard let mixOut = grid.mixOutMs else { return nil }
         let target = targetMs(durationMs: durationMs)
-        let floor = durationMs * earliestExit
+        let ends = hookEnds(grid: grid, arrangement: arrangement, durationMs: durationMs, mixOut: mixOut)
+        return late ? ends.max() : ends.min(by: { abs($0 - target) < abs($1 - target) })
+    }
 
-        // A boundary where the section before it was a drop and the one after
-        // is quieter — the end of a hook.
-        var candidates: [Double] = []
+    /// Each boundary where a drop ends into something quieter — the end of a
+    /// hook — inside the window, on the phrase line if one is close and the
+    /// bar line otherwise. Distinct, in record order.
+    private static func hookEnds(grid: BeatGrid, arrangement: Arrangement, durationMs: Double, mixOut: Double) -> [Double] {
+        let floor = durationMs * earliestExit
+        var ends: [Double] = []
         for (before, after) in zip(arrangement.sections, arrangement.sections.dropFirst()) {
             guard before.kind == .drop, [.breakdown, .outro, .build, .unknown].contains(after.kind),
-                  after.energy < before.energy
+                  after.energy < before.energy,
+                  after.startMs >= floor, after.startMs <= mixOut
             else { continue }
-            candidates.append(after.startMs)
+            // Onto the phrase line at or before it if one is close, else the
+            // bar line. The boundary is where the hook ends; a phrase line
+            // seven bars back is inside the hook, and leaving there is
+            // leaving early.
+            let barMs = grid.barMs(at: after.startMs) ?? 0
+            let lined = arrangement.phraseLine(atOrBefore: after.startMs, barMs: barMs)
+                ?? grid.downbeat(atOrBefore: after.startMs)
+                ?? after.startMs
+            if !ends.contains(lined) { ends.append(lined) }
         }
-
-        let usable = candidates.filter { $0 >= floor && $0 <= mixOut }
-        guard let chosen = late ? usable.max() : usable.min(by: { abs($0 - target) < abs($1 - target) }) else { return nil }
-
-        // Onto the phrase line at or before it if one is close, else the bar
-        // line. The boundary is where the hook ends; a phrase line seven bars
-        // back is inside the hook, and leaving there is leaving early.
-        let barMs = grid.barMs(at: chosen) ?? 0
-        return arrangement.phraseLine(atOrBefore: chosen, barMs: barMs)
-            ?? grid.downbeat(atOrBefore: chosen)
-            ?? chosen
+        return ends
     }
 }

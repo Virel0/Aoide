@@ -1170,8 +1170,20 @@ public final class PlaybackEngine {
             notBeforeMs: position.seconds * 1000 + 1_000,
             outgoingArrangement: arrangementResolver?(outgoing),
             incomingArrangement: arrangementResolver?(incoming),
-            outgoingExitMs: programmedExit(for: outgoing)
+            outgoingExitsMs: programmedExits(for: outgoing)
         )
+    }
+
+    /// Every place the set would accept leaving `track`, best first — the
+    /// planner chooses among them for the pair. Empty when no set is being
+    /// programmed, which the planner reads as the record's own mix-out.
+    private func programmedExits(for track: Track) -> [Double] {
+        guard isAutoDJing,
+              let grid = beatGridResolver?(track),
+              let arrangement = arrangementResolver?(track),
+              let duration = (track.sound ?? soundResolver?(track))?.soundEnd ?? track.duration
+        else { return [] }
+        return SetProgrammer.exitCandidatesMs(grid: grid, arrangement: arrangement, durationMs: duration.seconds * 1_000)
     }
 
     /// The cut from one record into another, for a pair that has been read but
@@ -1396,6 +1408,9 @@ public final class PlaybackEngine {
             if let transition = plannedMix(from: track, to: next.track, position: elapsed) {
                 try session.schedule(transition, into: item, at: now)
                 booked = .mix(transition.style, bars: transition.bars)
+                // The set leaves where the mix ends, which the planner chose
+                // for this pair; the mark on the bar follows it.
+                exitAt = .seconds(transition.outgoingStartMs / 1_000 + transition.seconds)
                 log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
             } else if let cut = plannedCut(from: track, to: next.track, position: elapsed) {
                 // Read, and refused a mix: too far apart in tempo, or both
@@ -1403,6 +1418,7 @@ public final class PlaybackEngine {
                 // DJ would, rather than crossfaded across each other's voices.
                 try session.schedule(cut, into: item, at: now)
                 booked = .mix(cut.style, bars: 0)
+                exitAt = .seconds(cut.outgoingStartMs / 1_000)
                 log.info("Cutting \(track.title, privacy: .public) into \(next.track.title, privacy: .public)")
             } else {
                 let plan = MixPlanner.plan(

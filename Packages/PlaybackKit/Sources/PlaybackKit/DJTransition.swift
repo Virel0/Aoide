@@ -122,6 +122,61 @@ public enum DJPlanner {
         incomingArrangement: Arrangement? = nil,
         outgoingExitMs: Double? = nil
     ) -> DJTransition? {
+        plan(
+            outgoing: outgoing, incoming: incoming, notBeforeMs: notBeforeMs,
+            outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement,
+            outgoingExitsMs: outgoingExitMs.map { [$0] } ?? []
+        )
+    }
+
+    /// How much better a mix from a later or earlier exit has to score than
+    /// the mix from the set's own first choice before it is taken instead.
+    /// The set's choice is where the room has had the hook and no more; a
+    /// different exit means more or less of the record, and that is only
+    /// worth it when the join is clearly better, not marginally.
+    public static let exitPreferenceMargin = 0.1
+
+    /// The same, from a list of places the outgoing record could leave, best
+    /// first — every end of a hook the set would accept. Each is tried
+    /// against every entry of the incoming record, and the first exit's best
+    /// stands unless another exit beats it by ``exitPreferenceMargin``. The
+    /// exit and the entry are chosen *for the pair*: where this record leaves
+    /// depends on what is coming, and where that comes in on where this one
+    /// leaves.
+    public static func plan(
+        outgoing: BeatGrid,
+        incoming: BeatGrid,
+        notBeforeMs: Double = 0,
+        outgoingArrangement: Arrangement? = nil,
+        incomingArrangement: Arrangement? = nil,
+        outgoingExitsMs: [Double]
+    ) -> DJTransition? {
+        let exits = outgoingExitsMs.isEmpty ? [outgoing.mixOutMs].compactMap { $0 } : outgoingExitsMs
+        var preferred: DJTransition?
+        var best: DJTransition?
+        for (index, exit) in exits.enumerated() {
+            guard let candidate = plan(
+                outgoing: outgoing, incoming: incoming, notBeforeMs: notBeforeMs,
+                outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement,
+                exitMs: exit
+            ) else { continue }
+            if index == 0 { preferred = candidate }
+            if best == nil || candidate.score.total > best!.score.total { best = candidate }
+        }
+        guard let best else { return nil }
+        guard let preferred else { return best }
+        return best.score.total - preferred.score.total >= exitPreferenceMargin ? best : preferred
+    }
+
+    /// One exit, every entry.
+    private static func plan(
+        outgoing: BeatGrid,
+        incoming: BeatGrid,
+        notBeforeMs: Double,
+        outgoingArrangement: Arrangement?,
+        incomingArrangement: Arrangement?,
+        exitMs: Double
+    ) -> DJTransition? {
         // Both records have to be gridded, metered, and have somewhere to mix —
         // and both have to have been *read*. Matching tempo is not a substitute
         // for knowing the arrangement: without it, two pop records with clashing
@@ -129,10 +184,8 @@ public enum DJPlanner {
         // bars of two singers in two keys is not a mix by any definition. A
         // record the server has not read yet crossfades, which is fine.
         guard outgoingArrangement != nil, incomingArrangement != nil else { return nil }
-        // Where the outgoing record leaves: where the set says, if a set is
-        // being programmed, and its own mix-out point otherwise.
-        guard let outMixOut = outgoingExitMs ?? outgoing.mixOutMs,
-              let inMixIn = incoming.mixInMs,
+        let outMixOut = exitMs
+        guard let inMixIn = incoming.mixInMs,
               let outSegment = outgoing.segment(at: outMixOut),
               outgoing.beatsPerBar != nil,
               incoming.beatsPerBar != nil,

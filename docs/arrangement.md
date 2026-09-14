@@ -267,6 +267,30 @@ The lyrics were also fixed in passing: on the decks they read the idle
 player's clock and froze. And the scrubber runs the whole record now, with a
 mark where the set will leave it, rather than ending at the exit.
 
+## The exit is chosen for the pair
+
+*Asked 2026-09-14: "the exit spot and the spot in the new song should be
+dynamically chosen for the transition based on what sounds best."* Half of
+that was already so — the entry has always been chosen per pair, from the
+incoming record's mix-in point and the start of every build, intro and
+breakdown, scored against where the outgoing record leaves. The exit was not:
+the set programmer chose *one* hook end per record, on its own, and the
+planner took it.
+
+Now the programmer offers **every** hook end inside the window, best first
+(closest to the 60% target), and the planner tries each against every entry.
+The set's own first choice stands unless a mix from another exit scores at
+least **0.1** better — a different exit means more or less of the record, and
+that is only worth it when the join is clearly better, not marginally. When
+the first choice cannot be mixed from at all (two voices, say), the best of
+the rest is taken outright. The mark on the bar moves to where the plan
+actually leaves once the hand-over is booked.
+
+Pinned: candidates in order; a tie leaves the set's choice; a 0.14 gap moves
+the exit; a gap under the margin does not; one exit given is the exit taken
+(the parity tables are on that path and did not move); none given is the
+record's own mix-out.
+
 ## The lyrics as the map, and an escape that plays on
 
 Two more, after a cut fell between two words of one line and a record was

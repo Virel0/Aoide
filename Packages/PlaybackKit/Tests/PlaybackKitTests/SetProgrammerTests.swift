@@ -11,14 +11,14 @@ private func grid(mixOutMs: Double) -> BeatGrid {
     )
 }
 
-private func arrangement(_ parts: [(Arrangement.Kind, Int, Double)], phraseBars: Int? = 16) -> Arrangement {
+private func arrangement(_ parts: [(Arrangement.Kind, Int, Double)], phraseBars: Int? = 16, vocals: [Arrangement.Span]? = []) -> Arrangement {
     var sections: [Arrangement.Section] = []
     var at = 0.0
     for (kind, bars, energy) in parts {
         sections.append(.init(startMs: at, endMs: at + bar * Double(bars), kind: kind, energy: energy))
         at += bar * Double(bars)
     }
-    return Arrangement(sections: sections, phraseBars: phraseBars, phraseAnchorMs: phraseBars == nil ? nil : 0, vocals: [])
+    return Arrangement(sections: sections, phraseBars: phraseBars, phraseAnchorMs: phraseBars == nil ? nil : 0, vocals: vocals)
 }
 
 @Suite("Programming the set")
@@ -108,5 +108,108 @@ struct SetProgrammerTests {
         let exit = SetProgrammer.exitMs(grid: grid(mixOutMs: bar * 120), arrangement: rising, durationMs: bar * 128)
         // Only the second drop's end qualifies: bar 112, which is the outro's start.
         #expect(exit.map { abs($0 - bar * 112) < 0.01 } == true)
+    }
+}
+
+@Suite("The exit chosen for the pair")
+struct PairedExitTests {
+    // 128 bars at 128. Three hooks end at bars 56, 84 and 112 — all past the
+    // forty per cent floor at bar 51; the target is bar 77, so the set's own
+    // choice is 84, then 56, then 112.
+    private let three = arrangement([(.intro, 16, 0.2), (.drop, 40, 0.9), (.breakdown, 8, 0.4), (.drop, 20, 1.0), (.breakdown, 8, 0.4), (.drop, 20, 1.0), (.outro, 16, 0.2)])
+    private let plain = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)])
+
+    @Test("The candidates are every hook's end, best first")
+    func candidates() {
+        let exits = SetProgrammer.exitCandidatesMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128)
+        #expect(exits.map { Int(($0 / bar).rounded()) } == [84, 56, 112])
+        // The first is the set's own single choice; the last the escape's.
+        #expect(exits.first == SetProgrammer.exitMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128))
+        #expect(exits.max() == SetProgrammer.lateExitMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128))
+    }
+
+    @Test("The set's own exit stands unless another mixes clearly better")
+    func preferenceHolds() throws {
+        let exits = SetProgrammer.exitCandidatesMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128)
+        // Against a plain record, every exit leaves a drop into the same
+        // intro: the scores tie, and the set's choice — bar 84 — stands.
+        let tied = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: three, incomingArrangement: plain,
+            outgoingExitsMs: exits
+        ))
+        #expect(abs(tied.outgoingStartMs + tied.seconds * 1000 - bar * 84) < 0.01, "left at bar \((tied.outgoingStartMs + tied.seconds * 1000) / bar)")
+
+        // A single exit given is the exit taken: the old call, unchanged.
+        let single = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: three, incomingArrangement: plain,
+            outgoingExitMs: bar * 112
+        ))
+        #expect(abs(single.outgoingStartMs + single.seconds * 1000 - bar * 112) < 0.01)
+
+        // And none given is the record's own mix-out.
+        let own = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: three, incomingArrangement: plain,
+            outgoingExitsMs: []
+        ))
+        #expect(abs(own.outgoingStartMs + own.seconds * 1000 - bar * 116) < 0.01)
+    }
+
+    @Test("A clearly better mix from another exit is taken")
+    func betterExitWins() throws {
+        // The outgoing record sings across the bars before its second hook's
+        // end at bar 84, and that hook is its loudest; the first hook, ending
+        // at 56, is quieter and instrumental. The incoming record comes in
+        // on a build at half energy, silent. Leaving at 84: one voice under
+        // the new record (0.6 on vocals) and a 0.5 energy step. Leaving at
+        // 56: nobody singing (1.0) and a 0.1 step. The second scores 0.14
+        // more — over the margin — so the set leaves early, at 56, for this
+        // pair, though 84 is its own choice.
+        let sung = arrangement(
+            [(.intro, 16, 0.2), (.drop, 40, 0.6), (.breakdown, 8, 0.4), (.drop, 20, 1.0), (.breakdown, 8, 0.4), (.drop, 20, 1.0), (.outro, 16, 0.2)],
+            vocals: [.init(startMs: bar * 60, endMs: bar * 120)]
+        )
+        let onABuild = arrangement([(.intro, 8, 0.2), (.build, 8, 0.5), (.drop, 96, 0.9), (.outro, 16, 0.2)])
+        let exits = SetProgrammer.exitCandidatesMs(grid: grid(mixOutMs: bar * 116), arrangement: sung, durationMs: bar * 128)
+        #expect(exits.first.map { Int(($0 / bar).rounded()) } == 84)
+        let atOwn = try #require(DJPlanner.plan(outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112), outgoingArrangement: sung, incomingArrangement: onABuild, outgoingExitMs: exits[0]))
+        let atEarly = try #require(DJPlanner.plan(outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112), outgoingArrangement: sung, incomingArrangement: onABuild, outgoingExitMs: exits[1]))
+        #expect(atEarly.score.total - atOwn.score.total >= DJPlanner.exitPreferenceMargin, "gap \(atEarly.score.total - atOwn.score.total)")
+        let moved = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: sung, incomingArrangement: onABuild,
+            outgoingExitsMs: exits
+        ))
+        #expect(abs(moved.outgoingStartMs + moved.seconds * 1000 - bar * 56) < 0.01, "left at bar \((moved.outgoingStartMs + moved.seconds * 1000) / bar)")
+
+        // And when the set's own exit cannot be mixed from at all — two
+        // voices — the best of the rest is taken without a margin to clear.
+        let singing = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [.init(startMs: 0, endMs: bar * 128)])
+        let escapedTo = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: sung, incomingArrangement: singing,
+            outgoingExitsMs: exits
+        ))
+        #expect(abs(escapedTo.outgoingStartMs + escapedTo.seconds * 1000 - bar * 56) < 0.01)
+    }
+
+    @Test("A marginally better mix from another exit is not")
+    func marginIsReal() throws {
+        // Leaving at 84 or at 56 lands the join on the same record; the two
+        // scores differ by less than the margin. The set's choice stands.
+        let withBuild = arrangement([(.intro, 8, 0.2), (.build, 8, 0.5), (.drop, 96, 0.9), (.outro, 16, 0.2)])
+        let exits = SetProgrammer.exitCandidatesMs(grid: grid(mixOutMs: bar * 116), arrangement: three, durationMs: bar * 128)
+        let a = try #require(DJPlanner.plan(outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112), outgoingArrangement: three, incomingArrangement: withBuild, outgoingExitMs: exits[0]))
+        let b = try #require(DJPlanner.plan(outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112), outgoingArrangement: three, incomingArrangement: withBuild, outgoingExitMs: exits[1]))
+        let gap = abs(a.score.total - b.score.total)
+        #expect(gap < DJPlanner.exitPreferenceMargin, "gap \(gap)")
+        let chosen = try #require(DJPlanner.plan(
+            outgoing: grid(mixOutMs: bar * 116), incoming: grid(mixOutMs: bar * 112),
+            outgoingArrangement: three, incomingArrangement: withBuild,
+            outgoingExitsMs: exits
+        ))
+        #expect(abs(chosen.outgoingStartMs + chosen.seconds * 1000 - bar * 84) < 0.01)
     }
 }
