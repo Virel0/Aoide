@@ -249,11 +249,12 @@ struct StreamURLTests {
         }
     }
 
-    @Test("carries the token as api_key, since AVPlayer can't send headers")
+    @Test("carries the token as ApiKey, since AVPlayer can't send headers and api_key is legacy")
     func carriesToken() throws {
         let url = try signedIn.streamURL(for: "track1")
         let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
-        #expect(query.contains { $0.name == "api_key" && $0.value == "tok" })
+        #expect(query.contains { $0.name == "ApiKey" && $0.value == "tok" })
+        #expect(!query.contains { $0.name == "api_key" })
         #expect(url.path() == "/Audio/track1/universal")
     }
 

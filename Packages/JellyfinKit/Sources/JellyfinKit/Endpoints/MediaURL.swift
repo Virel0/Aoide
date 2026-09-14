@@ -41,15 +41,19 @@ extension JellyfinClient {
     /// play and transcoding based on what we say we can decode — rather than us
     /// guessing per-file and getting it wrong on the one FLAC that isn't seekable.
     ///
-    /// The token travels as `api_key` because `AVPlayer` gives us no reliable way to
+    /// The token travels in the query because `AVPlayer` gives us no reliable way to
     /// attach an `Authorization` header to the segment requests it makes internally.
+    /// As `ApiKey`, the spelling Jellyfin has taken since 10.8: the old `api_key`
+    /// is legacy authorization, off by default from 10.12, and a server that has
+    /// turned it off answers every stream with 401 — which the player reports as
+    /// "authentication required" and retries forever.
     public func streamURL(for itemId: String, quality: StreamQuality = .lossless) throws -> URL {
         guard let credentials else { throw JellyfinError.notSignedIn }
 
         var query = [
             URLQueryItem(name: "userId", value: credentials.userId),
             URLQueryItem(name: "deviceId", value: device.deviceId),
-            URLQueryItem(name: "api_key", value: credentials.accessToken),
+            URLQueryItem(name: "ApiKey", value: credentials.accessToken),
             // Containers iOS decodes natively, so the server hands the file over
             // untouched. `alac` is deliberately absent: ALAC is a codec that lives
             // inside m4a, not a Jellyfin container, so listing it matches nothing.
