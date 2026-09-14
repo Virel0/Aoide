@@ -318,6 +318,40 @@ struct DJSessionTests {
         #expect(session.phase == .idle)
     }
 
+    @Test("A blend longer than what is left is shortened, not skipped")
+    func blendShortens() throws {
+        let outgoing = try record(bpm: 128)
+        let incoming = try record(bpm: 124)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        // Five seconds of the record left; a twelve-second blend asked for.
+        try session.start(DJItem(url: outgoing, grid: grid(bpm: 128, mixOutMs: 95_625), exitSeconds: 85), at: 0)
+        try session.seek(to: 80, at: 0)
+        #expect(try session.scheduleBlend(seconds: 12, into: DJItem(url: incoming, grid: grid(bpm: 124, mixInMs: 0)), at: 0))
+        #expect(session.hasScheduledMix)
+        var sawMixing = false
+        _ = try mixer.renderOffline(seconds: 6) { elapsed in
+            session.update(at: elapsed)
+            if session.phase == .mixing { sawMixing = true }
+        }
+        #expect(sawMixing, "a shortened blend was still heard")
+        #expect(session.playingSide == .b)
+
+        // Nothing left at all: not booked, and said so.
+        let again = DJSession(mixer: mixer)
+        try again.start(DJItem(url: outgoing, grid: grid(bpm: 128, mixOutMs: 95_625), exitSeconds: 80.1), at: 0)
+        try again.seek(to: 80, at: 0)
+        #expect(try again.scheduleBlend(seconds: 12, into: DJItem(url: incoming, grid: grid(bpm: 124, mixInMs: 0)), at: 0) == false)
+        #expect(!again.hasScheduledMix)
+    }
+
     @Test("A pause is not time played, and a mix booked across it is booked again")
     func pauseKeepsTime() throws {
         let outgoing = try record(bpm: 128)

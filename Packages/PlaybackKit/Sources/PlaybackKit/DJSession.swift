@@ -287,14 +287,18 @@ public final class DJSession {
     /// The booking is the part that has to be exact, and it is done once, here,
     /// against the mixer's own clock — after this the two decks are running and
     /// nothing that happens on the main thread can pull them apart.
-    public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws {
+    /// Whether it was booked. Nothing is booked when the moment has passed
+    /// or a hand-over is already on the decks, and a caller that took silence
+    /// for a booking waited for a hand-over that never came.
+    @discardableResult
+    public func schedule(_ transition: DJTransition, into incoming: DJItem, at sessionSeconds: Double) throws -> Bool {
         let untilStart = (transition.outgoingStartMs / 1000 - position(at: sessionSeconds)) / rate
         guard transition.style.overlaps else {
             let echo = transition.style == .echoOut
             let tail = echo ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
             let gap = echo ? DJPlanner.echoGapSeconds(targetBpm: transition.targetBpm) : 0
             let lead = echo ? DJPlanner.echoLeadSeconds(targetBpm: transition.targetBpm) : 0
-            try book(
+            return try book(
                 .cut(transition, tail: tail),
                 into: incoming,
                 from: transition.incomingStartMs / 1000,
@@ -305,9 +309,8 @@ public final class DJSession {
                 rate: 1,
                 at: sessionSeconds
             )
-            return
         }
-        try book(
+        return try book(
             .mixed(transition),
             into: incoming,
             from: transition.incomingStartMs / 1000,
@@ -319,27 +322,39 @@ public final class DJSession {
     }
 
     /// Books a plain crossfade of `seconds`, ending as the outgoing record does.
-    public func scheduleBlend(seconds: Double, into incoming: DJItem, at sessionSeconds: Double) throws {
-        guard let untilEnd = untilEnd(at: sessionSeconds) else { return }
-        try book(
-            .blended(seconds),
+    ///
+    /// Shortened to what is left when the record ends sooner than the fade is
+    /// long — the exit can move under a booking that was due — because a
+    /// shorter fade is a fade and no fade is a cold start.
+    @discardableResult
+    public func scheduleBlend(seconds: Double, into incoming: DJItem, at sessionSeconds: Double) throws -> Bool {
+        guard let untilEnd = untilEnd(at: sessionSeconds) else { return false }
+        let fits = min(seconds, max(0, untilEnd - Self.soonestBooking))
+        guard fits > 0.5 else { return false }
+        return try book(
+            .blended(fits),
             into: incoming,
             from: incoming.startSeconds,
-            startingIn: untilEnd - seconds,
-            lasting: seconds,
+            startingIn: untilEnd - fits,
+            lasting: fits,
             rate: 1,
             at: sessionSeconds
         )
     }
+
+    /// How far ahead a hand-over can be booked at the earliest: the file has
+    /// to be opened and the deck spun up.
+    static let soonestBooking = 0.25
 
     /// Books the next record to begin exactly as this one ends.
     ///
     /// What an album run gets, and what everything else gets when nothing longer
     /// was planned. Two records on one clock join to the sample, so this is a
     /// truer gapless than a player that has to be asked to advance.
-    public func scheduleJoin(into incoming: DJItem, at sessionSeconds: Double) throws {
-        guard let untilEnd = untilEnd(at: sessionSeconds) else { return }
-        try book(
+    @discardableResult
+    public func scheduleJoin(into incoming: DJItem, at sessionSeconds: Double) throws -> Bool {
+        guard let untilEnd = untilEnd(at: sessionSeconds) else { return false }
+        return try book(
             .joined,
             into: incoming,
             from: incoming.startSeconds,
@@ -368,8 +383,8 @@ public final class DJSession {
         lasting seconds: Double,
         rate incomingRate: Double,
         at sessionSeconds: Double
-    ) throws {
-        guard phase == .playing, mix == nil, lead - cutLead > 0 else { return }
+    ) throws -> Bool {
+        guard phase == .playing, mix == nil, lead - cutLead > 0 else { return false }
 
         try mixer.load(incoming.url, on: other, from: offset)
         mixer.clearEcho(other)
@@ -395,6 +410,7 @@ public final class DJSession {
             cutLead: cutLead,
             echoLead: echoLead
         )
+        return true
     }
 
     /// Runs the automation. Call as often as convenient; missing a call makes the

@@ -275,6 +275,8 @@ public final class PlaybackEngine {
     /// hand-over that begins and ends between two ticks — a join — is still
     /// noticed by the count moving past it.
     private var djHandOversAtBooking = 0
+    /// The entry a failed booking was last logged for.
+    private var djUnbookable: UUID?
 
     /// How long before a mix the incoming record is put on the other deck.
     ///
@@ -1419,8 +1421,9 @@ public final class PlaybackEngine {
         guard remaining <= Self.djLead else { return }
 
         do {
+            var wasBooked = false
             if let transition = plannedMix(from: track, to: next.track, position: elapsed) {
-                try session.schedule(transition, into: item, at: now)
+                wasBooked = try session.schedule(transition, into: item, at: now)
                 booked = .mix(transition.style, bars: transition.bars)
                 // The set leaves where the mix ends, which the planner chose
                 // for this pair; the deck's own end and the mark on the bar
@@ -1435,7 +1438,7 @@ public final class PlaybackEngine {
                 // Read, and refused a mix: too far apart in tempo, or both
                 // singing. A pair like that is cut on the phrase line, the way a
                 // DJ would, rather than crossfaded across each other's voices.
-                try session.schedule(cut, into: item, at: now)
+                wasBooked = try session.schedule(cut, into: item, at: now)
                 booked = .mix(cut.style, bars: 0)
                 session.setExit(seconds: cut.outgoingStartMs / 1_000)
                 exitAt = .seconds(cut.outgoingStartMs / 1_000)
@@ -1452,13 +1455,26 @@ public final class PlaybackEngine {
                 // both switches on wants to know which one is about to act.
                 switch plan {
                 case .blend(let overlap):
-                    try session.scheduleBlend(seconds: overlap.seconds, into: item, at: now)
+                    wasBooked = try session.scheduleBlend(seconds: overlap.seconds, into: item, at: now)
                     booked = .crossfade(seconds: overlap.seconds)
                 case .gapless, .cut:
-                    try session.scheduleJoin(into: item, at: now)
+                    wasBooked = try session.scheduleJoin(into: item, at: now)
                     booked = .join
                 }
             }
+            // Nothing booked is nothing to wait for: the next tick asks
+            // again from wherever the record then is. Taking silence for a
+            // booking left the record to end with nothing behind it.
+            guard wasBooked else {
+                booked = nil
+                // Once per pair, not sixty times a second.
+                if djUnbookable != next.entryId {
+                    djUnbookable = next.entryId
+                    log.warning("Nothing could be booked from \(track.title, privacy: .public) into \(next.track.title, privacy: .public) yet")
+                }
+                return
+            }
+            djUnbookable = nil
             djScheduledEntryId = next.entryId
             djHandOversAtBooking = session.handOvers
         } catch {
