@@ -127,10 +127,17 @@ public struct Arrangement: Equatable, Sendable {
     /// before it. Unknown vocals, or no clean line within
     /// ``lineSearchPhrases``, and the line stands where it was.
     public func cleanLine(atOrBefore ms: Double, barMs: Double, lyricLinesMs: [Double]? = nil, downbeat: (Double) -> Double?) -> Double? {
+        cleanLineJudged(atOrBefore: ms, barMs: barMs, lyricLinesMs: lyricLinesMs, downbeat: downbeat)?.ms
+    }
+
+    /// The same, saying whether the line found is actually clean or merely
+    /// the one it was given because nothing clean was in reach. A cut can
+    /// fall on an unclean line; an echo should not repeat it.
+    public func cleanLineJudged(atOrBefore ms: Double, barMs: Double, lyricLinesMs: [Double]? = nil, downbeat: (Double) -> Double?) -> (ms: Double, clean: Bool)? {
         guard let line = phraseLine(atOrBefore: ms, barMs: barMs) ?? downbeat(ms) else { return nil }
         // Unknown vocals mean "may be singing throughout", so every line
         // reads as sung and the given one stands — no separate case needed.
-        guard let phraseBars, barMs > 0 else { return line }
+        guard let phraseBars, barMs > 0 else { return (line, vocals != nil && !maySing(from: line - Self.lineClearanceMs, to: line)) }
         let phraseMs = barMs * Double(phraseBars)
         // Never back out of the part the exit was chosen in. The exit is the
         // end of a hook; the cleanest rest anywhere near it is the breath
@@ -151,9 +158,27 @@ public struct Arrangement: Equatable, Sendable {
         for back in 0..<Self.lineSearchPhrases {
             let candidate = line - Double(back) * phraseMs
             guard candidate >= 0, back == 0 || candidate > earliest else { break }
-            if isClean(candidate) { return candidate }
+            if isClean(candidate) { return (candidate, true) }
         }
-        return line
+        return (line, false)
+    }
+
+    /// How far into a record its first line may be for that line to be the
+    /// record's landmark — the moment a listener recognises it. Sixteen bars:
+    /// past that the record has an instrumental opening of its own, and the
+    /// mix-in point is the place to come in.
+    public static let landmarkReachBars = 16.0
+
+    /// Where a record coming in after a cut should land: the downbeat the
+    /// first line of its lyrics sits on, when that line comes within
+    /// ``landmarkReachBars`` of `mixInMs`. "I want you to stay" is the
+    /// record; the new record should not begin, it should answer the echo,
+    /// and the line that answers is the first one. Nil when there are no
+    /// lyrics to read or the first line is too far in.
+    public static func landmarkMs(lyricLinesMs: [Double]?, mixInMs: Double, barMs: Double, downbeat: (Double) -> Double?) -> Double? {
+        guard let first = lyricLinesMs?.first, barMs > 0 else { return nil }
+        guard first >= mixInMs - barMs, first <= mixInMs + Self.landmarkReachBars * barMs else { return nil }
+        return downbeat(first)
     }
 
     /// How far a moment may be moved to sit on a phrase line: two bars, the

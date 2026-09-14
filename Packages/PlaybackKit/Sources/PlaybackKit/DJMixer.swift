@@ -50,13 +50,15 @@ public final class DJMixer {
     /// And where it sits when the record is untouched — below anything a
     /// speaker reproduces, so the filter is in the chain but not in the sound.
     public static let bassOpenHz: Float = 20
+    /// Where the low-pass sits when it is out of the way.
+    public static let topOpenHz: Float = 20_000
 
     private let engine = AVAudioEngine()
 
     private final class Deck {
         let player = AVAudioPlayerNode()
         let speed = AVAudioUnitTimePitch()
-        let shelf = AVAudioUnitEQ(numberOfBands: 1)
+        let shelf = AVAudioUnitEQ(numberOfBands: 2)
         let echo = AVAudioUnitDelay()
         var file: AVAudioFile?
         /// Whether this deck is meant to be sounding, as distinct from whether it
@@ -79,6 +81,15 @@ public final class DJMixer {
             band.frequency = DJMixer.bassOpenHz
             band.bandwidth = 0.7
             band.bypass = false
+            // And a low-pass, open until a filtered cut closes it: the
+            // outgoing record's top rolled off over its last two beats, then
+            // stopped — the exit for a pair that cannot be mixed and has no
+            // clean word to throw.
+            let top = shelf.bands[1]
+            top.filterType = .lowPass
+            top.frequency = DJMixer.topOpenHz
+            top.bandwidth = 0.7
+            top.bypass = false
             // Dry until asked. Feedback and the darkening of each repeat are
             // what make it read as an echo rather than a stutter.
             echo.wetDryMix = 0
@@ -87,7 +98,12 @@ public final class DJMixer {
             // half into the new record — twenty. Fading under it, not gone
             // before it.
             echo.feedback = 70
-            echo.lowPassCutoff = 6_000
+            // The repeats recede rather than stack: nothing above 3 kHz, so
+            // hats and air do not pile up, and the throw reads as a voice or
+            // a hit rather than the whole mix. With the high-pass after it
+            // at 200 Hz, the echo is mid-only — as near to a vocal stem as a
+            // deck without stems can get.
+            echo.lowPassCutoff = 3_000
             echo.delayTime = 0.5
         }
     }
@@ -300,6 +316,18 @@ public final class DJMixer {
     public func volume(on side: Side) -> Double { Double(decks[side]?.player.volume ?? 0) }
     /// Where the high-pass corner is, in hertz.
     public func bassCornerHz(on side: Side) -> Double { Double(decks[side]?.shelf.bands[0].frequency ?? 0) }
+
+    /// Moves the low-pass corner. Every setter here refuses a value the unit
+    /// already has, as the high-pass does.
+    public func setLowPass(hz: Double, on side: Side) {
+        guard let deck = decks[side], hz.isFinite else { return }
+        let wanted = Float(max(100, min(Double(Self.topOpenHz), hz)))
+        guard abs(deck.shelf.bands[1].frequency - wanted) > 0.5 else { return }
+        deck.shelf.bands[1].frequency = wanted
+    }
+
+    /// Where the low-pass corner is, in hertz.
+    public func topCornerHz(on side: Side) -> Double { Double(decks[side]?.shelf.bands[1].frequency ?? 0) }
 
     /// Applies everything a transition says about one instant of itself.
     ///

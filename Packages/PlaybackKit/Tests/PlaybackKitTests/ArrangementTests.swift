@@ -406,6 +406,58 @@ struct LyricCutTests {
         #expect(Arrangement.isLyricClean(20_000, lineStartsMs: []))
     }
 
+    @Test("No clean word in reach is a filtered cut, not an echo of a bad one")
+    func noCleanWordNoEcho() throws {
+        let sung = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [])
+        // A line starting half a second after every other bar: the one before
+        // each phrase line is still running and the next starts too late to
+        // count as the line's end — mid-line, on every line in reach.
+        let lines = stride(from: 0.0, through: bar * 128, by: bar * 2).map { $0 + 500 }
+        let cut = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: sung, incomingArrangement: read,
+            outgoingLyricLinesMs: lines
+        ))
+        #expect(cut.style == .cut)
+        // The same record with a rest before the line at bar 112: a throw.
+        let clean = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: sung, incomingArrangement: read,
+            outgoingLyricLinesMs: [bar * 100, bar * 112 + 300]
+        ))
+        #expect(clean.style == .echoOut)
+        // No lyrics, spans clear: a throw, as before.
+        let bySpans = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: sung, incomingArrangement: read))
+        #expect(bySpans.style == .echoOut)
+        // No lyrics, spans unknown — may be singing throughout: no throw.
+        let unknown = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: nil)
+        let guess = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: unknown, incomingArrangement: read))
+        #expect(guess.style == .cut)
+    }
+
+    @Test("The new record lands on its first line when that is near its start")
+    func landmarkEntry() throws {
+        let sung = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [])
+        // The incoming record's mix-in is bar 8; its first line starts a
+        // few hundred milliseconds after bar 12. It lands on bar 12.
+        let entered = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: sung, incomingArrangement: read,
+            incomingLyricLinesMs: [2_400 * 12 + 300, 2_400 * 20]
+        ))
+        #expect(abs(entered.incomingStartMs - 2_400 * 12) < 0.01, "entered at \(entered.incomingStartMs / 2_400)")
+        // A first line forty bars in is not a landmark; the mix-in stands.
+        let late = try #require(DJPlanner.planCut(
+            outgoing: grid(), incoming: slow,
+            outgoingArrangement: sung, incomingArrangement: read,
+            incomingLyricLinesMs: [2_400 * 48]
+        ))
+        #expect(abs(late.incomingStartMs - 2_400 * 8) < 0.01)
+        // No lyrics: the mix-in, phrase-snapped, as before.
+        let plain = try #require(DJPlanner.planCut(outgoing: grid(), incoming: slow, outgoingArrangement: sung, incomingArrangement: read))
+        #expect(abs(plain.incomingStartMs - 2_400 * 8) < 0.01)
+    }
+
     @Test("With lyrics, a cut moves back to a line that is not mid-line; the spans are not consulted")
     func lyricsDecide() throws {
         // The spans say the phrase line at bar 112 is clear; the lyrics say a

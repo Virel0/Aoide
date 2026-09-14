@@ -272,9 +272,23 @@ public enum DJPlanner {
     }
 
     /// Where the tail's high-pass corner ends up, and the low end with it:
-    /// swept there across the gap so the repeats have no kick left in them by
-    /// the time the new record's does.
+    /// swept there across the *approach*, so the bass is gone before the echo
+    /// engages — a delayed kick under a new kick is the first thing that
+    /// sounds clunky about an echo-out, and a kick already in the delay when
+    /// the cut falls rings for two bars whatever the filter does afterwards.
     public static let echoHighPassHz = 200.0
+
+    /// How loud the ring is against the word it repeats. A first repeat as
+    /// loud as the word reads as a glitch; one a few decibels under it reads
+    /// as an echo. Each repeat after it is the feedback's.
+    public static let echoRingLevel = 0.6
+
+    /// Where a filtered cut's low-pass ends up, and the top with it, across
+    /// the last two beats before the line: the record rolls off and stops,
+    /// and the new one comes in dry on the line. The exit for a pair that
+    /// cannot be mixed when there is no clean word to throw — a smeared
+    /// syllable repeated four times is worse than no echo.
+    public static let filteredCutHz = 300.0
 
     /// Plans a cut — or an echo-out — for a pair that has been read but cannot
     /// be mixed: tempi too far apart to bend, or both records singing. The
@@ -290,7 +304,8 @@ public enum DJPlanner {
         outgoingArrangement: Arrangement?,
         incomingArrangement: Arrangement?,
         outgoingExitMs: Double? = nil,
-        outgoingLyricLinesMs: [Double]? = nil
+        outgoingLyricLinesMs: [Double]? = nil,
+        incomingLyricLinesMs: [Double]? = nil
     ) -> DJTransition? {
         guard let outgoingArrangement, let incomingArrangement else { return nil }
         guard let outMixOut = outgoingExitMs ?? outgoing.mixOutMs,
@@ -304,17 +319,23 @@ public enum DJPlanner {
         // A cut stops the record dead, so the line has to be one nobody is
         // singing across — a mix fades the outgoing voice under the new
         // record and can afford a line mid-word; a cut cannot.
-        let exit = outgoingArrangement.cleanLine(atOrBefore: outMixOut, barMs: outBar, lyricLinesMs: outgoingLyricLinesMs) { outgoing.downbeat(atOrBefore: $0) }
-            ?? outMixOut
+        let judged = outgoingArrangement.cleanLineJudged(atOrBefore: outMixOut, barMs: outBar, lyricLinesMs: outgoingLyricLinesMs) { outgoing.downbeat(atOrBefore: $0) }
+        let exit = judged?.ms ?? outMixOut
         guard exit >= notBeforeMs else { return nil }
-        let entry = entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
+        // The new record lands on its first line when that is near its
+        // start — the moment a listener knows the record — and on its mix-in
+        // point otherwise.
+        let entry = Arrangement.landmarkMs(lyricLinesMs: incomingLyricLinesMs, mixInMs: inMixIn, barMs: inBar) { incoming.downbeat(atOrBefore: $0) }
+            ?? entryPoint(inMixIn, in: incoming, arrangement: incomingArrangement, barMs: inBar)
 
-        // Always the echo-out. A dead cut was the plan for a pair at level
-        // energy, and it was the harshest thing the set did: the exit for a
-        // pair that cannot be mixed is the tail as a bridge, whatever the
-        // energies. `.cut` stays a style the decks can perform; nothing plans
-        // it.
-        let style: DJTransition.Style = .echoOut
+        // An echo-out repeats whatever the last beat held, so it is only
+        // planned when that is a finished thing — a line's last word, a hit
+        // with a rest after it. The lyrics say, when the record has them,
+        // and the vocal spans otherwise. When nothing clean is in reach the
+        // pair is cut with the top rolled off over the last two beats
+        // instead: a smeared syllable repeated four times is worse than no
+        // echo, and a clean filtered cut beats a bad one.
+        let style: DJTransition.Style = (judged?.clean ?? false) ? .echoOut : .cut
         let exitEnergy = outgoingArrangement.section(at: exit)?.energy
         let entryEnergy = incomingArrangement.section(at: entry)?.energy
 

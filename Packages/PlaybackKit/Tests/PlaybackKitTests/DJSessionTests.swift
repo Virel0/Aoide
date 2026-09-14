@@ -499,7 +499,12 @@ struct DJCutTests {
     private static let rate = 44_100.0
 
     /// A record of clicks at `bpm`, so what rings after a cut can be counted.
-    private func clicks(bpm: Double, seconds: Double = 120) throws -> URL {
+    ///
+    /// `oneWordBefore` leaves a single click in the `rest` beats before that
+    /// moment — the one a beat before it — so an echo holds one event, the
+    /// way it holds one word, rather than a train of them a delay period
+    /// apart that stacks in the feedback.
+    private func clicks(bpm: Double, seconds: Double = 120, oneWordBefore lineMs: Double? = nil, rest: Int = 8, tone: Double = 800) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("cut-\(UUID()).caf")
         let format = AVAudioFormat(standardFormatWithSampleRate: Self.rate, channels: 1)!
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
@@ -509,13 +514,23 @@ struct DJCutTests {
         let samples = buffer.floatChannelData![0]
         for frame in 0..<total { samples[frame] = 0 }
         let beatMs = 60_000 / bpm
-        let clickFrames = Int(0.002 * Self.rate)
+        // 800 Hz over five milliseconds: inside the echo's band (200 Hz to
+        // 3 kHz), so what the repeats measure is the feedback, not the filter.
+        let clickFrames = Int(0.005 * Self.rate)
         var index = 0
         while true {
             let start = Int(Double(index) * beatMs / 1000 * Self.rate)
             guard start + clickFrames < total else { break }
+            let at = Double(index) * beatMs
+            // The rest runs up to and including the line itself: the click on
+            // the line would be the next word's attack, which a cut on the
+            // line must not catch.
+            if let lineMs, at > lineMs - Double(rest) * beatMs - 1, at < lineMs + 1, abs(at - (lineMs - beatMs)) > 1 {
+                index += 1
+                continue
+            }
             for frame in 0..<clickFrames {
-                samples[start + frame] = Float(0.8 * (1 - Double(frame) / Double(clickFrames)) * sin(2 * .pi * 1_500 * Double(frame) / Self.rate))
+                samples[start + frame] = Float(0.8 * (1 - Double(frame) / Double(clickFrames)) * sin(2 * .pi * tone * Double(frame) / Self.rate))
             }
             index += 1
         }
@@ -614,7 +629,10 @@ struct DJCutTests {
 
     @Test("An echo-out leaves the last beat ringing, and then it stops")
     func echoRings() throws {
-        let outgoing = try clicks(bpm: 128)
+        let bar = 60_000 / 128.0 * 4
+        // One word before the line — the click a beat before it — with a
+        // rest of eight beats before that, so the delay holds one event.
+        let outgoing = try clicks(bpm: 128, oneWordBefore: bar * 40)
         let incoming = try clicks(bpm: 100)
         defer {
             try? FileManager.default.removeItem(at: outgoing)
@@ -625,7 +643,6 @@ struct DJCutTests {
         try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
         try mixer.start()
 
-        let bar = 60_000 / 128.0 * 4
         // Loud out, quiet in: an echo-out.
         let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
         let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
@@ -688,16 +705,23 @@ struct DJCutTests {
         #expect(ring.contains { abs($0 - (2 + gap)) < 0.1 }, "no repeat under the new record's first beat: \(ring)")
         let late = times.filter { $0 > 2 + tail + 0.6 }
         #expect(late.isEmpty, "still ringing at \(late.first ?? 0)s")
-        // The low end leaves the tail across the gap: open at the cut, at
-        // the echo corner by the time the new record lands, open again after.
-        let atCut = corners.last { $0.0 <= 2.0 }?.1 ?? 0
-        // Read at the first tick on or after the entry: the automation runs
-        // once a block offline, and the sweep is still climbing a tick before.
-        let atEntry = corners.first { $0.0 >= 2 + gap }?.1 ?? 0
+        // The low end leaves the record across the approach: open three
+        // beats before the line, at the echo corner by the line itself — so
+        // the delay never holds a kick — and open again after the tail.
+        let before = corners.last { $0.0 <= 2 - 3 * beat }?.1 ?? 0
+        let halfway = corners.last { $0.0 <= 2 - beat / 2 }?.1 ?? 0
+        let atCut = corners.first { $0.0 >= 2.0 }?.1 ?? 0
         let after = corners.last?.1 ?? 0
-        #expect(abs(atCut - 20) < 1)
-        #expect(atEntry > 150, "corner at the new record's entry: \(atEntry) Hz")
+        #expect(abs(before - 20) < 1, "corner before the approach: \(before) Hz")
+        #expect(halfway > 60, "the low end is still in the record half a beat before the line: \(halfway) Hz")
+        #expect(atCut > 150, "corner at the cut: \(atCut) Hz")
         #expect(abs(after - 20) < 1, "corner after the tail: \(after) Hz")
+        // And the first repeat sits under the word it repeats: the ring is
+        // held a few decibels down, or a repeat as loud as the word reads as
+        // a glitch. The dry click a bar before the line is the reference.
+        let word = clickPeaks(in: rendered, at: [2 - beat])[0]
+        #expect(word > 0.5, "the word \(word)")
+        #expect(peaks.first.map { $0 < word * 0.75 && $0 > word * 0.3 } == true, "first repeat \(peaks.first ?? 0) against the word \(word)")
     }
 
     /// A record of low thumps at `bpm` — a kick with nothing above it — so
@@ -751,15 +775,113 @@ struct DJCutTests {
         try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
         let rendered = try mixer.renderOffline(seconds: 6) { session.update(at: $0) }
 
-        // The first repeat, a beat after the cut, still has its weight: the
-        // filter is halfway. The fourth — a bar into the new record — has
-        // lost it: on the feedback alone it would be 0.7³ of the first, and
-        // the filter at 200 Hz takes a 60 Hz thump down by another twenty
-        // decibels or so.
+        // The kick is gone before the echo engages: the high-pass reaches
+        // 200 Hz across the two beats before the line, so the delay never
+        // holds a thump at its weight. The dry thump a bar before the line
+        // is the reference; the first repeat is well under it, and the
+        // fourth — a bar into the new record — is nothing.
         let beat = 60.0 / 128
+        let dry = clickPeaks(in: rendered, at: [2 - 4 * beat])[0]
         let peaks = clickPeaks(in: rendered, at: [2 + beat, 2 + 4 * beat])
-        #expect(peaks[0] > 0.3, "first repeat \(peaks[0])")
-        #expect(peaks[1] < 0.15 * peaks[0], "fourth repeat \(peaks[1]) against first \(peaks[0]): the kick is still in the tail")
+        #expect(dry > 0.5, "dry thump \(dry)")
+        #expect(peaks[0] < 0.3 * dry, "first repeat \(peaks[0]) against the thump \(dry): the kick got into the delay")
+        #expect(peaks[1] < 0.1 * dry, "fourth repeat \(peaks[1]) against the thump \(dry): the kick is still in the tail")
+    }
+
+    @Test("The repeats recede: a bright hit's echo dies faster than a mid one's")
+    func repeatsRecede() throws {
+        func secondRepeatShare(tone: Double) throws -> Float {
+            let bar = 60_000 / 128.0 * 4
+            let outgoing = try clicks(bpm: 128, oneWordBefore: bar * 40, tone: tone)
+            let incoming = try clicks(bpm: 100)
+            defer {
+                try? FileManager.default.removeItem(at: outgoing)
+                try? FileManager.default.removeItem(at: incoming)
+            }
+            let mixer = DJMixer()
+            let session = DJSession(mixer: mixer)
+            try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+            try mixer.start()
+            let loud = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 1.0)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+            let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+            let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+            let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+            let echo = try #require(DJPlanner.planCut(outgoing: outGrid, incoming: inGrid, outgoingArrangement: loud, incomingArrangement: quiet))
+            try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+            try session.seek(to: echo.outgoingStartMs / 1_000 - 2, at: 0)
+            try session.schedule(echo, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
+            let rendered = try mixer.renderOffline(seconds: 5) { session.update(at: $0) }
+            let beat = 60.0 / 128
+            let peaks = clickPeaks(in: rendered, at: [2 - beat, 2 + 2 * beat])
+            return peaks[1] / peaks[0]
+        }
+        // The delay darkens each pass: a 5 kHz hit is well above its corner
+        // and loses most of itself by the second repeat; an 800 Hz one is
+        // inside the band and loses only the feedback's share.
+        let bright = try secondRepeatShare(tone: 5_000)
+        let mid = try secondRepeatShare(tone: 800)
+        #expect(bright < 0.2, "bright second repeat at \(bright) of the hit")
+        #expect(mid > 0.25, "mid second repeat at \(mid) of the hit")
+    }
+
+    @Test("A filtered cut rolls the top off over the last two beats and stops on the line")
+    func filteredCut() throws {
+        let outgoing = try clicks(bpm: 128)
+        let incoming = try clicks(bpm: 100)
+        defer {
+            try? FileManager.default.removeItem(at: outgoing)
+            try? FileManager.default.removeItem(at: incoming)
+        }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        let bar = 60_000 / 128.0 * 4
+        // Lyrics that put a line across every phrase line in reach: no clean
+        // word to throw, so a filtered cut rather than an echo.
+        let sung = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .drop, energy: 0.9)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
+        let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
+        let inGrid = grid(bpm: 100, mixOutMs: 100_000)
+        // A line half a second after every half-bar: the last one started
+        // 0.4 s before the phrase line and the next starts 0.5 s after it —
+        // mid-line by the rule, on every line in reach.
+        let lines = stride(from: 0.0, through: bar * 40, by: bar / 2).map { $0 + 500 }
+        let cut = try #require(DJPlanner.planCut(
+            outgoing: outGrid, incoming: inGrid,
+            outgoingArrangement: sung, incomingArrangement: quiet,
+            outgoingLyricLinesMs: lines
+        ))
+        #expect(cut.style == .cut)
+
+        try session.start(DJItem(url: outgoing, grid: outGrid), at: 0)
+        try session.seek(to: cut.outgoingStartMs / 1_000 - 2, at: 0)
+        try session.schedule(cut, into: DJItem(url: incoming, gainDb: -60, grid: inGrid), at: 0)
+        var tops: [(Double, Double, Bool)] = []
+        let rendered = try mixer.renderOffline(seconds: 4) { elapsed in
+            session.update(at: elapsed)
+            tops.append((elapsed, mixer.topCornerHz(on: .a), mixer.isRunning(.a)))
+        }
+
+        let beat = 60.0 / 128
+        // Open three beats before the line, closing through the last two,
+        // near its floor on the line — and the record stops there, with no
+        // echo and nothing after it.
+        let open = tops.last { $0.0 <= 2 - 3 * beat }
+        let half = tops.first { $0.0 >= 2 - beat }
+        let onTheLine = tops.first { $0.0 >= 2 }
+        #expect(open?.1 == Double(DJMixer.topOpenHz))
+        #expect(open?.2 == true)
+        #expect((half?.1 ?? 0) < 5_000 && (half?.1 ?? 0) > 500, "corner a beat before the line: \(half?.1 ?? -1)")
+        #expect(half?.2 == true, "stopped before the line")
+        #expect(onTheLine?.2 == false, "still running after the line")
+        #expect(mixer.echoWet(on: .a) == 0)
+        let after = clickTimes(in: rendered, threshold: 0.05, holdSeconds: 0.03).filter { $0 > 2.1 }
+        #expect(after.isEmpty, "something rang after a filtered cut: \(after)")
+        // The filter is open again for the next record on this deck.
+        #expect(mixer.topCornerHz(on: .a) == Double(DJMixer.topOpenHz))
+        #expect(session.playingSide == .b)
     }
 
     @Test("A pause during the approach takes the echo away with the booking")

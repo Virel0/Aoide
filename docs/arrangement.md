@@ -291,6 +291,40 @@ the exit; a gap under the margin does not; one exit given is the exit taken
 (the parity tables are on that path and did not move); none given is the
 record's own mix-out.
 
+## The echo-out, third pass: a throw, not a mix repeated
+
+*From a DJ's account of why echo-outs sound amateur: the algorithm cuts on
+a random sample and starts the next track on a random sample; the tail
+repeats garbage and the incoming song arrives mid-thought. And the DSP:
+delayed kick under a new kick, repeat one as loud as the word, full-mix
+echo. His test: mute the incoming record and listen to the echo alone — if
+you cannot tell what it was on repeat two, the selector failed, not the
+delay.* Everything below that a deck without stems can do:
+
+- **Mid-only echo.** The delay's own low-pass is at 3 kHz now (was 6) and
+  the deck's high-pass after it is at 200 Hz *before* the cut — swept there
+  across the two-beat approach, not across the gap afterwards — so the delay
+  never holds a kick and the repeats have no hats. As near to a vocal stem
+  as this can get; measured: a 60 Hz thump's first repeat is under 30% of the
+  thump, a 5 kHz hit's second repeat under 20% of the hit, an 800 Hz one's
+  over 25%.
+- **The first repeat under the word.** The ring is held at 0.6 (−4.4 dB)
+  from the cut; a repeat as loud as the word reads as a glitch. Measured on
+  a record with one hit before the line and a rest before that.
+- **No echo of a bad word.** With lyrics, the throw is only planned when a
+  line in reach is actually clean — a line's last word with the next line
+  starting within 400 ms after the cut, or a rest. When none is, the pair
+  is **filtered-cut** instead: the top rolled off from 20 kHz to 300 Hz over
+  the last two beats, then stopped on the line, the new record in dry.
+  Without lyrics the spans decide; spans unknown means no throw.
+- **The new record lands on its first line** when that comes within sixteen
+  bars of its mix-in: the downbeat the line sits on. "I want you to stay" is
+  the record; it should answer the echo, not begin.
+
+Not done, because it needs stems: echoing the vocal alone. And wordplay —
+last word of one record a cousin of the first hook of the next — needs the
+lyrics' *words*, not their timings; it is a different feature.
+
 ## The lyrics as the map, and an escape that plays on
 
 Two more, after a cut fell between two words of one line and a record was

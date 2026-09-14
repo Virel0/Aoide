@@ -1203,7 +1203,8 @@ public final class PlaybackEngine {
             outgoingArrangement: arrangementResolver?(outgoing),
             incomingArrangement: arrangementResolver?(incoming),
             outgoingExitMs: programmedExit(for: outgoing),
-            outgoingLyricLinesMs: lyricLinesResolver?(outgoing)
+            outgoingLyricLinesMs: lyricLinesResolver?(outgoing),
+            incomingLyricLinesMs: lyricLinesResolver?(incoming)
         )
     }
 

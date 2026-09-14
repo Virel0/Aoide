@@ -297,7 +297,9 @@ public final class DJSession {
             let echo = transition.style == .echoOut
             let tail = echo ? DJPlanner.echoTailSeconds(targetBpm: transition.targetBpm) : 0
             let gap = echo ? DJPlanner.echoGapSeconds(targetBpm: transition.targetBpm) : 0
-            let lead = echo ? DJPlanner.echoLeadSeconds(targetBpm: transition.targetBpm) : 0
+            // Both kinds have an approach — the two beats before the line in
+            // which the echo builds, or the top rolls off.
+            let lead = DJPlanner.echoLeadSeconds(targetBpm: transition.targetBpm)
             return try book(
                 .cut(transition, tail: tail),
                 into: incoming,
@@ -423,12 +425,27 @@ public final class DJSession {
             return
         }
         guard sessionSeconds >= mix.beginsAt else {
-            // An echo-out's approach: the record still playing, the echo
-            // building under its last beats, so that by the line the dry
-            // signal has already gone and the cut stops nothing audible.
+            // The approach: the record still playing through its last two
+            // beats. For an echo-out the echo builds under them and the low
+            // end leaves, so that by the line the dry signal and the bass
+            // have both already gone and what the delay holds is mid-only —
+            // the nearest thing to a vocal stem a deck without stems has.
+            // For a filtered cut the top rolls off instead, and the line
+            // stops what is left.
             if case .cut(let transition, _) = mix.kind, mix.echoLead > 0, sessionSeconds >= mix.armsAt {
-                let approach = (sessionSeconds - mix.armsAt) / mix.echoLead
-                mixer.armEcho(side, beatSeconds: 60 / transition.targetBpm, wet: 100 * max(0, min(1, approach)))
+                let approach = max(0, min(1, (sessionSeconds - mix.armsAt) / mix.echoLead))
+                if transition.style == .echoOut {
+                    mixer.armEcho(side, beatSeconds: 60 / transition.targetBpm, wet: 100 * approach)
+                    mixer.setHighPass(
+                        hz: DJAutomation.sweep(from: Double(DJMixer.bassOpenHz), to: DJPlanner.echoHighPassHz, fraction: approach),
+                        on: side
+                    )
+                } else {
+                    mixer.setLowPass(
+                        hz: DJAutomation.sweep(from: Double(DJMixer.topOpenHz), to: DJPlanner.filteredCutHz, fraction: approach),
+                        on: side
+                    )
+                }
             }
             return
         }
@@ -447,21 +464,16 @@ public final class DJSession {
             // run, and its first tick is where the ring is started.
             if !cutStarted, tail > 0 {
                 cutStarted = true
+                mixer.setHighPass(hz: DJPlanner.echoHighPassHz, on: side)
                 mixer.echoOut(side, beatSeconds: 60 / transition.targetBpm)
             }
-            // The repeats decay on the feedback; the fader stays open for
-            // most of the tail and closes over the last of it, so the ring
-            // ends rather than being cut off a second time. And the low end
-            // is swept out of the repeats across the gap, so by the time the
-            // new record's kick lands there is not one still ringing under it.
+            // The ring sits a few decibels under the word it repeats, and the
+            // repeats decay on the feedback; the fader stays there for most
+            // of the tail and closes over the last of it, so the ring ends
+            // rather than being cut off a second time.
             if tail > 0 {
                 let fade = max(0, min(1, (progress - DJPlanner.echoFadeFrom) / (1 - DJPlanner.echoFadeFrom)))
-                mixer.setVolume((1 - fade) * (current?.linearGain ?? 1), on: side)
-                let gap = mix.cutLead > 0 ? (sessionSeconds - mix.beginsAt) / mix.cutLead : 1
-                mixer.setHighPass(
-                    hz: DJAutomation.sweep(from: Double(DJMixer.bassOpenHz), to: DJPlanner.echoHighPassHz, fraction: gap),
-                    on: side
-                )
+                mixer.setVolume(DJPlanner.echoRingLevel * (1 - fade) * (current?.linearGain ?? 1), on: side)
             }
         case .mixed(let transition):
             // The levelling sits underneath the mix's own curve, so two records
@@ -489,6 +501,7 @@ public final class DJSession {
         mixer.stopDeck(side)
         mixer.clearEcho(side)
         mixer.setHighPass(hz: Double(DJMixer.bassOpenHz), on: side)
+        mixer.setLowPass(hz: Double(DJMixer.topOpenHz), on: side)
         cutStarted = false
         mixer.setBassCut(0, on: other)
         mixer.setVolume(mix.incoming.linearGain, on: other)
@@ -551,8 +564,11 @@ public final class DJSession {
     public func pause(at sessionSeconds: Double) {
         if phase == .playing, mix != nil {
             mixer.stopDeck(other)
-            // An echo already building under the record goes with the booking.
+            // An echo already building under the record goes with the booking,
+            // and so do the filters it was moving.
             mixer.clearEcho(side)
+            mixer.setHighPass(hz: Double(DJMixer.bassOpenHz), on: side)
+            mixer.setLowPass(hz: Double(DJMixer.topOpenHz), on: side)
             mix = nil
         }
         pausedAt = sessionSeconds
@@ -594,6 +610,8 @@ public final class DJSession {
         guard let current else { return }
         mixer.stopDeck(other)
         mixer.clearEcho(side)
+        mixer.setHighPass(hz: Double(DJMixer.bassOpenHz), on: side)
+        mixer.setLowPass(hz: Double(DJMixer.topOpenHz), on: side)
         mix = nil
         try mixer.load(current.url, on: side, from: seconds)
         mixer.play(side)
