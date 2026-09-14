@@ -73,6 +73,14 @@ struct SettingsView: View {
             }
 
             Section {
+                ShareDiagnosticsButton()
+            } header: {
+                Text("Diagnostics")
+            } footer: {
+                Text("The last half hour of Aoide's own log, with what was playing and what was next. Nothing is sent anywhere; share it yourself — AirDrop to a Mac, or save it to Files.")
+            }
+
+            Section {
                 LyricsOffsetRow()
             } header: {
                 Text("Lyrics")

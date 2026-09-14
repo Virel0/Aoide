@@ -93,6 +93,10 @@ struct NowPlayingView: View {
             // the one Infinity chose, and this is where you tell it not to.
             Menu {
                 TrackTasteButtons(track: track, skips: true)
+                Divider()
+                // Here as well as in Settings: a hand-over that went wrong is
+                // noticed on this screen, and the log is only kept so long.
+                ShareDiagnosticsButton()
             } label: {
                 Image(systemName: "ellipsis.circle.fill")
                     .font(.title2)
