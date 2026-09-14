@@ -12,8 +12,9 @@ public struct DJItem: Equatable, Sendable {
     /// Where its beats are, if the server has measured them.
     public let grid: BeatGrid?
     /// Where the set leaves this record, when a set is being programmed. Before
-    /// the sound ends, usually well before: see ``SetProgrammer``.
-    public let exitSeconds: Double?
+    /// the sound ends, usually well before: see ``SetProgrammer``. Moved by
+    /// ``DJSession/setExit(seconds:)`` as the set changes its mind.
+    public var exitSeconds: Double?
 
     public init(url: URL, sound: SilenceBounds? = nil, gainDb: Double? = nil, grid: BeatGrid? = nil, exitSeconds: Double? = nil) {
         self.url = url
@@ -264,6 +265,22 @@ public final class DJSession {
     /// The session clock when playback was paused, so what is booked against
     /// that clock can be moved by exactly the time it stood still.
     private var pausedAt: Double?
+
+    /// Moves where the record playing is left — or clears it, so it plays to
+    /// the end of its sound.
+    ///
+    /// The exit is decided again as the set learns more: the record queued
+    /// next arrives, is read, turns out not to mix, and the set decides to
+    /// play this one to its last hook instead. The deck ends the record where
+    /// *it* believes the exit is, so it has to be told — a record ended at
+    /// the first exit while the hand-over was booked against the second
+    /// simply stopped, and the next one started cold.
+    public func setExit(seconds: Double?) {
+        current?.exitSeconds = seconds
+    }
+
+    /// Where the record playing is left, as the deck has it.
+    public var exitSeconds: Double? { current?.exitSeconds }
 
     /// Books a beat-matched mix somebody else planned.
     ///

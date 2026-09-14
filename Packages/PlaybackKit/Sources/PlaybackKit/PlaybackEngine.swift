@@ -1336,6 +1336,20 @@ public final class PlaybackEngine {
         }
 
         elapsed = .seconds(session.heardPosition(at: now))
+        // The exit is re-decided as the record queued next becomes readable,
+        // and the deck ends the record where it believes the exit is: the
+        // two are kept the same, or the deck ends the record at an exit the
+        // set no longer means and the next one starts cold.
+        if session.phase == .playing, !session.hasScheduledMix, let track = queue.currentTrack {
+            let exit = programmedExit(for: track).map { $0 / 1_000 }
+            // Never moved to somewhere already behind the playhead: a record
+            // "ended" two seconds ago would end now, with nothing booked.
+            let reachable = exit.map { $0 > session.position(at: now) + 2 } ?? true
+            if exit != session.exitSeconds, reachable {
+                session.setExit(seconds: exit)
+                exitAt = exit.map { .seconds($0) }
+            }
+        }
         bookHandoverIfDue(at: now)
 
         switch session.phase {
@@ -1409,8 +1423,13 @@ public final class PlaybackEngine {
                 try session.schedule(transition, into: item, at: now)
                 booked = .mix(transition.style, bars: transition.bars)
                 // The set leaves where the mix ends, which the planner chose
-                // for this pair; the mark on the bar follows it.
-                exitAt = .seconds(transition.outgoingStartMs / 1_000 + transition.seconds)
+                // for this pair; the deck's own end and the mark on the bar
+                // follow it, so that a booking abandoned by a pause does not
+                // leave the deck ending the record at an exit the plan had
+                // moved past.
+                let leaves = transition.outgoingStartMs / 1_000 + transition.seconds
+                session.setExit(seconds: leaves)
+                exitAt = .seconds(leaves)
                 log.info("Mixing \(track.title, privacy: .public) into \(next.track.title, privacy: .public) over \(transition.bars) bars")
             } else if let cut = plannedCut(from: track, to: next.track, position: elapsed) {
                 // Read, and refused a mix: too far apart in tempo, or both
@@ -1418,6 +1437,7 @@ public final class PlaybackEngine {
                 // DJ would, rather than crossfaded across each other's voices.
                 try session.schedule(cut, into: item, at: now)
                 booked = .mix(cut.style, bars: 0)
+                session.setExit(seconds: cut.outgoingStartMs / 1_000)
                 exitAt = .seconds(cut.outgoingStartMs / 1_000)
                 log.info("Cutting \(track.title, privacy: .public) into \(next.track.title, privacy: .public)")
             } else {

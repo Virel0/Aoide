@@ -292,6 +292,32 @@ struct DJSessionTests {
         #expect(expected - naive > 0.5)
     }
 
+    @Test("The deck ends the record where the set now says, not where it first said")
+    func exitMoves() throws {
+        let outgoing = try record(bpm: 128)
+        defer { try? FileManager.default.removeItem(at: outgoing) }
+        let mixer = DJMixer()
+        let session = DJSession(mixer: mixer)
+        try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 1)
+        try mixer.start()
+
+        var ended = 0
+        session.onTrackEnded = { ended += 1 }
+        // Started with an exit at 81 s, then told the exit is 84 s — the set
+        // decided to play to the last hook. At 82 s the record is still going.
+        try session.start(DJItem(url: outgoing, grid: grid(bpm: 128, mixOutMs: 95_625), exitSeconds: 81), at: 0)
+        try session.seek(to: 79.5, at: 0)
+        #expect(session.exitSeconds == 81)
+        session.setExit(seconds: 84)
+        #expect(session.exitSeconds == 84)
+        _ = try mixer.renderOffline(seconds: 2.5) { session.update(at: $0) }
+        #expect(ended == 0, "ended at the exit the set had moved past")
+        #expect(session.phase == .playing)
+        _ = try mixer.renderOffline(seconds: 2.5) { session.update(at: 2.5 + $0) }
+        #expect(ended == 1)
+        #expect(session.phase == .idle)
+    }
+
     @Test("A pause is not time played, and a mix booked across it is booked again")
     func pauseKeepsTime() throws {
         let outgoing = try record(bpm: 128)
