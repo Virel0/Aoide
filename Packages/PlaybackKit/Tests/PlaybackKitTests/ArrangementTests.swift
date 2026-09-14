@@ -387,32 +387,37 @@ struct LyricCutTests {
     @Test("A moment is clean before a line starts, in a rest, or after the last line")
     func cleanMoments() {
         let lines: [Double] = [10_000, 13_000, 16_000, 30_000, 33_000]
-        // 12.8 s: 200 ms before a line starts — the previous one is over.
-        #expect(Arrangement.isLyricClean(12_800, lineStartsMs: lines))
-        // 12.5 s: 500 ms before a line, 2.5 s into the previous — mid-line.
-        #expect(!Arrangement.isLyricClean(12_500, lineStartsMs: lines))
+        let beat = 60_000.0 / 128 // 469 ms: the lead is the 600 ms floor
+        // 12.5 s: 500 ms before a line starts — the previous one is over.
+        #expect(Arrangement.isLyricClean(12_500, lineStartsMs: lines, beatMs: beat))
+        // 12.2 s: 800 ms before a line, 2.2 s into the previous — mid-line.
+        #expect(!Arrangement.isLyricClean(12_200, lineStartsMs: lines, beatMs: beat))
+        // At 100 BPM the beat is 600 ms too; at 60 it is a second, and 12.2
+        // is inside it.
+        #expect(Arrangement.isLyricClean(12_200, lineStartsMs: lines, beatMs: 1_000))
         // 11 s: a second into a line.
-        #expect(!Arrangement.isLyricClean(11_000, lineStartsMs: lines))
+        #expect(!Arrangement.isLyricClean(11_000, lineStartsMs: lines, beatMs: beat))
         // 25 s: nine seconds after a line started, with the next at 30 —
         // a rest longer than any line runs.
-        #expect(Arrangement.isLyricClean(25_000, lineStartsMs: lines))
+        #expect(Arrangement.isLyricClean(25_000, lineStartsMs: lines, beatMs: beat))
         // 20 s: four seconds in, next at 30 — still within a line's reach.
-        #expect(!Arrangement.isLyricClean(20_000, lineStartsMs: lines))
+        #expect(!Arrangement.isLyricClean(20_000, lineStartsMs: lines, beatMs: beat))
         // 9 s: before the first line ever starts.
-        #expect(Arrangement.isLyricClean(9_000, lineStartsMs: lines))
+        #expect(Arrangement.isLyricClean(9_000, lineStartsMs: lines, beatMs: beat))
         // 45 s: long after the last.
-        #expect(Arrangement.isLyricClean(45_000, lineStartsMs: lines))
+        #expect(Arrangement.isLyricClean(45_000, lineStartsMs: lines, beatMs: beat))
         // No lyrics at all: nothing to say.
-        #expect(Arrangement.isLyricClean(20_000, lineStartsMs: []))
+        #expect(Arrangement.isLyricClean(20_000, lineStartsMs: [], beatMs: beat))
     }
 
     @Test("No clean word in reach is a filtered cut, not an echo of a bad one")
     func noCleanWordNoEcho() throws {
         let sung = arrangement([(.intro, 16, 0.2), (.drop, 96, 0.9), (.outro, 16, 0.2)], vocals: [])
-        // A line starting half a second after every other bar: the one before
-        // each phrase line is still running and the next starts too late to
-        // count as the line's end — mid-line, on every line in reach.
-        let lines = stride(from: 0.0, through: bar * 128, by: bar * 2).map { $0 + 500 }
+        // A line starting 900 ms after every other bar: the one before each
+        // phrase line is still running and the next starts too late — past
+        // the beat's lead — to count as the line's end. Mid-line, on every
+        // line in reach.
+        let lines = stride(from: 0.0, through: bar * 128, by: bar * 2).map { $0 + 900 }
         let cut = try #require(DJPlanner.planCut(
             outgoing: grid(), incoming: slow,
             outgoingArrangement: sung, incomingArrangement: read,

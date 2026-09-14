@@ -93,22 +93,31 @@ public struct Arrangement: Equatable, Sendable {
     /// line starts, not ends; a line that started eight seconds ago is over.
     public static let longestLineMs = 8_000.0
 
-    /// How long after a line starts a cut may not fall: the line is being
-    /// sung. A cut lands *before* a line starts — the last word of the
-    /// previous line is done — or in a rest.
-    public static let lineLeadMs = 400.0
+    /// How far before a line's start a cut may fall and still count as
+    /// "the line before it has ended": a beat, or 600 ms when the beat is
+    /// shorter. A line that starts on the phrase's first beat, or on the
+    /// "and" after it, is a line the previous one finished before; and LRC
+    /// timings are typed by people, a few hundred milliseconds either way.
+    /// The first version asked for 400 ms and refused nearly every real
+    /// record — pop lines start a beat into the phrase, not on the line.
+    public static let leastLineLeadMs = 600.0
+
+    public static func lineLeadMs(beatMs: Double) -> Double {
+        max(leastLineLeadMs, beatMs)
+    }
 
     /// Whether `ms` is a clean place to stop the record according to its
-    /// synced lyrics: within ``lineLeadMs`` before a line starts (the line
-    /// before it has ended), or in a rest longer than ``longestLineMs``, or
-    /// after the last line. Everything else is mid-line.
-    public static func isLyricClean(_ ms: Double, lineStartsMs: [Double]) -> Bool {
+    /// synced lyrics: within a beat before a line starts (the line before
+    /// it has ended), or in a rest longer than ``longestLineMs``, or after
+    /// the last line. Everything else is mid-line.
+    public static func isLyricClean(_ ms: Double, lineStartsMs: [Double], beatMs: Double) -> Bool {
         guard let last = lineStartsMs.last else { return true }
         if ms >= last + longestLineMs { return true }
+        let lead = lineLeadMs(beatMs: beatMs)
         var previous: Double?
         for start in lineStartsMs {
             if start >= ms {
-                if start - ms <= lineLeadMs { return true }
+                if start - ms <= lead { return true }
                 break
             }
             previous = start
@@ -151,8 +160,9 @@ public struct Arrangement: Equatable, Sendable {
         // line is exactly what the spans cannot see. With lyrics, the
         // phrase line is moved back to the latest one that is not mid-line;
         // the spans decide only when there are no lyrics to read.
+        let beatMs = barMs / 4
         let isClean: (Double) -> Bool = { candidate in
-            if let lyricLinesMs { return Self.isLyricClean(candidate, lineStartsMs: lyricLinesMs) }
+            if let lyricLinesMs { return Self.isLyricClean(candidate, lineStartsMs: lyricLinesMs, beatMs: beatMs) }
             return !self.maySing(from: candidate - Self.lineClearanceMs, to: candidate)
         }
         for back in 0..<Self.lineSearchPhrases {

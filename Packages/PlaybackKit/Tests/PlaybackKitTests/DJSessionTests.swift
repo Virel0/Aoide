@@ -844,10 +844,10 @@ struct DJCutTests {
         let quiet = Arrangement(sections: [.init(startMs: 0, endMs: 120_000, kind: .intro, energy: 0.2)], phraseBars: 4, phraseAnchorMs: 0, vocals: [])
         let outGrid = grid(bpm: 128, mixOutMs: bar * 40)
         let inGrid = grid(bpm: 100, mixOutMs: 100_000)
-        // A line half a second after every half-bar: the last one started
-        // 0.4 s before the phrase line and the next starts 0.5 s after it —
-        // mid-line by the rule, on every line in reach.
-        let lines = stride(from: 0.0, through: bar * 40, by: bar / 2).map { $0 + 500 }
+        // A line 700 ms after every half-bar: the last one started 0.24 s
+        // before the phrase line and the next starts 0.7 s after it — past
+        // the lead — so it is mid-line by the rule, on every line in reach.
+        let lines = stride(from: 0.0, through: bar * 40, by: bar / 2).map { $0 + 700 }
         let cut = try #require(DJPlanner.planCut(
             outgoing: outGrid, incoming: inGrid,
             outgoingArrangement: sung, incomingArrangement: quiet,

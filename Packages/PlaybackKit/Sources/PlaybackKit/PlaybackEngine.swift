@@ -1443,7 +1443,11 @@ public final class PlaybackEngine {
                 booked = .mix(cut.style, bars: 0)
                 session.setExit(seconds: cut.outgoingStartMs / 1_000)
                 exitAt = .seconds(cut.outgoingStartMs / 1_000)
-                log.info("Cutting \(track.title, privacy: .public) into \(next.track.title, privacy: .public)")
+                // Enough in the log to say why it was this and not the other:
+                // the exit chosen, whether the record had lyrics to read, and
+                // where the new one lands.
+                let hadLyrics = lyricLinesResolver?(track) != nil
+                log.info("\(cut.style == .echoOut ? "Echoing out of" : "Filtered cut from", privacy: .public) \(track.title, privacy: .public) at \(Int(cut.outgoingStartMs), privacy: .public) ms (lyrics \(hadLyrics ? "read" : "none", privacy: .public)) into \(next.track.title, privacy: .public) at \(Int(cut.incomingStartMs), privacy: .public) ms")
             } else {
                 let plan = MixPlanner.plan(
                     from: mixTrack(track),
