@@ -181,6 +181,7 @@ final class AppSession {
     }
 
     func signOut() async {
+        Self.log.info("Signing out")
         // Stop the music and drop the reporter before the token goes away, so the
         // server doesn't keep showing a session that no longer exists.
         JellyfinPlaybackBridge.disconnect()
@@ -192,13 +193,26 @@ final class AppSession {
         // device's business.
         SyncCoordinator.shared.disconnect()
 
-        // Tell the server if we can, but never let a network failure trap someone
-        // in a signed-in state they're trying to leave.
-        try? await client?.signOut()
-
+        // The screen leaves *now*. The server is told afterwards, on its own,
+        // with a few seconds to answer: a logout that waited for the request
+        // first sat on the settings screen for as long as an unreachable server
+        // took to time out, which read as the button doing nothing.
+        let departing = client
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil
         state = .signedOut
+
+        Task.detached {
+            try? await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { try await departing?.signOut() }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(5))
+                    throw CancellationError()
+                }
+                try await group.next()
+                group.cancelAll()
+            }
+        }
     }
 }
