@@ -194,7 +194,17 @@ final class BeatGridSync {
 /// crossfades instead.
 enum AutoDJPreference {
     static let key = "aoide.autoDJ"
-    static var isOn: Bool { UserDefaults.standard.bool(forKey: key) }
+
+    /// Whether Auto DJ is offered at all. Off since 2026-10-22: without stems,
+    /// and on a library of vocal pop and rock, the transitions never sounded
+    /// like a DJ — see docs/arrangement.md, "Shelved". Everything behind it is
+    /// kept and tested; turning this back on brings the switch back on the
+    /// player and in Settings, and every path that reads ``isOn`` with it.
+    static let isAvailable = false
+
+    /// Whether Auto DJ is in force. Always false while it is not offered,
+    /// whatever an old install left in the setting.
+    static var isOn: Bool { isAvailable && UserDefaults.standard.bool(forKey: key) }
 }
 
 /// How much of the library the server has measured.

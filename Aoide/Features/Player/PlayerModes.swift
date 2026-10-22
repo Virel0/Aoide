@@ -30,19 +30,21 @@ struct PlayerModesRow: View {
                 PlaybackEngine.shared.isCrossfading = crossfade
             }
 
-            ModeChip(
-                title: "Auto DJ",
-                symbol: "slider.horizontal.3",
-                isOn: autoDJ,
-                icon: { Turntable(isSpinning: autoDJ, tint: autoDJ ? .accentColor : .secondary) }
-            ) {
-                autoDJ.toggle()
-                PlaybackEngine.shared.isAutoDJing = autoDJ
-                if autoDJ {
-                    BeatGridSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
-                    ArrangementSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+            if AutoDJPreference.isAvailable {
+                ModeChip(
+                    title: "Auto DJ",
+                    symbol: "slider.horizontal.3",
+                    isOn: autoDJ,
+                    icon: { Turntable(isSpinning: autoDJ, tint: autoDJ ? .accentColor : .secondary) }
+                ) {
+                    autoDJ.toggle()
+                    PlaybackEngine.shared.isAutoDJing = autoDJ
+                    if autoDJ {
+                        BeatGridSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+                        ArrangementSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
+                    }
+                    infinity.autoDJChanged()
                 }
-                infinity.autoDJChanged()
             }
 
             ModeChip(
@@ -52,10 +54,10 @@ struct PlayerModesRow: View {
             ) {
                 // Auto DJ has it on; tapping it does nothing until Auto DJ is
                 // off, and the chip stays lit to say so.
-                guard !autoDJ else { return }
+                guard !AutoDJPreference.isOn else { return }
                 infinity.setOn(!infinity.isChosen)
             }
-            .opacity(autoDJ ? 0.7 : 1)
+            .opacity(AutoDJPreference.isOn ? 0.7 : 1)
 
             Menu {
                 Button {

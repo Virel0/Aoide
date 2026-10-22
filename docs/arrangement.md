@@ -347,3 +347,31 @@ escaped from before half of it had played:
   mixed in, the exit is the end of the **last** hook instead, and the set
   escapes from there. Decided against the record actually queued, once its
   grid and arrangement have arrived, and remembered per pair.
+
+## Shelved
+
+*2026-10-22.* Auto DJ is switched off and hidden on both apps. Every round
+above made one mechanism measurably right, and the whole still did not sound
+like a DJ. The ceiling is not a missing rule:
+
+- **No stems.** A DJ, or Apple's AutoMix, can take the vocal or the drums of
+  one record on their own. The decks can only filter the whole mix, so two
+  vocal records can never be blended and most pairs end in a cut or a throw.
+- **Coarse measurements.** Sections and vocal spans are blocks of time, not
+  the song as a listener hears it; the rules were guessing from them.
+- **The library.** Mixing works on club records — steady tempo, long
+  instrumental intros and outros. Vocal pop and rock at different tempi and
+  keys is the hardest case there is.
+
+Nothing was deleted. `AutoDJPreference.isAvailable` (iOS) and
+`AOIDE_AUTO_DJ_AVAILABLE` (desktop) are `false`; with them off the switch is
+not shown and the setting reads as off whatever an old install stored, so the
+decks, the planner, the set programmer and the sidecar's beat-grid and
+arrangement fetches all stay idle. The tests still run. Setting either flag to
+`true` brings it all back. What came out of the work and stays in use:
+Infinity choosing from the whole library on the server, Share Diagnostics,
+and the clock and booking fixes in the decks.
+
+What would change the verdict: per-track stems (on-device separation or a
+sidecar job), so a throw can be the vocal alone and a blend can keep one
+record's drums under the other's voice.

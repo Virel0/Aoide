@@ -146,18 +146,20 @@ struct SettingsView: View {
                     .onChange(of: crossfade) { PlaybackEngine.shared.isCrossfading = crossfade }
                 Toggle("Keep Albums Whole", isOn: $albumLock)
                     .onChange(of: albumLock) { PlaybackEngine.shared.isAlbumLocked = albumLock }
-                Toggle("Auto DJ", isOn: $autoDJ)
-                    .onChange(of: autoDJ) {
-                        PlaybackEngine.shared.isAutoDJing = autoDJ
-                        infinity.autoDJChanged()
-                    }
-                NavigationLink("What Can Be Mixed") { MixableView() }
+                if AutoDJPreference.isAvailable {
+                    Toggle("Auto DJ", isOn: $autoDJ)
+                        .onChange(of: autoDJ) {
+                            PlaybackEngine.shared.isAutoDJing = autoDJ
+                            infinity.autoDJChanged()
+                        }
+                    NavigationLink("What Can Be Mixed") { MixableView() }
+                }
                 Toggle("Infinity", isOn: Binding(get: { infinity.isOn }, set: { infinity.setOn($0) }))
-                    .disabled(autoDJ)
+                    .disabled(AutoDJPreference.isOn)
             } header: {
                 Text("Playback")
             } footer: {
-                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Auto DJ runs the music like a set: records your server has read are beat-matched and mixed where they suit each other, played for their hook rather than to the fade-out, and the queue never runs out — Infinity is on whenever Auto DJ is. Pairs that do not suit each other crossfade. For the whole song every time, leave Auto DJ off; Crossfade and Infinity still work on their own.")
+                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Infinity keeps the queue going when it runs out, with songs your server picks to follow the one playing.")
             }
 
             Section {
