@@ -1,6 +1,10 @@
 # Stems: the voice apart from the band
 
-*Asked of the sidecar on 2026-10-23 from the client side. Auto DJ was shelved
+> **Shelved, 2026-10-23, before it was sent.** Auto DJ stays shelved with it.
+> The brief is kept as written so it can be sent unchanged if the plan comes
+> back.
+
+*Written for the sidecar on 2026-10-23 from the client side. Auto DJ was shelved
 on 2026-10-22 (see [arrangement.md](arrangement.md), "Shelved") because the
 decks can only move a whole mix. This is what would bring it back, and what
 would give the apps a karaoke mode on the way.*
