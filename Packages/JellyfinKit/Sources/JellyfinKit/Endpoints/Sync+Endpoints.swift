@@ -82,6 +82,14 @@ public extension JellyfinClient {
         return try await send(request, path: Self.nextPath)
     }
 
+    /// `GET /aoide/discover?limit=…`: the records this listener owns and has not
+    /// heard through, by taste, the same all week. A `notFound` from this path is
+    /// an older sidecar. See `docs/discover.md`.
+    func discover(limit: Int) async throws -> Data {
+        let query = [URLQueryItem(name: "limit", value: String(limit))]
+        return try await send(request("GET", path: Self.discoverPath, query: query), path: Self.discoverPath)
+    }
+
     /// `GET /aoide/analysis/coverage`: how much of the library the server has
     /// measured, and how much of that came out with a beat grid.
     ///
@@ -143,5 +151,6 @@ public extension JellyfinClient {
     private static var coveragePath: String { "aoide/analysis/coverage" }
     private static var arrangementPath: String { "aoide/arrangement" }
     private static var nextPath: String { "aoide/next" }
+    private static var discoverPath: String { "aoide/discover" }
     private static var pullPath: String { "aoide/sync/pull" }
 }

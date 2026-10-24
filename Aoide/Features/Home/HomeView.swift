@@ -9,12 +9,23 @@ import SwiftUI
 /// which is why a brand-new library still looks composed rather than broken.
 struct HomeView: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(AppSession.self) private var session
+    @State private var discover = DiscoverStore.shared
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Design.Spacing.shelf) {
                     ResumeGrid()
+
+                    if !discover.items.isEmpty {
+                        NavigationLink {
+                            DiscoverView()
+                        } label: {
+                            DiscoverCard(count: discover.items.count)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     if let hero = heroAlbum {
                         HeroCard(album: hero.album, eyebrow: hero.reason)
@@ -39,7 +50,10 @@ struct HomeView: View {
             .appBackground()
             .navigationTitle("Home")
             .refreshable { await store.refresh() }
-            .task { await store.loadHomeIfNeeded() }
+            .task {
+                await store.loadHomeIfNeeded()
+                if let client = session.client { await discover.loadIfNeeded(client: client) }
+            }
         }
     }
 

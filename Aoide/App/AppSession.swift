@@ -160,6 +160,7 @@ final class AppSession {
         // exists, with the mini player gone and no way to stop it.
         JellyfinPlaybackBridge.disconnect()
         SyncCoordinator.shared.disconnect()
+        DiscoverStore.shared.clear()
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil
@@ -198,6 +199,7 @@ final class AppSession {
         // first sat on the settings screen for as long as an unreachable server
         // took to time out, which read as the button doing nothing.
         let departing = client
+        DiscoverStore.shared.clear()
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil
