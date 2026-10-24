@@ -444,7 +444,7 @@ struct LoudnessNormalisationTests {
         #expect(factor < 1)
     }
 
-    /// The same nine inputs the desktop answers, with the same nine answers.
+    /// The same ten inputs the desktop answers, with the same ten answers.
     ///
     /// "Both apps agree" is a claim, and this table is the only thing that makes
     /// it one: it is duplicated verbatim in the desktop's
@@ -461,6 +461,8 @@ struct LoudnessNormalisationTests {
         (-6.0, Double?(2), Double?(-12)),
         (-30.0, Double?(0.5), Double?.none),
         (-8.333, Double?.none, Double?(-9.67)),
+        // -0.125 dB exactly: an exact half, which rounds away from zero.
+        (-17.875, Double?.none, Double?(-0.13)),
     ])
     func parityWithDesktop(_ lufs: Double, _ truePeak: Double?, _ expected: Double?) {
         let answer = LoudnessNormalisation.gainDb(loudnessLufs: lufs, truePeakDbfs: truePeak)
