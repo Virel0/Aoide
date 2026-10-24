@@ -409,5 +409,18 @@ public struct SyncTransportFault: Error, Hashable, Sendable {
     /// A fault in the server rather than in the request. 4xx is the server telling us
     /// something true about what we sent, and the contract already routes those
     /// through `rejected`; 5xx is the server failing to answer at all.
-    public var isServerFault: Bool { (500...599).contains(status) }
+    ///
+    /// Except 502, 503 and 504, which say nothing about the ops: the server is down,
+    /// its storage is unavailable (the contract's 503), or a proxy in front of it
+    /// timed out. Treating those as a fault in the batch bisected it and quarantined
+    /// every op one by one, so an outage cost the listener every change made while
+    /// it lasted. They are transient: the sync fails, the ops stay queued, and the
+    /// next sync sends them.
+    public var isServerFault: Bool {
+        (500...599).contains(status) && !Self.unavailable.contains(status)
+    }
+
+    /// The server or something in front of it is not answering, rather than
+    /// failing on what was sent.
+    public static let unavailable: Set<Int> = [502, 503, 504]
 }

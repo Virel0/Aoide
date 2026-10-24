@@ -1788,6 +1788,44 @@ struct ServerFaultIsolationTests {
     }
 }
 
+/// An outage is not a fault in the ops. A server that is down, or whose storage is
+/// unavailable, answers every request the same way, and bisecting on that
+/// quarantined each op in turn: an hour of downtime cost every change made in it.
+@Suite("A server that is down")
+struct ServerOutageTests {
+    @Test("a 502, 503 or 504 keeps every op queued and quarantines none", arguments: [502, 503, 504])
+    func outageKeepsTheQueue(status: Int) async throws {
+        let sidecar = Sidecar()
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        for index in 0..<6 { _ = try store.createPlaylist(name: "List \(index)") }
+        let queued = try store.pendingOps().map(\.opId)
+        await sidecar.goDown(status: status)
+
+        let engine = SyncEngine(store: store, transport: SidecarLink(sidecar: sidecar, userId: "u1"))
+        await #expect(throws: SyncTransportFault.self) { _ = try await engine.sync() }
+
+        #expect(try store.quarantinedOps().isEmpty)
+        #expect(try store.pendingOps().map(\.opId) == queued)
+
+        // The server comes back, and the next sync sends everything.
+        await sidecar.comeBack()
+        let report = try await engine.sync()
+        #expect(report.pushed == queued.count)
+        #expect(report.quarantinedOutbound == 0)
+        #expect(try store.pendingOps().isEmpty)
+    }
+
+    @Test("a 500 is still a fault in the batch, and is still isolated")
+    func fiveHundredIsStillAFault() {
+        #expect(SyncTransportFault(status: 500).isServerFault)
+        #expect(SyncTransportFault(status: 501).isServerFault)
+        #expect(!SyncTransportFault(status: 502).isServerFault)
+        #expect(!SyncTransportFault(status: 503).isServerFault)
+        #expect(!SyncTransportFault(status: 504).isServerFault)
+        #expect(!SyncTransportFault(status: 404).isServerFault)
+    }
+}
+
 /// A server fault is the one thing in quarantine that gets fixed, so the change has
 /// to be recoverable — otherwise a bug on the server permanently costs the listener
 /// whatever they did while it was broken.

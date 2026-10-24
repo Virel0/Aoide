@@ -116,6 +116,12 @@ actor Sidecar {
     /// Makes the poison one-shot, so the next request throws and everything after it
     /// succeeds — a server that was restarting rather than one with a bad row.
     private var clearPoisonAfterFailure = false
+
+    /// A status every push answers with while set — a server that is down, its
+    /// storage unavailable, or a proxy that timed out.
+    private var outage: Int?
+    func goDown(status: Int) { outage = status }
+    func comeBack() { outage = nil }
     func clearPoisonAfterNextFailure() { clearPoisonAfterFailure = true }
 
     /// Answers 200 and acknowledges nothing — the shape a server takes when it cannot
@@ -155,6 +161,7 @@ actor Sidecar {
         largestBatchPushed = max(largestBatchPushed, request.ops.count)
 
         if failPushCalls.contains(pushCount) { throw SidecarError.unreachable }
+        if let outage { throw SyncTransportFault(status: outage, detail: "Service Unavailable") }
         if request.ops.contains(where: { poisonOpIds.contains($0.opId) }) {
             if clearPoisonAfterFailure {
                 poisonOpIds.removeAll()
