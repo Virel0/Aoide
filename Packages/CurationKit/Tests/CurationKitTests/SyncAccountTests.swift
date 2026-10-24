@@ -95,8 +95,15 @@ struct SyncAccountTests {
             reason: .deleteWithoutFlag,
             at: 1
         )
+        // Taste flags and the cover record are the account's too.
+        try store.setNotInterested(true, on: "track-1", contentKey: "key-1", now: 1)
+        try store.setDontCount(true, on: "track-2", contentKey: "key-2", now: 1)
+        try store.registerImage(hash: "abc", mime: "image/jpeg", bytes: 10, at: 1)
 
         #expect(try store.adoptAccount("user-b") == .erased)
+        #expect(try store.flags(for: "track-1") == nil)
+        #expect(try store.flags(for: "track-2") == nil)
+        #expect(try store.image("abc") == nil)
         #expect(try store.accountId() == "user-b")
         #expect(try store.pendingOpCount() == 0)
         #expect(try store.quarantineCount() == 0)
@@ -217,6 +224,14 @@ struct UnclaimedStoreTests {
 
     /// A track cache is a rebuildable copy of what Jellyfin already knows and says
     /// nothing about anyone's listening, so it is not evidence worth interrupting for.
+    @Test("a store holding only taste flags asks rather than guessing")
+    func flagsAreData() throws {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        try store.setNotInterested(true, on: "track-1", contentKey: "key-1", now: 1)
+        #expect(try store.adoptAccount("user-a") == .unknownOwner)
+        #expect(try store.flags(for: "track-1")?.notInterested == true)
+    }
+
     @Test("a store holding only a track cache is not worth asking about")
     func trackCacheAloneIsNotData() throws {
         let store = try store()

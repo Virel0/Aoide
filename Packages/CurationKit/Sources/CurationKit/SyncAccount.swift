@@ -151,8 +151,13 @@ public extension CurationStore {
     private static func eraseEverything(_ db: Database) throws {
         // Children before parents: `PRAGMA foreign_keys` is on, and this ordering is
         // correct whether or not the schema declares the relationships it describes.
+        //
+        // `trackFlags` and `imageBlob` were added after this list was written and
+        // were missed: one person's "Not Interested" and "Don't Count Plays" stayed
+        // behind for the next account, and so did the record of which covers the
+        // server already holds.
         for table in ["playlistItem", "playlist", "folder", "like", "playEvent",
-                      "queueState", "op", "quarantinedOp", "track"] {
+                      "queueState", "trackFlags", "imageBlob", "op", "quarantinedOp", "track"] {
             try db.execute(sql: "DELETE FROM \(table)")
         }
         // The whole table, not the cursor row. Every key in here describes the account
@@ -172,7 +177,7 @@ public extension CurationStore {
     /// already knows and reveals nothing about a person — a store holding only a
     /// track cache is not evidence of somebody's listening.
     private static func holdsData(_ db: Database) throws -> Bool {
-        for table in ["playlist", "playlistItem", "folder", "like", "playEvent", "queueState"] {
+        for table in ["playlist", "playlistItem", "folder", "like", "playEvent", "queueState", "trackFlags"] {
             if try Int.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM \(table))") == 1 {
                 return true
             }
