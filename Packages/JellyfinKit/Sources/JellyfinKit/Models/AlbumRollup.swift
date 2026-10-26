@@ -36,7 +36,7 @@ public enum AlbumRollup {
     /// round trip per album.
     public static func aggregate(tracks: [JellyfinItem]) -> [Aggregate] {
         var order: [String] = []
-        var byAlbum: [String: (album: JellyfinItem, plays: Int, last: Date?, count: Int)] = [:]
+        var byAlbum: [String: Tally] = [:]
 
         for track in tracks {
             guard let albumId = track.albumId, !albumId.isEmpty else { continue }
@@ -51,7 +51,9 @@ public enum AlbumRollup {
                 byAlbum[albumId] = existing
             } else {
                 order.append(albumId)
-                byAlbum[albumId] = (synthesiseAlbum(from: track, albumId: albumId), plays, last, 1)
+                byAlbum[albumId] = Tally(
+                    album: synthesiseAlbum(from: track, albumId: albumId), plays: plays, last: last, count: 1
+                )
             }
         }
 
@@ -59,6 +61,14 @@ public enum AlbumRollup {
             guard let e = byAlbum[id] else { return nil }
             return Aggregate(album: e.album, playCount: e.plays, lastPlayed: e.last, trackCount: e.count)
         }
+    }
+
+    /// One album's running totals while the tracks are walked.
+    private struct Tally {
+        let album: JellyfinItem
+        var plays: Int
+        var last: Date?
+        var count: Int
     }
 
     /// Ranks aggregates by total plays, then by recency to break ties.
