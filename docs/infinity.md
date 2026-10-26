@@ -369,11 +369,11 @@ Mixes 79% · Arc 90%" — so a pick that feels wrong can be argued with by numbe
 
 ## Round two: choose by kin, then order by what mixes
 
-*Asked 2026-09-11, after a listener heard Homewrecker followed by EDM. His
-words: Infinity should choose primarily from genre, taste and freshness —
-and then, once the list is chosen, order it so that neighbours are mixable.*
+*Asked 2026-09-11, after Homewrecker was followed by EDM. The aim: Infinity
+should choose primarily from genre, taste and freshness — and then, once the
+list is chosen, order it so that neighbours are mixable.*
 
-He is right on both counts, and the first version had them tangled: genre
+Both points hold, and the first version had them tangled: genre
 against the seed was a quarter of one factor at 0.4, so a candidate the room
 liked could out-score one of the seed's own kind by a mile; and mixability
 sat in the choosing score at 0.6, so with Auto DJ on the set was made of
