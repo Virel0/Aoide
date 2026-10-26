@@ -195,4 +195,13 @@ struct DJMixerTests {
         try file.write(from: buffer)
         return url
     }
+
+    /// Three channels has no standard layout, so no format can be made for it.
+    @Test("A format the engine cannot render is an error, not a crash")
+    func impossibleFormatThrows() {
+        let mixer = DJMixer()
+        #expect(throws: DJMixer.RenderingFailure.unsupportedFormat(sampleRate: Self.rate, channels: 3)) {
+            try mixer.beginOfflineRendering(sampleRate: Self.rate, channels: 3)
+        }
+    }
 }
