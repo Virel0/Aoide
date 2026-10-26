@@ -1,8 +1,8 @@
 # Arrangement: what a mix still cannot see
 
-*Asked of the sidecar on 2026-09-10 and **shipped in 1.15.0.0** the next day; the built contract is in the sidecar's own `client-integration.md`. Asked after a listener said a beat-matched,
-key-aware, bass-swapping transition still did not sound like a DJ had made it.
-He was right, and the reason is not in the grid.*
+*Asked of the sidecar on 2026-09-10 and **shipped in 1.15.0.0** the next day; the built contract is in the sidecar's own `client-integration.md`. Asked because a beat-matched,
+key-aware, bass-swapping transition still did not sound like a DJ had made it,
+and the reason is not in the grid.*
 
 ## Where we are
 
