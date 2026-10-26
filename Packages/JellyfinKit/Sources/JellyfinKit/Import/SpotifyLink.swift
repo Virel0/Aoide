@@ -17,8 +17,13 @@ public enum SpotifyLink {
 
     /// The page that carries the track list without an account or a key.
     public static func embedURL(playlistId: String) -> URL {
-        URL(string: "https://open.spotify.com/embed/playlist/\(playlistId)")!
+        embedBase.appending(path: playlistId)
     }
+
+    /// A fixed literal that parses, so this unwrap cannot fail. The id is added
+    /// as a path component, which percent-encodes anything an id should not
+    /// hold instead of failing on it.
+    private static let embedBase = URL(string: "https://open.spotify.com/embed/playlist/")!
 
     /// The embed page never lists more than this many tracks, whatever the playlist holds.
     public static let embedTrackLimit = 100

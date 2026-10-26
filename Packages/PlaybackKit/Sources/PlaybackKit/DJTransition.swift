@@ -161,7 +161,7 @@ public enum DJPlanner {
                 exitMs: exit
             ) else { continue }
             if index == 0 { preferred = candidate }
-            if best == nil || candidate.score.total > best!.score.total { best = candidate }
+            if best.map({ candidate.score.total > $0.score.total }) ?? true { best = candidate }
         }
         guard let best else { return nil }
         guard let preferred else { return best }
@@ -217,7 +217,7 @@ public enum DJPlanner {
                 notBeforeMs: notBeforeMs,
                 outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement
             ) else { continue }
-            if best == nil || candidate.score.total > best!.score.total {
+            if best.map({ candidate.score.total > $0.score.total }) ?? true {
                 best = candidate
             }
         }

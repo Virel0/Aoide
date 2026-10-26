@@ -27,10 +27,9 @@ public enum FractionalIndex {
     /// appends. Callers must pass `lower < upper`; there is no key between a value
     /// and itself.
     public static func between(_ lower: String?, _ upper: String?) -> String {
-        assert(
-            !(lower != nil && upper != nil) || lower! < upper!,
-            "FractionalIndex.between requires lower < upper"
-        )
+        if let lower, let upper {
+            assert(lower < upper, "FractionalIndex.between requires lower < upper")
+        }
 
         // Appending is the overwhelmingly common case — every track added to the end
         // of a playlist — and bisecting towards the top of the alphabet is a bad way
