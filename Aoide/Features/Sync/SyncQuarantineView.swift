@@ -28,7 +28,11 @@ struct SyncQuarantineView: View {
                     }
                     .onDelete(perform: discard)
                 } footer: {
-                    Text("These were made on a device but the server wouldn't take them, or arrived from a device running a newer version of Aoide. They're kept here rather than retried, because retrying them can't work.")
+                    Text("""
+                        These were made on a device but the server wouldn't take them, or arrived \
+                        from a device running a newer version of Aoide. They're kept here rather \
+                        than retried, because retrying them can't work.
+                        """)
                 }
 
                 Section {
