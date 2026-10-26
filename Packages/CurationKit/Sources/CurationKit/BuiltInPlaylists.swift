@@ -30,31 +30,37 @@ public enum BuiltInPlaylist: String, CaseIterable, Sendable {
     }
 
     /// Both clients must produce exactly these rules; see `BuiltInPlaylistTests`.
+    ///
+    /// Throws only if `SmartRule`'s validation refuses one of them, which
+    /// `BuiltInPlaylistTests` checks for every case — so a bad rule fails a test,
+    /// and could never stop the app at launch.
     public var rules: SmartRules {
-        // Constructed, never decoded from a string, so a change to `SmartRule`'s
-        // validation is caught here at compile time or in the test — not as a
-        // playlist that silently stopped matching.
-        switch self {
-        case .rediscover:
-            return try! SmartRules(
-                match: .all,
-                rules: [
-                    try! SmartRule(field: .lastPlayed, op: .notInTheLast, value: .text("-6m")),
-                    try! SmartRule(field: .playCount, op: .greaterThan, value: .number(2)),
-                ],
-                sort: SmartRules.Sort(field: .playCount, dir: .desc),
-                limit: 40
-            )
-        case .heavyRotation:
-            return try! SmartRules(
-                match: .all,
-                rules: [
-                    try! SmartRule(field: .lastPlayed, op: .inTheLast, value: .text("-1m")),
-                    try! SmartRule(field: .playCount, op: .greaterThan, value: .number(1)),
-                ],
-                sort: SmartRules.Sort(field: .playCount, dir: .desc),
-                limit: 25
-            )
+        get throws {
+            // Constructed, never decoded from a string, so a change to `SmartRule`'s
+            // validation is caught here at compile time or in the test — not as a
+            // playlist that silently stopped matching.
+            switch self {
+            case .rediscover:
+                return try SmartRules(
+                    match: .all,
+                    rules: [
+                        try SmartRule(field: .lastPlayed, op: .notInTheLast, value: .text("-6m")),
+                        try SmartRule(field: .playCount, op: .greaterThan, value: .number(2)),
+                    ],
+                    sort: SmartRules.Sort(field: .playCount, dir: .desc),
+                    limit: 40
+                )
+            case .heavyRotation:
+                return try SmartRules(
+                    match: .all,
+                    rules: [
+                        try SmartRule(field: .lastPlayed, op: .inTheLast, value: .text("-1m")),
+                        try SmartRule(field: .playCount, op: .greaterThan, value: .number(1)),
+                    ],
+                    sort: SmartRules.Sort(field: .playCount, dir: .desc),
+                    limit: 25
+                )
+            }
         }
     }
 }

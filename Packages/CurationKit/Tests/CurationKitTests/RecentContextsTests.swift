@@ -53,6 +53,14 @@ struct BuiltInPlaylistTests {
         #expect(ids.allSatisfy { $0.hasPrefix("builtin:") })
     }
 
+    /// If `SmartRule` ever stops accepting one of these rules, this fails, rather
+    /// than the app when it creates the playlist.
+    @Test("every built-in's rules pass validation", arguments: BuiltInPlaylist.allCases)
+    func rulesBuild(_ playlist: BuiltInPlaylist) throws {
+        let rules = try playlist.rules
+        #expect(!rules.rules.isEmpty)
+    }
+
     /// Pinned as JSON with sorted keys so the desktop can carry the same rules
     /// verbatim; change this and change the desktop's copy.
     @Test("rules are exactly the agreed ones", arguments: BuiltInPlaylist.allCases)

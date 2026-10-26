@@ -231,8 +231,11 @@ final class LocalPlaylistStore {
     func ensureBuiltIns() async {
         await run("set up the built-in playlists") { store in
             for built in BuiltInPlaylist.allCases where !(try store.playlistRowExists(built.id)) {
+                // Rules first: a playlist row made before its rules failed would
+                // stay empty, because a row that exists is never created again.
+                let rules = try built.rules
                 let list = try store.createPlaylist(name: built.name, notes: built.notes, id: built.id)
-                try store.record(list.settingSmartRules(built.rules))
+                try store.record(list.settingSmartRules(rules))
             }
         }
         await reload()
