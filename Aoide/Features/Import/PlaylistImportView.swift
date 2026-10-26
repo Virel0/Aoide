@@ -102,6 +102,7 @@ struct PlaylistImportView: View {
             // Exportify signs in to Spotify itself and exports a whole playlist,
             // including private ones. On the phone the file lands in Files; the
             // button below reads it from there.
+            // A fixed literal that parses, so the unwrap cannot fail.
             Link(destination: URL(string: "https://exportify.net")!) {
                 Label("Export from Spotify with Exportify", systemImage: "safari")
             }

@@ -345,13 +345,23 @@ public final class DJMixer {
 
     // MARK: - Rendering without a speaker
 
+    /// Why an offline render could not be set up.
+    public enum RenderingFailure: Error, Equatable {
+        /// No standard float format exists for this sample rate and channel count.
+        case unsupportedFormat(sampleRate: Double, channels: AVAudioChannelCount)
+        /// A buffer of the rendering format could not be made.
+        case bufferUnavailable
+    }
+
     /// Puts the engine into offline rendering, so a mix can be produced faster
     /// than real time and measured.
     ///
     /// The point of the whole file being platform-free: what a listener would
     /// hear is a buffer this returns, and a buffer can be asserted on.
     public func beginOfflineRendering(sampleRate: Double = 44_100, channels: AVAudioChannelCount = 2) throws {
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels) else {
+            throw RenderingFailure.unsupportedFormat(sampleRate: sampleRate, channels: channels)
+        }
         try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
     }
 
@@ -360,8 +370,13 @@ public final class DJMixer {
     public func renderOffline(seconds: Double, automate: (Double) -> Void = { _ in }) throws -> AVAudioPCMBuffer {
         let format = engine.manualRenderingFormat
         let total = AVAudioFrameCount(seconds * format.sampleRate)
-        let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total)!
-        let block = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: engine.manualRenderingMaximumFrameCount)!
+        // A format that is not float has no float channel data; that fails here
+        // too, rather than as a crash halfway through the copy.
+        guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total),
+              let block = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: engine.manualRenderingMaximumFrameCount),
+              let outputChannels = output.floatChannelData,
+              let blockChannels = block.floatChannelData
+        else { throw RenderingFailure.bufferUnavailable }
 
         while output.frameLength < total {
             automate(Double(output.frameLength) / format.sampleRate)
@@ -369,8 +384,8 @@ public final class DJMixer {
             let status = try engine.renderOffline(wanted, to: block)
             guard status == .success, block.frameLength > 0 else { break }
             for channel in 0..<Int(format.channelCount) {
-                let destination = output.floatChannelData![channel] + Int(output.frameLength)
-                destination.update(from: block.floatChannelData![channel], count: Int(block.frameLength))
+                let destination = outputChannels[channel] + Int(output.frameLength)
+                destination.update(from: blockChannels[channel], count: Int(block.frameLength))
             }
             output.frameLength += block.frameLength
         }

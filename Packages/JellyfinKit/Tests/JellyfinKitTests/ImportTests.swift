@@ -129,6 +129,12 @@ struct SpotifyImportTests {
         #expect(SpotifyLink.playlistId(from: text) == nil)
     }
 
+    @Test("builds the embed page address from an id")
+    func embedURL() {
+        let url = SpotifyLink.embedURL(playlistId: "37i9dQZF1DXcBWIGoYBM5M")
+        #expect(url.absoluteString == "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M")
+    }
+
     static let page = """
     <html><head><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{"type":"playlist","name":"ignored","title":"Road Trip","subtitle":"Alex","trackList":[{"uri":"spotify:track:1","title":"Karma Police","subtitle":"Radiohead","duration":264066,"isExplicit":false},{"uri":"spotify:track:2","title":"Crazy in Love (feat. Jay-Z)","subtitle":"Beyoncé, JAY-Z","duration":236000},{"uri":"spotify:track:3","title":"","subtitle":"Nobody","duration":1}]}}}}}}</script></head><body></body></html>
     """

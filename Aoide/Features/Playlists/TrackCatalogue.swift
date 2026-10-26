@@ -166,44 +166,7 @@ final class SongIndexer {
         let scope: [String?] = ids.isEmpty ? [nil] : ids.map { $0 }
 
         for parentId in scope {
-            var startIndex = 0
-            while true {
-                do {
-                    let page = try await library.songsBatch(
-                        parentId: parentId,
-                        startIndex: startIndex,
-                        limit: pageSize
-                    )
-                    guard !page.items.isEmpty else { break }
-
-                    // Detached: the write blocks its thread, and this loop is running on
-                    // the main actor because the client and the library store are.
-                    let items = page.items
-                    await Task.detached { TrackCatalogue.remember(items, in: store) }.value
-
-                    indexed += page.items.count
-                    state = .running(indexed: indexed)
-                    startIndex += page.items.count
-
-                    // The server said that was the last of them. Trusting the count
-                    // rather than waiting for an empty page saves one round trip per
-                    // library, and an over-reported total would still terminate on the
-                    // empty page above.
-                    if page.totalRecordCount > 0, startIndex >= page.totalRecordCount { break }
-                } catch is CancellationError {
-                    // Half an index is still better than none, and the rows already
-                    // written are correct. Report where it got to rather than an error
-                    // the listener can do nothing about.
-                    state = .finished(indexed: indexed)
-                    return
-                } catch {
-                    log.error("Song index failed at \(startIndex, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                    state = .failed(
-                        (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
-                    )
-                    return
-                }
-            }
+            guard await indexLibrary(parentId, from: library, into: store, indexed: &indexed) else { return }
         }
 
         log.info("Indexed \(indexed, privacy: .public) songs for smart playlists")
@@ -219,37 +182,92 @@ final class SongIndexer {
         // strand every playlist entry as "not in your library any more".
         guard indexed > 0 else { return }
 
-        await Task.detached {
+        await Task.detached { SongIndexer.finishIndex(in: store, startedAt: startedAt) }.value
+    }
+
+    /// Indexes every song in one library, page by page, adding to `indexed` as it
+    /// goes. Returns false when the pass has to stop — cancelled or failed — with
+    /// `state` already saying which.
+    private func indexLibrary(
+        _ parentId: String?,
+        from library: LibraryStore,
+        into store: CurationStore,
+        indexed: inout Int
+    ) async -> Bool {
+        var startIndex = 0
+        while true {
             do {
-                // Before the relink, always. Relinking asks the cache "is this id still
-                // live", and until the retired ids are gone the answer is yes for every
-                // one of them — which is how the repair below came to be inert in
-                // exactly the situation it was written for.
-                let removed = try store.pruneTracks(notSeenSince: startedAt)
-                if removed > 0 { TrackCatalogue.log.info("Pruned \(removed, privacy: .public) tracks the server no longer lists") }
+                let page = try await library.songsBatch(
+                    parentId: parentId,
+                    startIndex: startIndex,
+                    limit: pageSize
+                )
+                guard !page.items.isEmpty else { break }
 
-                // The documented moment to run this. A Jellyfin rescan mints new item
-                // ids for files that moved, which leaves every playlist entry pointing
-                // at nothing; the cache has just been rebuilt from the ids that exist
-                // *now*, so this is when those entries can be matched back by
-                // fingerprint. Nothing is said about it unless something changed — a
-                // silent repair is the point.
-                let report = try store.relinkItemsAgainstTrackCache()
-                if report.changed > 0 {
-                    TrackCatalogue.log.info("""
-                        Relinked playlist entries: \(report.relinked, privacy: .public) moved, \
-                        \(report.recovered, privacy: .public) recovered, \
-                        \(report.unresolved, privacy: .public) still missing
-                        """)
-                }
+                // Detached: the write blocks its thread, and this loop is running on
+                // the main actor because the client and the library store are.
+                let items = page.items
+                await Task.detached { TrackCatalogue.remember(items, in: store) }.value
 
-                // Last, and only if the two above survived: this is the mark that stops
-                // `indexIfNeeded` running again, so writing it after a failed tidy-up
-                // would leave a half-repaired cache nothing would ever come back to.
-                try store.recordLibraryIndex(at: startedAt)
+                indexed += page.items.count
+                state = .running(indexed: indexed)
+                startIndex += page.items.count
+
+                // The server said that was the last of them. Trusting the count
+                // rather than waiting for an empty page saves one round trip per
+                // library, and an over-reported total would still terminate on the
+                // empty page above.
+                if page.totalRecordCount > 0, startIndex >= page.totalRecordCount { break }
+            } catch is CancellationError {
+                // Half an index is still better than none, and the rows already
+                // written are correct. Report where it got to rather than an error
+                // the listener can do nothing about.
+                state = .finished(indexed: indexed)
+                return false
             } catch {
-                TrackCatalogue.log.error("Couldn't finish the song index: \(error.localizedDescription, privacy: .public)")
+                log.error("Song index failed at \(startIndex, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                state = .failed(
+                    (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+                )
+                return false
             }
-        }.value
+        }
+        return true
+    }
+
+    /// Prunes the tracks the pass did not see, relinks playlist entries, and marks
+    /// the index done — in that order. Runs off the main actor: every step is a
+    /// blocking write.
+    nonisolated private static func finishIndex(in store: CurationStore, startedAt: Millis) {
+        do {
+            // Before the relink, always. Relinking asks the cache "is this id still
+            // live", and until the retired ids are gone the answer is yes for every
+            // one of them — which is how the repair below came to be inert in
+            // exactly the situation it was written for.
+            let removed = try store.pruneTracks(notSeenSince: startedAt)
+            if removed > 0 { TrackCatalogue.log.info("Pruned \(removed, privacy: .public) tracks the server no longer lists") }
+
+            // The documented moment to run this. A Jellyfin rescan mints new item
+            // ids for files that moved, which leaves every playlist entry pointing
+            // at nothing; the cache has just been rebuilt from the ids that exist
+            // *now*, so this is when those entries can be matched back by
+            // fingerprint. Nothing is said about it unless something changed — a
+            // silent repair is the point.
+            let report = try store.relinkItemsAgainstTrackCache()
+            if report.changed > 0 {
+                TrackCatalogue.log.info("""
+                    Relinked playlist entries: \(report.relinked, privacy: .public) moved, \
+                    \(report.recovered, privacy: .public) recovered, \
+                    \(report.unresolved, privacy: .public) still missing
+                    """)
+            }
+
+            // Last, and only if the two above survived: this is the mark that stops
+            // `indexIfNeeded` running again, so writing it after a failed tidy-up
+            // would leave a half-repaired cache nothing would ever come back to.
+            try store.recordLibraryIndex(at: startedAt)
+        } catch {
+            TrackCatalogue.log.error("Couldn't finish the song index: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

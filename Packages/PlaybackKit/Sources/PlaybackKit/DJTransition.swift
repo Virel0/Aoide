@@ -161,7 +161,7 @@ public enum DJPlanner {
                 exitMs: exit
             ) else { continue }
             if index == 0 { preferred = candidate }
-            if best == nil || candidate.score.total > best!.score.total { best = candidate }
+            if best.map({ candidate.score.total > $0.score.total }) ?? true { best = candidate }
         }
         guard let best else { return nil }
         guard let preferred else { return best }
@@ -207,17 +207,18 @@ public enum DJPlanner {
             entries.append(entryPoint(section.startMs, in: incoming, arrangement: incomingArrangement, barMs: inBar))
         }
 
+        let pair = ExitPlan(
+            outgoing: outgoing, incoming: incoming,
+            outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement,
+            outMixOut: outMixOut, outBar: outBar, outSegmentBpm: outSegment.bpm,
+            rate: rate, notBeforeMs: notBeforeMs
+        )
+
         // Best score wins; on a tie, the earlier entry, which is the thinner one.
         var best: DJTransition?
         for entry in Set(entries).sorted() {
-            guard let candidate = plan(
-                entry: entry, rate: rate,
-                outgoing: outgoing, incoming: incoming,
-                outMixOut: outMixOut, outBar: outBar, inBar: inBar, outSegmentBpm: outSegment.bpm,
-                notBeforeMs: notBeforeMs,
-                outgoingArrangement: outgoingArrangement, incomingArrangement: incomingArrangement
-            ) else { continue }
-            if best == nil || candidate.score.total > best!.score.total {
+            guard let candidate = plan(entry: entry, for: pair) else { continue }
+            if best.map({ candidate.score.total > $0.score.total }) ?? true {
                 best = candidate
             }
         }
@@ -379,20 +380,28 @@ public enum DJPlanner {
             ?? ms
     }
 
+    /// What stays the same for one exit while each of the incoming record's
+    /// entries is tried against it.
+    private struct ExitPlan {
+        let outgoing: BeatGrid
+        let incoming: BeatGrid
+        let outgoingArrangement: Arrangement?
+        let incomingArrangement: Arrangement?
+        /// Where the outgoing record leaves, and its bar and tempo there.
+        let outMixOut: Double
+        let outBar: Double
+        let outSegmentBpm: Double
+        /// The rate the incoming deck runs at to sit on the outgoing tempo.
+        let rate: Double
+        let notBeforeMs: Double
+    }
+
     /// One entry point, scored and fitted.
-    private static func plan(
-        entry: Double,
-        rate: Double,
-        outgoing: BeatGrid,
-        incoming: BeatGrid,
-        outMixOut: Double,
-        outBar: Double,
-        inBar: Double,
-        outSegmentBpm: Double,
-        notBeforeMs: Double,
-        outgoingArrangement: Arrangement?,
-        incomingArrangement: Arrangement?
-    ) -> DJTransition? {
+    private static func plan(entry: Double, for pair: ExitPlan) -> DJTransition? {
+        let outgoing = pair.outgoing, incoming = pair.incoming
+        let outgoingArrangement = pair.outgoingArrangement, incomingArrangement = pair.incomingArrangement
+        let outMixOut = pair.outMixOut, outBar = pair.outBar, outSegmentBpm = pair.outSegmentBpm
+        let rate = pair.rate, notBeforeMs = pair.notBeforeMs
         guard let inSegment = incoming.segment(at: entry) else { return nil }
 
         let exitKind = outgoingArrangement?.section(at: outMixOut)?.kind
