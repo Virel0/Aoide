@@ -45,8 +45,7 @@ public enum Discover {
     /// UTC, on every device at once.
     public static func week(of date: Date) -> String {
         var calendar = Calendar(identifier: .iso8601)
-        // "UTC" is in every time zone database, so this never fails.
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.timeZone = .gmt
         let parts = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return String(format: "%04d-W%02d", parts.yearForWeekOfYear ?? 0, parts.weekOfYear ?? 0)
     }
