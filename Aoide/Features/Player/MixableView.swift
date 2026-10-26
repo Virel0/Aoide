@@ -62,7 +62,12 @@ struct MixableView: View {
                 } footer: {
                     Text(coverage.sweepEnabled
                         ? "Your server measures the whole library on a schedule, so coverage climbs on its own."
-                        : "Your server measures a track the first time something asks about it, so this climbs as you listen. To do the whole library at once, turn on \"Analyse the whole library nightly\" in Jellyfin's Aoide Sidecar plugin settings — the first run takes hours on a large library, which is why it is off by default.")
+                        : """
+                            Your server measures a track the first time something asks about it, so this \
+                            climbs as you listen. To do the whole library at once, turn on \"Analyse the \
+                            whole library nightly\" in Jellyfin's Aoide Sidecar plugin settings — the \
+                            first run takes hours on a large library, which is why it is off by default.
+                            """)
                 }
             }
 
@@ -75,7 +80,13 @@ struct MixableView: View {
             } header: {
                 Text("On This Phone")
             } footer: {
-                Text("Two tracks mix only if both are here, their tempi are within six per cent of each other — counting half and double as a match — and there is room in each for sixteen bars. Everything else crossfades. Your server measures a track's beats the first time anything asks about it, so a fresh download takes a moment to appear.")
+                Text("""
+                    Two tracks mix only if both are here, their tempi are within six per cent of \
+                    each other — counting half and double as a match — and there is room in each \
+                    for sixteen bars. Everything else crossfades. Your server measures a track's \
+                    beats the first time anything asks about it, so a fresh download takes a \
+                    moment to appear.
+                    """)
             }
 
             if !mixable.isEmpty {
@@ -94,7 +105,11 @@ struct MixableView: View {
                 } header: {
                     Text("Not Mixable")
                 } footer: {
-                    Text("A track needs a steady tempo and a clear four to the bar. Live recordings, anything that speeds up or slows down, and music without a beat to find are all normal answers here — they crossfade instead.")
+                    Text("""
+                        A track needs a steady tempo and a clear four to the bar. Live recordings, \
+                        anything that speeds up or slows down, and music without a beat to find are \
+                        all normal answers here — they crossfade instead.
+                        """)
                 }
             }
         }

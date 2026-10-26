@@ -36,8 +36,19 @@ cd Packages/JellyfinKit && swift test    # API client, import matching
 cd Packages/PlaybackKit && swift test    # queue, conversion, silence bounds
 ```
 
-There is no CI on this repository yet, so run all three before you push, and
-build the app once for the simulator.
+CI runs SwiftLint only (`.github/workflows/lint.yml`), so run all three before
+you push, and build the app once for the simulator.
+
+## Lint
+
+```sh
+swiftlint lint                            # from the repository root
+```
+
+`.swiftlint.yml` holds the limits: files under 500 lines (1,000 at most),
+functions under 50 (100 at most), types under 300 (600 at most), and no
+force-unwraps or `try!` outside tests. Errors fail CI; warnings are worth
+fixing when you touch the code anyway.
 
 ## Making a change
 

@@ -18,11 +18,11 @@ struct ReplayView: View {
         var from: Millis {
             let calendar = Calendar.current
             let now = Date()
-            // Components taken from a real date by the same calendar always make a
-            // date again, so these unwraps cannot fail.
+            // The start of the current month or year; a calendar that can't say
+            // falls back to now rather than crashing.
             switch self {
-            case .month: return calendar.date(from: calendar.dateComponents([.year, .month], from: now))!.millis
-            case .year: return calendar.date(from: calendar.dateComponents([.year], from: now))!.millis
+            case .month: return (calendar.dateInterval(of: .month, for: now)?.start ?? now).millis
+            case .year: return (calendar.dateInterval(of: .year, for: now)?.start ?? now).millis
             case .all: return 0
             }
         }

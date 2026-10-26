@@ -128,7 +128,11 @@ struct SettingsView: View {
             } header: {
                 Text("Downloads")
             } footer: {
-                Text("Downloads are always lossless, whatever the streaming quality — a file you keep shouldn't be worse than the source. They're excluded from iCloud backups, since your server already has them.")
+                Text("""
+                    Downloads are always lossless, whatever the streaming quality — a file you \
+                    keep shouldn't be worse than the source. They're excluded from iCloud \
+                    backups, since your server already has them.
+                    """)
             }
 
             Section {
@@ -138,7 +142,18 @@ struct SettingsView: View {
             } header: {
                 Text("Gapless")
             } footer: {
-                Text("Level Volume turns each record down to the same loudness, so a 2015 remaster after a 1978 pressing is not a jolt; your server measures it, and a track quieter than the reference is left alone rather than amplified. Downloads are converted to Apple Lossless so tracks run straight into each other with no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless none. Trim Silence goes further: each downloaded file is measured once for where its sound starts and stops, and only that span plays — so the seconds of nothing some recordings carry at either end are skipped. Streamed tracks are trimmed with measurements from your server, which this phone also sends its own to.")
+                Text("""
+                    Level Volume turns each record down to the same loudness, so a 2015 remaster \
+                    after a 1978 pressing is not a jolt; your server measures it, and a track \
+                    quieter than the reference is left alone rather than amplified. Downloads \
+                    are converted to Apple Lossless so tracks run straight into each other with \
+                    no stall; measured, FLAC pauses 67ms at every boundary and Apple Lossless \
+                    none. Trim Silence goes further: each downloaded file is measured once for \
+                    where its sound starts and stops, and only that span plays — so the seconds \
+                    of nothing some recordings carry at either end are skipped. Streamed tracks \
+                    are trimmed with measurements from your server, which this phone also sends \
+                    its own to.
+                    """)
             }
 
             Section {
@@ -159,7 +174,14 @@ struct SettingsView: View {
             } header: {
                 Text("Playback")
             } footer: {
-                Text("Crossfade fades one song into the next instead of stopping between them, longer when the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album running straight into each other, the way they were sequenced — turn it off if you want crossfading everywhere. Infinity keeps the queue going when it runs out, with songs your server picks to follow the one playing.")
+                Text("""
+                    Crossfade fades one song into the next instead of stopping between them, \
+                    longer when the two are at the same tempo. Keep Albums Whole leaves \
+                    consecutive tracks of one album running straight into each other, the way \
+                    they were sequenced — turn it off if you want crossfading everywhere. \
+                    Infinity keeps the queue going when it runs out, with songs your server \
+                    picks to follow the one playing.
+                    """)
             }
 
             Section {

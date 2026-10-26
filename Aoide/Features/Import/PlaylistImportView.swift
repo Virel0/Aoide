@@ -110,7 +110,12 @@ struct PlaylistImportView: View {
             Button("Choose a CSV File…", systemImage: "doc") { isChoosingFile = true }
                 .disabled(importer == nil || isBusy)
         } footer: {
-            Text("A link reads the playlist's first 100 tracks straight from Spotify — no account needed. For a longer playlist, or your own private ones, Exportify (open source) signs in to Spotify and exports it: save the file to Files, then choose it here.")
+            Text("""
+                A link reads the playlist's first 100 tracks straight from Spotify — no \
+                account needed. For a longer playlist, or your own private ones, Exportify \
+                (open source) signs in to Spotify and exports it: save the file to Files, \
+                then choose it here.
+                """)
         }
     }
 
