@@ -3,11 +3,15 @@
 Notable changes to Aoide for iPhone. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-The app has no tagged releases yet and isn't on the App Store; it is built
-from source with Xcode. Until a first release is tagged, everything is under
-Unreleased, and `git log` has the full history.
+The app isn't on the App Store; it is built from source with Xcode (or
+installed through TestFlight). Versions are the app's own: 1.0 (2) is version
+1.0, build 2.
 
 ## [Unreleased]
+
+## [1.0 (2)] - 2026-10-26
+
+The first tagged release.
 
 ### Added
 - Discover on Home: the sidecar's 30 songs of the week, with Play and Shuffle.
@@ -21,6 +25,16 @@ Unreleased, and `git log` has the full history.
 ### Changed
 - The bundle identifier is set only in `Config/Local.xcconfig`; a clean
   checkout builds as `com.example.aoide`.
+- The playback engine is split into one file per part (transport, the
+  render window, crossfade, observation, interruptions, Now Playing, remote
+  commands, Auto DJ), with no function over 50 lines; three other long
+  functions are shortened.
+- SwiftLint checks every change in CI against the project's size limits.
+
+### Fixed
+- Building an Auto DJ render buffer that the system can't create throws an
+  error instead of crashing, and the last force-unwraps and `try!` outside
+  tests are gone.
 
 ### Removed
 - Auto DJ and the stems brief are shelved: switched off and hidden, with the
