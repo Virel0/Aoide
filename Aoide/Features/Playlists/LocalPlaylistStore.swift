@@ -324,22 +324,7 @@ final class LocalPlaylistStore {
         //    all — the whole reason smart playlists work on a plane.
         let entries: [PlaylistEntry]
         do {
-            let list = playlist
-            entries = try await Task.detached {
-                if list.isSmart {
-                    return try store.resolve(playlist: list).map {
-                        PlaylistEntry(rowId: $0, itemId: nil, jellyfinId: $0, isUnresolved: false)
-                    }
-                }
-                return try store.items(in: list.id).map {
-                    PlaylistEntry(
-                        rowId: $0.id,
-                        itemId: $0.id,
-                        jellyfinId: $0.linkedJellyfinId,
-                        isUnresolved: $0.isUnresolved
-                    )
-                }
-            }.value
+            entries = try await readEntries(of: playlist, from: store)
         } catch {
             log.error("Couldn't read playlist \(playlist.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return PlaylistContents(
@@ -351,7 +336,12 @@ final class LocalPlaylistStore {
         }
 
         guard !entries.isEmpty else { return PlaylistContents(isLoading: false) }
+        return await resolveContents(of: entries)
+    }
 
+    /// Turns the playlist's entries into rows, from the server, downloads, and the
+    /// local cache, in that order of preference.
+    private func resolveContents(of entries: [PlaylistEntry]) async -> PlaylistContents {
         // A rule set can legitimately match the whole library — "never played" on a fresh
         // install is exactly that — and resolving twenty thousand ids means two hundred
         // round trips before a single row can be drawn. The cap is the same 500 the
@@ -363,14 +353,7 @@ final class LocalPlaylistStore {
 
         // 2. The server, for everything a row needs that the store doesn't keep — the
         //    artwork and the stream URL above all.
-        var byId: [String: JellyfinItem] = [:]
-        var offlineMessage: String?
-        do {
-            for item in try await client.items(ids: ids) { byId[item.id] = item }
-        } catch {
-            offlineMessage = "Couldn't reach your server. Showing what's saved on this device."
-            log.debug("Playlist resolve failed: \(error.localizedDescription, privacy: .public)")
-        }
+        let (byId, offlineMessage) = await fetchServerItems(ids: ids)
 
         // 3. Downloads fill the gap. A downloaded track carries its own full metadata on
         //    disk, so it is playable with no signal at all — which is the entire point of
@@ -389,27 +372,71 @@ final class LocalPlaylistStore {
             )
         }
 
-        var rows: [PlaylistTrack] = []
-        rows.reserveCapacity(resolved.count)
-        for entry in resolved {
-            rows.append(PlaylistTrack(
-                id: entry.rowId,
-                itemId: entry.itemId,
-                jellyfinId: entry.jellyfinId,
-                item: byId[entry.jellyfinId] ?? downloaded[entry.jellyfinId],
-                cached: local?.cached[entry.jellyfinId],
-                isUnresolved: entry.isUnresolved,
-                playCount: local?.stats[entry.jellyfinId]?.playCount ?? 0
-            ))
-        }
-
         return PlaylistContents(
-            tracks: rows,
+            tracks: Self.rows(for: resolved, server: byId, downloaded: downloaded, local: local),
             isLoading: false,
             errorMessage: nil,
             offlineMessage: offlineMessage,
             totalCount: total > resolved.count ? total : nil
         )
+    }
+
+    /// The playlist's own list: rule results for a smart playlist, stored entries
+    /// otherwise. Read off the main actor, because the query blocks its thread.
+    private func readEntries(of playlist: Playlist, from store: CurationStore) async throws -> [PlaylistEntry] {
+        let list = playlist
+        return try await Task.detached {
+            if list.isSmart {
+                return try store.resolve(playlist: list).map {
+                    PlaylistEntry(rowId: $0, itemId: nil, jellyfinId: $0, isUnresolved: false)
+                }
+            }
+            return try store.items(in: list.id).map {
+                PlaylistEntry(
+                    rowId: $0.id,
+                    itemId: $0.id,
+                    jellyfinId: $0.linkedJellyfinId,
+                    isUnresolved: $0.isUnresolved
+                )
+            }
+        }.value
+    }
+
+    /// The server's items by id, or nothing and a message to show when the server
+    /// can't be reached.
+    private func fetchServerItems(ids: [String]) async -> (items: [String: JellyfinItem], offlineMessage: String?) {
+        var byId: [String: JellyfinItem] = [:]
+        do {
+            for item in try await client.items(ids: ids) { byId[item.id] = item }
+        } catch {
+            log.debug("Playlist resolve failed: \(error.localizedDescription, privacy: .public)")
+            return ([:], "Couldn't reach your server. Showing what's saved on this device.")
+        }
+        return (byId, nil)
+    }
+
+    /// One row per entry, from whichever source has the track: the server first,
+    /// then a download.
+    private static func rows(
+        for entries: [PlaylistEntry],
+        server: [String: JellyfinItem],
+        downloaded: [String: JellyfinItem],
+        local: LocalDetail?
+    ) -> [PlaylistTrack] {
+        var rows: [PlaylistTrack] = []
+        rows.reserveCapacity(entries.count)
+        for entry in entries {
+            rows.append(PlaylistTrack(
+                id: entry.rowId,
+                itemId: entry.itemId,
+                jellyfinId: entry.jellyfinId,
+                item: server[entry.jellyfinId] ?? downloaded[entry.jellyfinId],
+                cached: local?.cached[entry.jellyfinId],
+                isUnresolved: entry.isUnresolved,
+                playCount: local?.stats[entry.jellyfinId]?.playCount ?? 0
+            ))
+        }
+        return rows
     }
 
     /// See `contents(of:)` for why there is a ceiling at all.
