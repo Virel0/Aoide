@@ -248,7 +248,7 @@ public actor SyncEngine {
         var report = SyncReport()
         var previousBatch: Set<String> = []
         /// What the previous round trip came back with, kept so a stall can say why.
-        var lastExchange = (accepted: 0, rejected: 0, unmatched: 0)
+        var lastExchange = PushExchange()
 
         while true {
             let pending = try store.pendingOps(limit: policy.pushBatchSize, holding: heldEntities)
@@ -269,68 +269,16 @@ public actor SyncEngine {
             }
             previousBatch = ids
 
-            var wire: [WireOp] = []
-            for op in pending {
-                switch WireOp.make(from: op) {
-                case .success(let valid):
-                    wire.append(valid)
-                case .failure(let fault):
-                    try store.quarantine(op, reason: fault, at: clock())
-                    report.quarantinedOutbound += 1
-                }
-            }
+            let wire = try wireOps(for: pending, report: &report)
             // Everything in this batch was invalid. They are out of the queue now, so
             // the next fetch returns different rows and the loop still terminates.
             guard !wire.isEmpty else { continue }
 
-            let response: PushResponse
-            do {
-                response = try await transport.push(
-                    PushRequest(deviceId: store.deviceId, ops: wire)
-                )
-            } catch let error as SyncTransportFault where error.isServerFault {
-                // The server threw on this batch. Retrying it unchanged sends the same
-                // bytes to the same effect forever, and every innocent op behind it
-                // waits on one the server cannot swallow — the same wedge `rejected`
-                // exists to prevent, arriving as a 5xx where the contract has no story
-                // for it. Bisecting finds the offender, quarantines that one alone,
-                // and lets the rest through.
-                let isolated = try await isolateServerFault(wire, pending: pending, status: error.status)
-                report.quarantinedOutbound += isolated.quarantined
-                // Halves that succeeded on the way past were genuinely pushed, so the
-                // search makes progress rather than only diagnosing.
-                report.pushed += isolated.pushed
+            guard let response = try await push(wire, pending: pending, report: &report) else {
                 previousBatch = []
                 continue
             }
-
-            // `accepted` includes ops the server had already seen, so a push that
-            // timed out and was sent again acknowledges everything rather than
-            // stranding the duplicate half.
-            try store.markSynced(response.accepted)
-            report.pushed += response.accepted.count
-
-            var unmatched = 0
-            if !response.rejected.isEmpty {
-                let byId = Dictionary(pending.map { ($0.opId, $0) }, uniquingKeysWith: { first, _ in first })
-                for rejection in response.rejected {
-                    // A rejected op will never be accepted. Retrying it is an
-                    // infinite loop, so it leaves the queue here and is surfaced
-                    // instead.
-                    guard let op = byId[rejection.opId] else {
-                        // A rejection naming an op that was not in this batch. Dropped
-                        // silently, this is indistinguishable from the server saying
-                        // nothing at all — and it produces the same stall, so the
-                        // count has to survive to explain it.
-                        unmatched += 1
-                        continue
-                    }
-                    try store.quarantine(op, reason: .serverRejected(rejection.reason), at: clock())
-                    report.quarantinedOutbound += 1
-                    report.rejected += 1
-                }
-            }
-            lastExchange = (response.accepted.count, response.rejected.count, unmatched)
+            lastExchange = try apply(response, pending: pending, report: &report)
 
             // The response's cursor is deliberately dropped on the floor. It is the
             // server's head sequence, not this device's read position — see
@@ -339,6 +287,97 @@ public actor SyncEngine {
         }
 
         return report
+    }
+
+    /// What one push round trip came back with.
+    private struct PushExchange {
+        var accepted = 0
+        var rejected = 0
+        var unmatched = 0
+    }
+
+    /// Sends one batch. Returns nil when the server faulted on it and the batch
+    /// was bisected instead, with what that pushed and quarantined in `report`.
+    private func push(_ wire: [WireOp], pending: [Op], report: inout SyncReport) async throws -> PushResponse? {
+        do {
+            return try await transport.push(
+                PushRequest(deviceId: store.deviceId, ops: wire)
+            )
+        } catch let error as SyncTransportFault where error.isServerFault {
+            // The server threw on this batch. Retrying it unchanged sends the same
+            // bytes to the same effect forever, and every innocent op behind it
+            // waits on one the server cannot swallow — the same wedge `rejected`
+            // exists to prevent, arriving as a 5xx where the contract has no story
+            // for it. Bisecting finds the offender, quarantines that one alone,
+            // and lets the rest through.
+            let isolated = try await isolateServerFault(wire, pending: pending, status: error.status)
+            report.quarantinedOutbound += isolated.quarantined
+            // Halves that succeeded on the way past were genuinely pushed, so the
+            // search makes progress rather than only diagnosing.
+            report.pushed += isolated.pushed
+            return nil
+        }
+    }
+
+    /// Records what the server accepted and rejected from one batch.
+    private func apply(_ response: PushResponse, pending: [Op], report: inout SyncReport) throws -> PushExchange {
+        // `accepted` includes ops the server had already seen, so a push that
+        // timed out and was sent again acknowledges everything rather than
+        // stranding the duplicate half.
+        try store.markSynced(response.accepted)
+        report.pushed += response.accepted.count
+
+        let unmatched = try quarantineRejections(response.rejected, of: pending, report: &report)
+        return PushExchange(
+            accepted: response.accepted.count,
+            rejected: response.rejected.count,
+            unmatched: unmatched
+        )
+    }
+
+    /// The batch as the wire carries it. An op that cannot be encoded is
+    /// quarantined here rather than sent.
+    private func wireOps(for pending: [Op], report: inout SyncReport) throws -> [WireOp] {
+        var wire: [WireOp] = []
+        for op in pending {
+            switch WireOp.make(from: op) {
+            case .success(let valid):
+                wire.append(valid)
+            case .failure(let fault):
+                try store.quarantine(op, reason: fault, at: clock())
+                report.quarantinedOutbound += 1
+            }
+        }
+        return wire
+    }
+
+    /// Takes every op the server rejected out of the queue. Returns how many
+    /// rejections named an op that was not in this batch.
+    private func quarantineRejections(
+        _ rejected: [RejectedOp],
+        of pending: [Op],
+        report: inout SyncReport
+    ) throws -> Int {
+        guard !rejected.isEmpty else { return 0 }
+        var unmatched = 0
+        let byId = Dictionary(pending.map { ($0.opId, $0) }, uniquingKeysWith: { first, _ in first })
+        for rejection in rejected {
+            // A rejected op will never be accepted. Retrying it is an
+            // infinite loop, so it leaves the queue here and is surfaced
+            // instead.
+            guard let op = byId[rejection.opId] else {
+                // A rejection naming an op that was not in this batch. Dropped
+                // silently, this is indistinguishable from the server saying
+                // nothing at all — and it produces the same stall, so the
+                // count has to survive to explain it.
+                unmatched += 1
+                continue
+            }
+            try store.quarantine(op, reason: .serverRejected(rejection.reason), at: clock())
+            report.quarantinedOutbound += 1
+            report.rejected += 1
+        }
+        return unmatched
     }
 
     // MARK: - Pull
