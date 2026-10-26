@@ -9,7 +9,7 @@ import os
 /// session and the playback engine — rather than from anything the phone's view
 /// hierarchy happens to be holding.
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
-    private static let log = Logger(subsystem: "com.example.aoide", category: "carplay")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "carplay")
 
     private var browser: CarPlayBrowser?
 

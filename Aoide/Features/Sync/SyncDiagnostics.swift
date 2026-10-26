@@ -21,7 +21,7 @@ actor SyncDiagnostics {
     }
 
     private(set) var lastPush: Exchange?
-    private let log = Logger(subsystem: "com.example.aoide", category: "sync")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "sync")
 
     /// Truncated: a reply naming every op in a 250-op batch runs long, and the shape
     /// of the first few is what tells you whether it was understood.

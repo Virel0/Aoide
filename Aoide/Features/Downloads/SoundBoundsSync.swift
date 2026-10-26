@@ -24,7 +24,7 @@ final class SoundBoundsSync {
     private var inFlight: Set<String> = []
     private var toUpload: [String: SilenceBounds?] = [:]
     private var uploadTask: Task<Void, Never>?
-    private let log = Logger(subsystem: "com.example.aoide", category: "silence")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "silence")
 
     private struct Wire: Codable {
         struct Bounds: Codable { var soundStartMs: Int64; var soundEndMs: Int64 }

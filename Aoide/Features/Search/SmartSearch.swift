@@ -21,7 +21,7 @@ final class SmartSearch {
         case unavailable(String)
     }
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "smart-search")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "smart-search")
     private let client: JellyfinClient
 
     /// Genre names the library actually contains, lower-cased for matching.

@@ -19,7 +19,7 @@ import os
 /// unit that freezes before it redraws. The only thing that genuinely has to happen on the
 /// main actor is *reading* the engine, and that is one hop at the top of each report.
 actor CurationRecorder: PlaybackReporter {
-    private let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     /// A play that has begun and not yet been closed out. At most one, because at most
     /// one track is playing.

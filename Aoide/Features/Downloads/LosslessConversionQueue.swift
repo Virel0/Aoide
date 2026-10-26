@@ -12,7 +12,7 @@ import os
 actor LosslessConversionQueue {
     static let shared = LosslessConversionQueue()
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "downloads")
 
     /// Where the sound is in a file, or nil when there is nothing to trim or the
     /// file could not be read. Serial with the conversions, for the same reason.

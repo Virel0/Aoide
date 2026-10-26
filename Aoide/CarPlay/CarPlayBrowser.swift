@@ -21,7 +21,7 @@ import os
 /// a moving car is the thing the platform is worst at.
 @MainActor
 final class CarPlayBrowser: NSObject {
-    private let log = Logger(subsystem: "com.example.aoide", category: "carplay")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "carplay")
 
     /// Artwork small enough to be cheap over a phone's connection while the car is
     /// moving, and larger than any row CarPlay draws.

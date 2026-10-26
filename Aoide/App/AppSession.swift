@@ -30,7 +30,7 @@ final class AppSession {
         }
     }
 
-    private static let log = Logger(subsystem: "com.example.aoide", category: "session")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "session")
 
     private(set) var state: State = .loading
     private(set) var client: JellyfinClient?

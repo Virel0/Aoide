@@ -16,9 +16,9 @@ final class SpotlightIndexer {
 
     /// Identifies our entries so `deleteSearchableItems(withDomainIdentifiers:)`
     /// can remove exactly ours on sign-out and nothing else.
-    static let domain = "com.example.aoide.library"
+    static let domain = AppIdentity.named("library")
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "spotlight")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "spotlight")
     private let defaults = UserDefaults.standard
     private let lastIndexedKey = "aoide.spotlight.lastIndexed"
 

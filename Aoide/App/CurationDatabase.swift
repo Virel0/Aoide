@@ -8,7 +8,7 @@ import os
 /// listener's playlists and history until the sidecar exists, and the system may
 /// evict Caches whenever it likes.
 enum CurationDatabase {
-    private static let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     // `AppSession.deviceId` is main-actor isolated, so this can't be a lazy global
     // initialised from whichever thread touches it first. Built explicitly on the

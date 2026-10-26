@@ -26,7 +26,7 @@ final class SharePlayCoordinator {
     private(set) var isActive = false
     private(set) var participantCount = 0
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "shareplay")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "shareplay")
     private let stateObserver = GroupStateObserver()
 
     private var session: GroupSession<ListeningActivity>?

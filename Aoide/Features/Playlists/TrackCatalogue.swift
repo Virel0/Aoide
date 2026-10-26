@@ -15,7 +15,7 @@ import os
 enum TrackCatalogue {
     /// Shared with `SongIndexer`'s detached tidy-up, which cannot reach that class's own
     /// logger — it is isolated to the main actor and the tidy-up deliberately is not.
-    static let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    static let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     /// The single definition of what a `TrackRef` for a Jellyfin item looks like.
     ///
@@ -102,7 +102,7 @@ final class SongIndexer {
         return false
     }
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
     /// Jellyfin pages happily at this size, and it keeps each write transaction to
     /// something that finishes between two frames of the progress row.
     private let pageSize = 500

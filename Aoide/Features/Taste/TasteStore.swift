@@ -16,7 +16,7 @@ final class TasteStore {
 
     private(set) var byTrack: [String: TrackFlags] = [:]
     private(set) var flagged: [(flags: TrackFlags, track: TrackRef?)] = []
-    private let log = Logger(subsystem: "com.example.aoide", category: "taste")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "taste")
 
     private init() {}
 

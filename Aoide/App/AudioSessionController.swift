@@ -8,7 +8,7 @@ import os
 /// hands the audio route back.
 @MainActor
 enum AudioSessionController {
-    private static let log = Logger(subsystem: "com.example.aoide", category: "audio")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "audio")
 
     static func activate() {
         let session = AVAudioSession.sharedInstance()

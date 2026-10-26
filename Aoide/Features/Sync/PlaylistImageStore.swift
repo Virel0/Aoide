@@ -16,7 +16,7 @@ import os
 actor PlaylistImageStore: ImageByteSource {
     static let shared = PlaylistImageStore()
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     private static let directory: URL = {
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

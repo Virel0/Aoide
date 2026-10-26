@@ -27,7 +27,7 @@ final class MixComposer {
         case unavailable(String)
     }
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "mixes")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "mixes")
     private let client: JellyfinClient
 
     /// Genre names the library actually contains, lower-cased for matching.

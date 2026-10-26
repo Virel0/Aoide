@@ -7,7 +7,7 @@ lyrics, CarPlay, Siri, and a library that behaves like a library.
 It plays what is on your server and keeps what is yours on the phone: playlists,
 smart playlists, likes, taste flags and an honest play history, all synced
 between devices through the [Aoide sidecar](https://github.com/Virel0/aoide-sidecar),
-a small Jellyfin plugin. The [desktop app](https://github.com/Virel0/aoide-desktop)
+a small Jellyfin plugin. The [desktop app](https://github.com/Virel0/aoide-linux)
 reads and writes the same data, so a playlist made on the phone is on the desk
 and a play at the desk counts on the phone.
 
@@ -54,7 +54,7 @@ cp Config/Local.example.xcconfig Config/Local.xcconfig
 
 Then fill in `DEVELOPMENT_TEAM` (your Apple Team ID) and, optionally,
 `AOIDE_DEFAULT_SERVER`, the address the sign-in screen offers on a fresh install.
-The bundle identifier is `com.example.aoide`; change it for your own team.
+The bundle identifier is `AOIDE_BUNDLE_ID` in the same file; use your own.
 CarPlay is a per-app entitlement granted by Apple on request, so a build under
 another identifier plays music but does not appear in the car until Apple says so.
 

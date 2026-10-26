@@ -28,7 +28,7 @@ final class PagedItems {
     private let prefetchMargin = 40
 
     private let fetch: @MainActor (_ startIndex: Int, _ limit: Int) async throws -> ItemsResponse
-    private let log = Logger(subsystem: "com.example.aoide", category: "paging")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "paging")
 
     init(fetch: @escaping @MainActor (_ startIndex: Int, _ limit: Int) async throws -> ItemsResponse) {
         self.fetch = fetch

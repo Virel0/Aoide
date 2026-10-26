@@ -74,3 +74,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// whatever `handlerFor` returns.
     private static let mediaIntentHandler = MediaIntentHandler()
 }
+
+/// The app's identifiers, built at run time from its own bundle ID, so none is
+/// written out in the source: the bundle ID is set once, by `AOIDE_BUNDLE_ID`
+/// in Config/Local.xcconfig.
+enum AppIdentity {
+    /// The bundle ID (the logs' subsystem). "aoide" only outside a bundle.
+    static let bundle = Bundle.main.bundleIdentifier ?? "aoide"
+
+    /// `<bundle ID>.<suffix>`: the keychain service, the download session, …
+    static func named(_ suffix: String) -> String { "\(bundle).\(suffix)" }
+}

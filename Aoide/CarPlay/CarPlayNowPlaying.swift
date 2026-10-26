@@ -15,7 +15,7 @@ import os
 final class CarPlayNowPlaying: NSObject {
     static let shared = CarPlayNowPlaying()
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "carplay")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "carplay")
     private weak var interfaceController: CPInterfaceController?
     /// For the artist button and the More menu, which push browse screens.
     weak var browser: CarPlayBrowser?

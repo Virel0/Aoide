@@ -14,7 +14,7 @@ final class SiriAuthorization {
     static let shared = SiriAuthorization()
 
     private(set) var status: INSiriAuthorizationStatus = INPreferences.siriAuthorizationStatus()
-    private let log = Logger(subsystem: "com.example.aoide", category: "siri")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "siri")
 
     private init() {}
 

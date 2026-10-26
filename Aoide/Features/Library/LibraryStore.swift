@@ -51,7 +51,7 @@ final class LibraryStore {
     private var trackCache: [String: [JellyfinItem]] = [:]
 
     private let client: JellyfinClient
-    private let log = Logger(subsystem: "com.example.aoide", category: "library")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "library")
 
     /// Ids of the user's music libraries, resolved once. `nil` until then.
     private var musicLibraryIds: [String]?

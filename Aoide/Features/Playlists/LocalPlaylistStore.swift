@@ -121,7 +121,7 @@ final class LocalPlaylistStore {
         """
 
     private let client: JellyfinClient
-    private let log = Logger(subsystem: "com.example.aoide", category: "curation")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     private(set) var folders: [Folder] = []
     private(set) var playlists: [Playlist] = []

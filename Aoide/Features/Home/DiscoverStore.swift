@@ -22,7 +22,7 @@ final class DiscoverStore {
 
     private(set) var state: State = .unknown
     private var isLoading = false
-    private let log = Logger(subsystem: "com.example.aoide", category: "discover")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "discover")
 
     private init() {}
 

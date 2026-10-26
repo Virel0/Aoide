@@ -26,7 +26,7 @@ final class TransientTracks {
 
     private var files: [String: URL] = [:]
     private var inFlight: Set<String> = []
-    private let log = Logger(subsystem: "com.example.aoide", category: "transient")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "transient")
 
     private static let directory: URL = {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]

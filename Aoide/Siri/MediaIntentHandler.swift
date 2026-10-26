@@ -16,7 +16,7 @@ import os
 /// resolve the request but not start playback, because the queue and the player
 /// live here; it would have to hand back and launch the app anyway.
 final class MediaIntentHandler: NSObject {
-    private let log = Logger(subsystem: "com.example.aoide", category: "siri")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "siri")
 
     /// How many tracks a spoken request may queue. Enough for an artist's
     /// discography, bounded so "play everything" can't spend a minute fetching.

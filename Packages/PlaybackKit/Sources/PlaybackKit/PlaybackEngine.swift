@@ -105,7 +105,7 @@ public final class PlaybackEngine {
 
     // MARK: - Private
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "playback")
+    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "aoide", category: "playback")
 
     /// Two decks, like a DJ's, because one player cannot play two things at once
     /// and a crossfade is by definition two things at once.

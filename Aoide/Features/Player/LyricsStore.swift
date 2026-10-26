@@ -36,7 +36,7 @@ final class LyricsStore {
 
     private static let offsetKey = "aoide.lyricsOffset"
     private let client: JellyfinClient
-    private let log = Logger(subsystem: "com.example.aoide", category: "lyrics")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "lyrics")
 
     init(client: JellyfinClient) {
         self.client = client

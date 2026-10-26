@@ -16,7 +16,7 @@ import os
 /// with the phone being silenced in a pocket.
 @MainActor
 enum QueueRestorer {
-    private static let log = Logger(subsystem: "com.example.aoide", category: "playback")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "playback")
 
     static func restore(client: JellyfinClient) async {
         // Anything already queued wins: the car can connect and start playing

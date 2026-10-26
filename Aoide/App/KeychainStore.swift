@@ -6,8 +6,8 @@ import os
 /// token. It lives here rather than in `UserDefaults` because `UserDefaults` is a
 /// plist in the app container — readable from any unencrypted device backup.
 enum KeychainStore {
-    private static let service = "com.example.aoide.credentials"
-    private static let log = Logger(subsystem: "com.example.aoide", category: "keychain")
+    private static let service = AppIdentity.named("credentials")
+    private static let log = Logger(subsystem: AppIdentity.bundle, category: "keychain")
 
     /// `afterFirstUnlock` rather than `whenUnlocked`: CarPlay can wake the app and
     /// start playback while the phone is still locked in a pocket, and we need the

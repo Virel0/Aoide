@@ -90,7 +90,7 @@ final class SyncCoordinator {
 
     // MARK: - Innards
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "sync")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "sync")
 
     private var engine: SyncEngine?
     private var store: CurationStore?

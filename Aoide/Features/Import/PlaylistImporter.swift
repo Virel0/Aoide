@@ -35,7 +35,7 @@ final class PlaylistImporter {
     var missing: [ImportedTrack] { matches.filter { $0.song == nil }.map(\.track) }
 
     private let client: JellyfinClient
-    private let log = Logger(subsystem: "com.example.aoide", category: "import")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "import")
 
     /// Looked up a few at a time. The server answers a search in tens of
     /// milliseconds, but a hundred at once is a burst it need not be asked for.

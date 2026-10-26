@@ -28,7 +28,7 @@ final class Reachability {
             let online = path.status == .satisfied
             Task { @MainActor in self?.apply(online) }
         }
-        monitor.start(queue: DispatchQueue(label: "com.example.aoide.reachability"))
+        monitor.start(queue: DispatchQueue(label: AppIdentity.named("reachability")))
     }
 
     private func apply(_ online: Bool) {

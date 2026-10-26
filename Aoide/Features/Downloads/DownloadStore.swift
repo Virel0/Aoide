@@ -42,9 +42,9 @@ final class DownloadStore: NSObject {
     /// a directory scan — the bridge asks once per track when building a queue.
     private(set) var files: [String: URL] = [:]
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "downloads")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "downloads")
     @ObservationIgnored private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.example.aoide.downloads")
+        let config = URLSessionConfiguration.background(withIdentifier: AppIdentity.named("downloads"))
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)

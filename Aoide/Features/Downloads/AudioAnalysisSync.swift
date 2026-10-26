@@ -37,7 +37,7 @@ final class AudioAnalysisSync {
     private var pendingUntil: [String: Date] = [:]
     private var absentUntil: Date?
     private var inFlight: Set<String> = []
-    private let log = Logger(subsystem: "com.example.aoide", category: "loudness")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "loudness")
 
     private struct Wire: Decodable {
         var analysis: [String: Analysis?]

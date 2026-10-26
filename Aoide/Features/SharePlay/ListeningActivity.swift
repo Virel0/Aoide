@@ -9,7 +9,7 @@ import GroupActivities
 /// That also means this works only between people with accounts on the server,
 /// which for a private server is correct behaviour rather than a limitation.
 struct ListeningActivity: GroupActivity {
-    static let activityIdentifier = "com.example.aoide.listening"
+    static let activityIdentifier = AppIdentity.named("listening")
 
     var albumTitle: String
     var artist: String

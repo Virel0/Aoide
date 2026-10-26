@@ -4,6 +4,10 @@
 // Accounts → your team → the ten-character id.
 DEVELOPMENT_TEAM = ABCDE12345
 
+// Your bundle ID. Code builds its other identifiers (keychain, downloads,
+// logs, SharePlay) from it at run time, so this is the only place it is set.
+AOIDE_BUNDLE_ID = com.example.aoide
+
 // Optional. The address the sign-in screen offers on a fresh install, so a
 // handful of people on one server needn't type it. Leave it out to ask.
 AOIDE_DEFAULT_SERVER = https:/$()/jellyfin.example.com

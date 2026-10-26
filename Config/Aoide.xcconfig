@@ -4,6 +4,11 @@
 // should offer — lives in Config/Local.xcconfig, which is gitignored. Copy
 // Config/Local.example.xcconfig to get started. The include is optional so a
 // clean checkout still builds; it just signs with no team and pre-fills nothing.
+// The bundle ID: a placeholder, which Local.xcconfig replaces with yours
+// (it comes after, and the last definition wins). CarPlay is granted by Apple
+// against one specific bundle ID, so keep yours once you have the grant.
+AOIDE_BUNDLE_ID = com.example.aoide
+
 #include? "Local.xcconfig"
 
 // AOIDE_DEFAULT_SERVER is deliberately not given a value here: undefined

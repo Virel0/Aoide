@@ -165,7 +165,7 @@ private final class PlaybackReporters: PlaybackReporter {
 /// Posts the engine's events to `/Sessions/Playing*`.
 private final class JellyfinReporter: PlaybackReporter {
     private let client: JellyfinClient
-    private let log = Logger(subsystem: "com.example.aoide", category: "reporting")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "reporting")
 
     init(client: JellyfinClient) {
         self.client = client

@@ -40,7 +40,7 @@ final class InfinityQueue: PlaybackReporter {
     /// describes somebody who no longer exists.
     static let windowDays = 90.0
 
-    private let log = Logger(subsystem: "com.example.aoide", category: "infinity")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "infinity")
 
     /// The switch as the listener set it. Read ``isOn`` for what is in force.
     private(set) var isChosen: Bool = UserDefaults.standard.bool(forKey: InfinityQueue.key)

@@ -58,7 +58,7 @@ enum Diagnostics {
     private static func recentLog() throws -> String {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
         let since = store.position(date: Date().addingTimeInterval(-window))
-        let predicate = NSPredicate(format: "subsystem == %@", "com.example.aoide")
+        let predicate = NSPredicate(format: "subsystem == %@", AppIdentity.bundle)
         let entries = try store.getEntries(at: since, matching: predicate)
         let time = Date.FormatStyle(date: .omitted, time: .standard).secondFraction(.fractional(3))
         var out = ""

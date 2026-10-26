@@ -9,7 +9,7 @@ final class RecentContextStore {
     static let shared = RecentContextStore()
 
     private(set) var list = RecentContextList()
-    private let log = Logger(subsystem: "com.example.aoide", category: "home")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "home")
 
     @ObservationIgnored private let url: URL = {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

@@ -24,7 +24,7 @@ final class BeatGridSync {
     private var pendingUntil: [String: Date] = [:]
     private var absentUntil: Date?
     private var inFlight: Set<String> = []
-    private let log = Logger(subsystem: "com.example.aoide", category: "beatgrid")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "beatgrid")
 
     private struct Wire: Decodable {
         struct Grid: Decodable {
@@ -257,7 +257,7 @@ final class ArrangementSync {
     private var pendingUntil: [String: Date] = [:]
     private var absentUntil: Date?
     private var inFlight: Set<String> = []
-    private let log = Logger(subsystem: "com.example.aoide", category: "arrangement")
+    private let log = Logger(subsystem: AppIdentity.bundle, category: "arrangement")
 
     private struct Wire: Decodable {
         struct Section: Decodable {
