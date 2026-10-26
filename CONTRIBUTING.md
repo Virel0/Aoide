@@ -2,7 +2,7 @@
 
 Bug reports, fixes and features are welcome. For anything larger than a fix,
 open an issue first, so the change can be agreed before the work. The app and
-[Aoide for Linux](https://github.com/Virel0/aoide-linux) share their sync
+[Aoide for Linux](https://github.com/Virel0/Aoide-Linux) share their sync
 contract and their names for things, so a change to one often has a twin in
 the other.
 

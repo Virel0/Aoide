@@ -20,4 +20,4 @@ you listen.
 **Deleting your data.** Sign out to remove the token; delete the app to remove
 everything on the phone. Data synced to your server is yours and lives there.
 
-Questions: open an issue at https://github.com/Virel0/aoide.
+Questions: open an issue at https://github.com/Virel0/Aoide.

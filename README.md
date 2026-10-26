@@ -30,7 +30,7 @@ It plays what is on your server and keeps what is yours on the phone:
 playlists, smart playlists, likes, taste flags and an honest play history, all
 synced between devices through the
 [Aoide sidecar](https://github.com/Virel0/aoide-sidecar), a small Jellyfin
-plugin. The [Linux app](https://github.com/Virel0/aoide-linux) reads and writes
+plugin. The [Linux app](https://github.com/Virel0/Aoide-Linux) reads and writes
 the same data, so a playlist made on the phone is on the desk and a play at the
 desk counts on the phone.
 
@@ -92,7 +92,7 @@ with made-up artists, albums and lyrics.
 ## The Aoide family
 
 - **Aoide for iPhone** (this repository): the iOS app, in SwiftUI, with CarPlay and Siri.
-- **[Aoide for Linux](https://github.com/Virel0/aoide-linux)**: the desktop app, in Rust, with a pacman repository, a Flatpak, an AppImage and a deb.
+- **[Aoide for Linux](https://github.com/Virel0/Aoide-Linux)**: the desktop app, in Rust, with a pacman repository, a Flatpak, an AppImage and a deb.
 - **[Aoide sidecar](https://github.com/Virel0/aoide-sidecar)**: the Jellyfin plugin both apps sync through. Optional: without it, the apps still play music and keep playlists on the device.
 
 Aoide was one of the three original Muses in Greek myth; the name means "song".
