@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The logic lives in three local packages, tested without a simulator.
+  packages:
+    name: test (${{ matrix.package }})
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [CurationKit, JellyfinKit, PlaybackKit]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: swift test
+        working-directory: Packages/${{ matrix.package }}
+        run: swift test
+
+  # The app itself, for the simulator. A clean checkout has no
+  # Config/Local.xcconfig, so it builds as com.example.aoide, unsigned.
+  app:
+    name: build (app)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: xcodebuild
+        run: |
+          set -o pipefail
+          xcodebuild -project Aoide.xcodeproj -scheme Aoide \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO build
