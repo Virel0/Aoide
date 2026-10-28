@@ -18,7 +18,7 @@ let package = Package(
         // Apple's own drop-in for CryptoKit, which does not exist off Apple platforms.
         // Pulled in only on Linux, so an iOS build keeps using the system framework
         // and gains no dependency for a portability it does not need.
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.3"),
     ],
     targets: [
         .target(
