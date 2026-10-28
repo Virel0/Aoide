@@ -36,8 +36,9 @@ cd Packages/JellyfinKit && swift test    # API client, import matching
 cd Packages/PlaybackKit && swift test    # queue, conversion, silence bounds
 ```
 
-CI runs SwiftLint only (`.github/workflows/lint.yml`), so run all three before
-you push, and build the app once for the simulator.
+CI runs all three, builds the app for the simulator
+(`.github/workflows/ci.yml`) and runs SwiftLint (`lint.yml`) on every pull
+request; run them before you push anyway, it's faster.
 
 ## Lint
 
