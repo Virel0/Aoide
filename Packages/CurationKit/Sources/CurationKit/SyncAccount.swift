@@ -156,7 +156,7 @@ public extension CurationStore {
         // were missed: one person's "Not Interested" and "Don't Count Plays" stayed
         // behind for the next account, and so did the record of which covers the
         // server already holds.
-        for table in ["playlistItem", "playlist", "folder", "like", "playEvent",
+        for table in ["playlistItem", "playlist", "folder", "like", "albumLike", "playEvent",
                       "queueState", "trackFlags", "imageBlob", "op", "quarantinedOp", "track"] {
             try db.execute(sql: "DELETE FROM \(table)")
         }
@@ -177,7 +177,7 @@ public extension CurationStore {
     /// already knows and reveals nothing about a person — a store holding only a
     /// track cache is not evidence of somebody's listening.
     private static func holdsData(_ db: Database) throws -> Bool {
-        for table in ["playlist", "playlistItem", "folder", "like", "playEvent", "queueState", "trackFlags"] {
+        for table in ["playlist", "playlistItem", "folder", "like", "albumLike", "playEvent", "queueState", "trackFlags"] {
             if try Int.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM \(table))") == 1 {
                 return true
             }

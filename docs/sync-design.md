@@ -172,6 +172,28 @@ CREATE TABLE likes (
 CREATE UNIQUE INDEX idx_likes_item ON likes(jellyfin_id);
 ```
 
+### `album_likes`
+
+An album's like: the same row and merge as a song's, naming the album by
+`album_id` in place of `jellyfin_id`, with the content key `artist|album`.
+Its own entity rather than a kind of song like, so a build that predates it sets
+the row aside (quarantine) instead of reading it as a song's. Liking an album
+likes none of its songs. The app writes these through Melete
+(`PUT`/`DELETE /api/v1/music/albums/{id}/like`), which appends the op, and only
+ever pulls them; so nothing is held back for a server without them.
+
+```sql
+CREATE TABLE album_likes (
+  id            TEXT PRIMARY KEY,
+  album_id      TEXT NOT NULL UNIQUE,
+  content_key   TEXT NOT NULL,
+  liked         INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  deleted       INTEGER NOT NULL DEFAULT 0,
+  origin_device TEXT NOT NULL
+);
+```
+
 ### `play_events` — append-only
 
 The raw material for real play counts, recaps, weighted shuffle and skip tracking.
@@ -351,8 +373,8 @@ differs, the running system is right.
 
 - **Entity names are translated at the wire boundary.** The store's tables are
   singular camelCase because the record types are; the server's allow-list is plural
-  snake_case (`playlists`, `playlist_items`, `folders`, `likes`, `play_events`,
-  `queue_state`) and matched strictly. Rewriting stored `op` rows to spell it the
+  snake_case (`playlists`, `playlist_items`, `folders`, `likes`, `album_likes`,
+  `play_events`, `queue_state`, `track_flags`) and matched strictly. Rewriting stored `op` rows to spell it the
   server's way would be a schema migration in service of a formatting preference, and
   would still leave ops written by older builds spelling it the old way.
 - **`rejected` exists**, and is not in the design above. A push returns per-op

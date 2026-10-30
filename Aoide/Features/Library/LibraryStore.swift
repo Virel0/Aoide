@@ -43,7 +43,8 @@ final class LibraryStore {
     // rest of the page intact rather than blanking it.
     private(set) var recentlyPlayed: Loadable<[MusicItem]> = .idle
     private(set) var mostPlayed: Loadable<[MusicItem]> = .idle
-    /// The albums of the songs the listener likes: Melete keeps likes on songs.
+    /// The albums of the songs the listener likes, for Home's Favourites shelf.
+    /// Albums liked in their own right are ``likedAlbums()``.
     private(set) var favorites: Loadable<[MusicItem]> = .idle
 
     /// Album tracks, keyed by album id, so reopening an album is instant.
@@ -214,6 +215,19 @@ final class LibraryStore {
         return tracks
     }
 
+    /// An album's tracks, kept as ``tracks(inAlbum:)`` keeps them, and whether the
+    /// listener likes the album, which is asked afresh every time.
+    func albumPage(_ albumId: String) async throws -> (tracks: [MusicItem], liked: Bool) {
+        let (album, tracks) = try await client.album(id: albumId)
+        trackCache[albumId] = tracks
+        return (tracks, album.liked)
+    }
+
+    /// The albums the listener likes, newest like first.
+    func likedAlbums() async throws -> [MusicItem] {
+        try await client.likedAlbums()
+    }
+
     func albums(byArtist artistId: String) async throws -> [MusicItem] {
         try await client.albums(byArtist: artistId)
     }
@@ -375,6 +389,19 @@ final class LibraryStore {
             log.error("Could not set favourite: \(error.localizedDescription, privacy: .public)")
             // Report the unchanged value so the glyph snaps back rather than lying.
             return !target
+        }
+    }
+
+    /// Likes or unlikes an album in Melete, as ``toggleFavorite(_:to:)`` does a
+    /// song: what the server confirmed, or the unchanged value when it refused.
+    /// Liking an album likes none of its songs.
+    func setAlbumFavorite(_ albumId: String, to desired: Bool) async -> Bool {
+        do {
+            try await client.setLiked(desired, albumId: albumId)
+            return desired
+        } catch {
+            log.error("Could not set album favourite: \(error.localizedDescription, privacy: .public)")
+            return !desired
         }
     }
 

@@ -129,6 +129,7 @@ struct SyncQuarantineView: View {
         case .playlistItem: "playlist track"
         case .folder: "folder"
         case .like: "favourite"
+        case .albumLike: "album favourite"
         case .playEvent: "listening history"
         case .queueState: "queue"
         case .trackFlags: "taste flag"

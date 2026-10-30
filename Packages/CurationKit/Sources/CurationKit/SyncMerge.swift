@@ -91,7 +91,8 @@ struct InboundApplier {
         case .playlist: try mergePlaylist(op, in: db)
         case .folder: try mergeFolder(op, in: db)
         case .playlistItem: try mergeItem(op, in: db)
-        case .like: try mergeLike(op, in: db)
+        case .like: try mergeLike(Like.self, op, in: db)
+        case .albumLike: try mergeLike(AlbumLike.self, op, in: db)
         case .trackFlags: try mergeTrackFlags(op, in: db)
         case .queueState: try mergeQueue(op, in: db)
         case .playEvent: try appendEvent(op, operation: operation, in: db)
@@ -148,9 +149,9 @@ struct InboundApplier {
         report.applied += 1
     }
 
-    /// Likes are the one table with an identity that is not its primary key: the
-    /// schema has a unique index on `jellyfinId`, and two devices liking the same
-    /// track offline mint two different row ids for it. Inserting the second one
+    /// Likes are the tables with an identity that is not their primary key: the
+    /// schema has a unique index on `jellyfinId` (or an album like's `albumId`), and
+    /// two devices liking the same track offline mint two different row ids for it. Inserting the second one
     /// blindly is a constraint violation, which would roll back the whole batch
     /// rather than the one row.
     ///
@@ -160,11 +161,11 @@ struct InboundApplier {
     /// device made, it is a deterministic function of two rows that every device also
     /// has, so every device reaches it independently and they converge without
     /// anybody announcing anything.
-    private mutating func mergeLike(_ op: PulledOp, in db: Database) throws {
-        let existing = try Like.fetchOne(db, key: op.entityId)
-        guard let row = try winner(Like.self, op, existing: existing, in: db) else { return }
+    private mutating func mergeLike<R: Liking>(_ type: R.Type, _ op: PulledOp, in db: Database) throws {
+        let existing = try R.fetchOne(db, key: op.entityId)
+        guard let row = try winner(R.self, op, existing: existing, in: db) else { return }
 
-        let clash = try Like.filter(Column("jellyfinId") == row.jellyfinId).fetchOne(db)
+        let clash = try R.filter(Column(R.likedColumn) == row.likedItem).fetchOne(db)
         if let clash, clash.id != row.id {
             guard Self.incomingWins(
                 incoming: (row.updatedAt, row.originDevice),
@@ -173,7 +174,7 @@ struct InboundApplier {
                 report.ignoredStale += 1
                 return
             }
-            _ = try Like.deleteOne(db, key: clash.id)
+            _ = try R.deleteOne(db, key: clash.id)
             report.supersededLikes += 1
         }
         try row.save(db)
@@ -598,4 +599,22 @@ extension CurationStore {
             return report
         }
     }
+}
+
+/// A like of something: a row unique on the track or album it names.
+protocol Liking: Syncable, Codable, FetchableRecord, PersistableRecord {
+    /// The column naming what it likes.
+    static var likedColumn: String { get }
+    /// What it likes.
+    var likedItem: String { get }
+}
+
+extension Like: Liking {
+    static var likedColumn: String { "jellyfinId" }
+    var likedItem: String { jellyfinId }
+}
+
+extension AlbumLike: Liking {
+    static var likedColumn: String { "albumId" }
+    var likedItem: String { albumId }
 }

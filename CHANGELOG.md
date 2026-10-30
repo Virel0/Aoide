@@ -16,6 +16,10 @@ and playlists, likes and history come back from Melete.
 
 ### Added
 - Quick Connect: sign in by approving a code in Melete's web UI.
+- Albums can be liked again, with the heart on the album's page, and Library
+  has Liked Albums. Album likes are their own sync record (`album_likes`),
+  shared with Melete and Aoide for Linux; liking an album likes none of its
+  songs.
 
 ### Changed
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,
@@ -23,8 +27,7 @@ and playlists, likes and history come back from Melete.
   `MeleteKit`.
 - A stream's link is asked for when the player starts the track, so a long
   queue starts at once.
-- Favourites are your liked songs; the heart on an album page is gone, since
-  Melete likes songs, not albums.
+- Favourites are your liked songs.
 - Covers are fetched with your sign-in.
 - In Lossless, a file Apple's players can't open (Ogg, WavPack, Monkey's Audio)
   is streamed and downloaded as FLAC instead, so it plays.

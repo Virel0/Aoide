@@ -8,7 +8,7 @@ import Foundation
 /// author wrote SQL. Rewriting every stored `op` row to spell its entity the server's way
 /// would be a schema migration in service of a formatting preference, and it would
 /// still leave ops written by an older build spelling it the old way. Matching on
-/// the server is strict and case-sensitive, so these six strings *are* the contract.
+/// the server is strict and case-sensitive, so these eight strings *are* the contract.
 public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
     case playlist
     case playlistItem
@@ -17,6 +17,9 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
     case playEvent
     case queueState
     case trackFlags
+    /// Only ever pulled: the app likes an album through Melete's API, which writes
+    /// the op, so it is never held back.
+    case albumLike
 
     // `track` is absent on purpose, and its absence is the enforcement rather than a
     // rule written down somewhere. The track cache is per-device — every device
@@ -38,6 +41,7 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
         case .playEvent: "play_events"
         case .queueState: "queue_state"
         case .trackFlags: "track_flags"
+        case .albumLike: "album_likes"
         }
     }
 

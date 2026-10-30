@@ -258,6 +258,41 @@ public struct Like: Codable, FetchableRecord, PersistableRecord, Syncable, Hasha
     }
 }
 
+/// A listener's like of an album. The same row and the same whole-row merge as a
+/// track's ``Like``, naming the album by `albumId` in place of `jellyfinId`: a record
+/// of its own, so a build that predates it sets one aside rather than reading it as a
+/// track's. Liking an album likes none of its tracks.
+public struct AlbumLike: Codable, FetchableRecord, PersistableRecord, Syncable, Hashable, Sendable {
+    public static let databaseTableName = "albumLike"
+
+    public var id: String
+    public var albumId: String
+    /// `artist|album`, folded as a track's ``ContentKey`` is.
+    public var contentKey: String
+    public var liked: Bool
+    public var updatedAt: Millis
+    public var deleted: Bool
+    public var originDevice: String
+
+    public init(
+        id: String = UUID().uuidString,
+        albumId: String,
+        contentKey: String,
+        liked: Bool,
+        updatedAt: Millis,
+        deleted: Bool = false,
+        originDevice: String
+    ) {
+        self.id = id
+        self.albumId = albumId
+        self.contentKey = contentKey
+        self.liked = liked
+        self.updatedAt = updatedAt
+        self.deleted = deleted
+        self.originDevice = originDevice
+    }
+}
+
 // MARK: - Taste flags
 
 /// What a listener has said about a track beyond liking it: "never offer this to
