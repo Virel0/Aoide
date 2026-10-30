@@ -26,6 +26,8 @@ and playlists, likes and history come back from Melete.
 - Favourites are your liked songs; the heart on an album page is gone, since
   Melete likes songs, not albums.
 - Covers are fetched with your sign-in.
+- In Lossless, a file Apple's players can't open (Ogg, WavPack, Monkey's Audio)
+  is streamed and downloaded as FLAC instead, so it plays.
 - Stations and Infinity start from what `/aoide/next` picks after the seed
   song, in place of Jellyfin's Instant Mix.
 

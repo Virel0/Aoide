@@ -106,6 +106,28 @@ struct HTTPTests {
         await #expect(throws: (any Error).self) { try await elsewhere.streamLink(for: "2") }
     }
 
+    @Test("a lossless file this device can't play is asked for again as FLAC")
+    func unplayableFallsBackToFlac() async throws {
+        let client = StubServer.client(host: "opus.test") { request, body in
+            let sent = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            let format = sent?["format"] as? String
+            let type = format == "flac" ? "audio/flac" : "audio/ogg"
+            return (200, Fixture.json([
+                "stream_url": "/api/v1/music/stream/\(format ?? "none")", "expires_at": 1,
+                "format": format ?? "original", "content_type": type,
+            ]))
+        }
+        let link = try await client.streamLink(for: "4", canPlay: { $0 != "audio/ogg" })
+        #expect(link.contentType == "audio/flac")
+        #expect(link.url.path() == "/api/v1/music/stream/flac")
+        #expect(StubServer.requests(to: "opus.test").count == 2)
+
+        let playable = try await client.streamLink(for: "4", canPlay: { _ in true })
+        #expect(playable.contentType == "audio/ogg", "a file it can play stays as it is")
+        let aac = try await client.streamLink(for: "4", quality: .high, canPlay: { _ in false })
+        #expect(aac.url.path() == "/api/v1/music/stream/aac", "only lossless falls back")
+    }
+
     @Test("lyrics, or none")
     func lyrics() async throws {
         let client = StubServer.client(host: "lyrics.test") { request, _ in

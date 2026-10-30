@@ -163,7 +163,7 @@ final class DownloadStore: NSObject {
         Task {
             // The link is asked for now, not when queued: it lasts a day, and the
             // background session may start the transfer much later than this.
-            guard let link = try? await client.streamLink(for: item.id, quality: .lossless) else {
+            guard let link = try? await client.streamLink(for: item.id, quality: .lossless, canPlay: StreamLinkLoader.canPlay) else {
                 states[item.id] = .failed("Couldn't get this from your server.")
                 return
             }

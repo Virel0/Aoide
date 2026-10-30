@@ -24,6 +24,18 @@ final class StreamLinkLoader: NSObject, AVAssetResourceLoaderDelegate, @unchecke
     private var asking: [URL: Task<StreamLink, any Error>] = [:]
     private let log = Logger(subsystem: AppIdentity.bundle, category: "streams")
 
+    /// The content types Apple's players open, of those Melete sends. Anything else
+    /// (Ogg, WavPack, Monkey's Audio, Matroska, Dolby) is asked for as FLAC instead.
+    /// A list rather than `AVURLAsset.isPlayableExtendedMIMEType`, which says yes
+    /// to Ogg Opus that the player then fails to open.
+    static let canPlay: @Sendable (String) -> Bool = { contentType in
+        let type = contentType.split(separator: ";").first?.trimmingCharacters(in: .whitespaces).lowercased()
+        return type.map(playable.contains) ?? false
+    }
+    private static let playable: Set<String> = [
+        "audio/flac", "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav", "audio/aiff", "audio/x-aiff",
+    ]
+
     /// Who to ask, from sign-in until sign-out; links from another session are
     /// forgotten, since they stop working when it signs out.
     func use(_ client: MeleteClient?) {
@@ -80,7 +92,7 @@ final class StreamLinkLoader: NSObject, AVAssetResourceLoaderDelegate, @unchecke
             }
             if let out = asking[url] { return { try await out.value } }
             let out = Task { [weak self] in
-                let link = try await client.streamLink(forLazyURL: url)
+                let link = try await client.streamLink(forLazyURL: url, canPlay: StreamLinkLoader.canPlay)
                 self?.keep(link, for: url)
                 return link
             }

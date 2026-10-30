@@ -83,7 +83,7 @@ final class TransientTracks {
             // A streamed track's URL stands for a link still to be asked for.
             var url = track.streamURL
             if let client = AppSession.shared.client, MeleteClient.lazyStream(url) != nil {
-                url = try await client.streamLink(forLazyURL: url).url
+                url = try await client.streamLink(forLazyURL: url, canPlay: StreamLinkLoader.canPlay).url
             }
             let (temporary, response) = try await URLSession.shared.download(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
