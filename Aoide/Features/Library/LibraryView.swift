@@ -29,6 +29,7 @@ struct LibraryView: View {
                         categoryRow("Replay", "chart.bar") { ReplayView() }
                         categoryRow("Artists", "music.microphone") { ArtistsListView() }
                         categoryRow("Albums", "square.stack") { AlbumsGridView() }
+                        categoryRow("Liked Albums", "heart") { LikedAlbumsView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
                         categoryRow("Genres", "guitars") { GenresListView() }
                     }

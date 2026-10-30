@@ -213,6 +213,8 @@ struct WireAlbum: Decodable {
     let durationSeconds: Double?
     let cover: String?
     let genres: [String]?
+    /// On an album's own page only, from servers that have album likes.
+    let liked: Bool?
 
     var item: MusicItem {
         MusicItem(
@@ -226,7 +228,8 @@ struct WireAlbum: Decodable {
             year: year,
             childCount: tracks,
             duration: seconds(durationSeconds),
-            hasCover: cover != nil
+            hasCover: cover != nil,
+            liked: liked ?? false
         )
     }
 }

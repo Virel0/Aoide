@@ -82,6 +82,7 @@ struct HTTPTests {
         let (album, tracks) = try await client.album(id: "2")
         #expect(album.name == "First Album" && album.type == .musicAlbum)
         #expect(tracks.map(\.name) == ["Opening", "Closing"])
+        #expect(!album.liked, "a server that doesn't say")
     }
 
     @Test("a stream link is joined beneath a proxy prefix, and refused elsewhere")
@@ -147,6 +148,34 @@ struct HTTPTests {
         try await client.setLiked(false, trackId: "4")
         let methods = StubServer.requests(to: "like.test").map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" }
         #expect(methods == ["PUT /api/v1/music/tracks/4/like", "DELETE /api/v1/music/tracks/4/like"])
+    }
+
+    @Test("albums are liked, listed, and marked on their page")
+    func albumLikes() async throws {
+        let client = StubServer.client(host: "album-like.test") { request, _ in
+            switch request.url?.path() {
+            case "/api/v1/music/albums/2/like": return (204, Data())
+            case "/api/v1/music/albums/2":
+                var album = Fixture.album(2, "First Album")
+                album["liked"] = true
+                album["track_list"] = [[String: Any]]()
+                return (200, Fixture.json(album))
+            case "/api/v1/music/likes":
+                return (200, Fixture.json(["tracks": [[String: Any]](), "albums": [
+                    ["liked_at": 2, "content_key": "an artist|first album", "album": Fixture.album(2, "First Album")],
+                    ["liked_at": 1, "content_key": "gone|album", "album": NSNull()],
+                ]]))
+            default: return (404, Data())
+            }
+        }
+        try await client.setLiked(true, albumId: "2")
+        try await client.setLiked(false, albumId: "2")
+        let methods = StubServer.requests(to: "album-like.test").map { "\($0.httpMethod ?? "") \($0.url?.path() ?? "")" }
+        #expect(methods == ["PUT /api/v1/music/albums/2/like", "DELETE /api/v1/music/albums/2/like"])
+        #expect(try await client.album(id: "2").album.liked)
+        let liked = try await client.likedAlbums()
+        #expect(liked.map(\.name) == ["First Album"] && liked.allSatisfy(\.liked))
+        #expect(try await client.likedTracks().isEmpty)
     }
 
     @Test("a query over two genres asks for each, and keeps only its years")

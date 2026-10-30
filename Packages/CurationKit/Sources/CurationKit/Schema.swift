@@ -267,6 +267,19 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v10") { db in
+            // Album likes. Their own table, as they are their own entity on the wire.
+            try db.create(table: "albumLike") { t in
+                t.primaryKey("id", .text)
+                t.column("albumId", .text).notNull().unique()
+                t.column("contentKey", .text).notNull()
+                t.column("liked", .boolean).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

@@ -3,7 +3,7 @@ import MeleteKit
 import PlaybackKit
 import SwiftUI
 
-/// The album page: big cover, Shuffle, Play and Station, then the tracks.
+/// The album page: big cover, Shuffle, Play and Favourite, then the tracks.
 /// (Aoide playlists have a page of their own, `LocalPlaylistDetailView`.)
 struct TrackListView: View {
     enum Source {
@@ -31,6 +31,7 @@ struct TrackListView: View {
     /// How much of this record the listener actually finishes. Nil until there
     /// is enough history to say anything honest.
     @State private var finishRate: Double?
+    @State private var isFavorite = false
 
     private var engine: PlaybackEngine { .shared }
 
@@ -243,17 +244,23 @@ struct TrackListView: View {
 
     private var actionRow: some View {
         DetailActionRow(
-            // Melete keeps likes on songs, not albums, so Station takes the place
-            // a favourite heart had, as on an artist's page.
-            trailingIcon: "dot.radiowaves.left.and.right",
-            trailingLabel: "Start Station",
-            trailingFills: false,
+            isFavorite: isFavorite,
             isEnabled: !tracks.isEmpty,
             // Shuffle is still the album: it says how these tracks are being
             // played, not where they came from.
             onLeading: { store.play(tracks, shuffled: true, from: source.playSource); remember() },
             onPlay: { store.play(tracks, from: source.playSource); remember() },
-            onTrailing: { Task { await store.startStation(seededBy: artworkItem) } }
+            onTrailing: {
+                // Drive from local intent and adopt what the server confirms, so a
+                // second tap never re-sends the value of a stale snapshot.
+                let desired = !isFavorite
+                isFavorite = desired
+                Task {
+                    switch source {
+                    case .album(let id): isFavorite = await store.setAlbumFavorite(id, to: desired)
+                    }
+                }
+            }
         )
         .padding(.top, 6)
     }
@@ -314,7 +321,7 @@ struct TrackListView: View {
         do {
             switch source {
             case .album(let id):
-                tracks = try await store.tracks(inAlbum: id)
+                (tracks, isFavorite) = try await store.albumPage(id)
             }
         } catch {
             errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
