@@ -148,8 +148,8 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
     public var originDevice: String
     /// When each field last changed. `nil` on rows written before per-field merging.
     public var fieldUpdatedAt: FieldStamps?
-    /// The server playlist this was imported from, if it was (Jellyfin playlists, before
-    /// Melete).
+    /// The Jellyfin playlist this was copied from, in playlists made before Melete.
+    /// Nothing writes it now.
     public var sourceJellyfinId: String?
     /// An album whose cover stands in for this playlist's. `nil` means one is
     /// drawn from the playlist's own albums instead.

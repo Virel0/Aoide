@@ -174,10 +174,9 @@ enum Schema {
         }
 
         migrator.registerMigration("v4") { db in
-            // Which server playlist this was imported from, if any. Kept so a second
-            // import refreshes the same local playlist instead of silently making a
-            // duplicate — and so the server list can say which of its playlists are
-            // already here.
+            // Which Jellyfin playlist this was imported from, if any, from when the app
+            // copied Jellyfin's playlists. Nothing writes it now (Melete's import of the
+            // old sync data clears it); the column stays because migrations only add.
             try db.alter(table: "playlist") { t in
                 t.add(column: "sourceJellyfinId", .text)
             }
