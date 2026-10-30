@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -113,7 +113,7 @@ final class AudioAnalysisSync {
         }
     }
 
-    private func fetch(_ ids: [String], client: JellyfinClient) async {
+    private func fetch(_ ids: [String], client: MeleteClient) async {
         defer { inFlight.subtract(ids) }
         do {
             let data = try await client.audioAnalysis(ids: ids)
@@ -123,7 +123,7 @@ final class AudioAnalysisSync {
             for id in wire.pending ?? [] { pendingUntil[id] = retry }
             save()
         } catch {
-            if JellyfinClient.isSidecarAbsent(error) {
+            if MeleteClient.isSidecarAbsent(error) {
                 // Not built yet, or an older sidecar. Asked again in ten minutes.
                 absentUntil = Date().addingTimeInterval(600)
             } else {

@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -117,8 +117,9 @@ struct ResumeGrid: View {
             guard let tracks = try? await store.tracks(inAlbum: context.id) else { return }
             store.play(tracks, from: .album)
         case .jellyfinPlaylist:
-            guard let tracks = try? await store.tracks(inPlaylist: context.id) else { return }
-            store.play(tracks, from: .playlist)
+            // A playlist on the Jellyfin server Melete replaced: nothing to play.
+            recents.forget(context)
+            return
         case .localPlaylist:
             guard let playlist = playlists.playlists.first(where: { $0.id == context.id }) else {
                 recents.forget(context)

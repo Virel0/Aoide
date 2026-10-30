@@ -1,11 +1,11 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// One row of a local playlist, resolved as far as it can be.
 ///
-/// A playlist entry stores a Jellyfin id and a fingerprint, nothing else, so every row
+/// A playlist entry stores a Melete track id and a fingerprint, nothing else, so every row
 /// on screen is assembled from up to three sources: what the server says now, what was
 /// downloaded to this device, and what the local cache last saw. They are kept apart
 /// rather than merged into one optional item because they mean different things — a row
@@ -21,7 +21,7 @@ struct PlaylistTrack: Identifiable {
     let jellyfinId: String
     /// What can actually be played. `nil` when neither the server nor the downloads
     /// folder could produce it.
-    let item: JellyfinItem?
+    let item: MusicItem?
     /// The last thing the local cache knew, for drawing a row the server can't answer for.
     let cached: TrackRef?
     /// The store's own marker: a relink pass looked for this fingerprint and found
@@ -61,7 +61,7 @@ struct PlaylistContents {
     var totalCount: Int?
 
     /// The queue a tap builds: every row that can actually play, in playlist order.
-    var playbackOrder: [JellyfinItem] { tracks.compactMap(\.item) }
+    var playbackOrder: [MusicItem] { tracks.compactMap(\.item) }
 
     /// Where a tap on this row lands in `playbackOrder`, or `nil` if it can't play.
     ///
@@ -79,7 +79,7 @@ struct PlaylistContents {
         var index = 0
         for row in tracks {
             // By row id, not track id: a manual playlist may hold the same song twice,
-            // and matching on the Jellyfin id would send both rows to the first one.
+            // and matching on the track id would send both rows to the first one.
             if row.id == track.id { return index }
             if row.isPlayable { index += 1 }
         }
@@ -120,7 +120,7 @@ final class LocalPlaylistStore {
         Music still plays, but nothing can be saved here.
         """
 
-    private let client: JellyfinClient
+    private let client: MeleteClient
     private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
     private(set) var folders: [Folder] = []
@@ -134,7 +134,7 @@ final class LocalPlaylistStore {
 
     var isAvailable: Bool { CurationDatabase.shared != nil }
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
     }
 
@@ -183,7 +183,6 @@ final class LocalPlaylistStore {
                 folders: folders,
                 playlists: playlists,
                 counts: counts,
-                importedSources: try store.importedSourceIds(),
                 // One query for the whole screen. Per tile it would be one per row.
                 coverAlbums: try store.coverAlbums(for: playlists.map(\.id))
             )
@@ -193,7 +192,6 @@ final class LocalPlaylistStore {
             folders = snapshot.folders
             playlists = snapshot.playlists
             trackCounts = snapshot.counts
-            importedSourceIds = snapshot.importedSources
             coverAlbums = snapshot.coverAlbums
         }
         hasLoaded = true
@@ -203,7 +201,6 @@ final class LocalPlaylistStore {
         let folders: [Folder]
         let playlists: [Playlist]
         let counts: [String: Int]
-        let importedSources: Set<String>
         let coverAlbums: [String: [String]]
     }
 
@@ -407,8 +404,8 @@ final class LocalPlaylistStore {
 
     /// The server's items by id, or nothing and a message to show when the server
     /// can't be reached.
-    private func fetchServerItems(ids: [String]) async -> (items: [String: JellyfinItem], offlineMessage: String?) {
-        var byId: [String: JellyfinItem] = [:]
+    private func fetchServerItems(ids: [String]) async -> (items: [String: MusicItem], offlineMessage: String?) {
+        var byId: [String: MusicItem] = [:]
         do {
             for item in try await client.items(ids: ids) { byId[item.id] = item }
         } catch {
@@ -422,8 +419,8 @@ final class LocalPlaylistStore {
     /// then a download.
     private static func rows(
         for entries: [PlaylistEntry],
-        server: [String: JellyfinItem],
-        downloaded: [String: JellyfinItem],
+        server: [String: MusicItem],
+        downloaded: [String: MusicItem],
         local: LocalDetail?
     ) -> [PlaylistTrack] {
         var rows: [PlaylistTrack] = []
@@ -459,7 +456,7 @@ final class LocalPlaylistStore {
     /// is only matchable against cached rows — an entry added without one could never be
     /// relinked, which is exactly the case the fingerprint exists for.
     @discardableResult
-    func add(_ items: [JellyfinItem], to playlist: Playlist) async -> Int {
+    func add(_ items: [MusicItem], to playlist: Playlist) async -> Int {
         let songs = items.filter { $0.type == .audio }
         guard !songs.isEmpty else { return 0 }
 
@@ -473,77 +470,8 @@ final class LocalPlaylistStore {
         return added ?? 0
     }
 
-    /// Which Jellyfin playlists already have a local copy, so the server list can say so.
-    private(set) var importedSourceIds: Set<String> = []
     /// Albums each playlist holds, for drawing a cover from its contents.
     private(set) var coverAlbums: [String: [String]] = [:]
-
-    /// Copies a Jellyfin playlist into a local one, or refreshes an existing copy.
-    ///
-    /// The songs are fetched from the server rather than taken from anything already
-    /// on screen: the list the listener is looking at may be a page of a longer
-    /// playlist, and importing what happened to be visible would quietly produce a
-    /// truncated copy.
-    @discardableResult
-    func importFromServer(_ serverPlaylist: JellyfinItem) async -> Playlist? {
-        let songs: [JellyfinItem]
-        do {
-            songs = try await client.tracks(inPlaylist: serverPlaylist.id).filter { $0.type == .audio }
-        } catch {
-            lastErrorMessage = "Couldn't read that playlist from your server."
-            return nil
-        }
-
-        let imported: Playlist? = await run("import that playlist") { store in
-            let now = Date().millis
-            let refs = songs.map { TrackCatalogue.trackRef(for: $0, at: now) }
-            // Cached on the way past for the same reason `add` does it: an entry whose
-            // fingerprint matches no cached row can never be relinked after a rescan.
-            try store.cacheTracks(refs)
-            return try store.importPlaylist(
-                named: serverPlaylist.name,
-                from: serverPlaylist.id,
-                tracks: refs.map { TrackLink($0) },
-                at: now
-            )
-        }
-        await reload()
-        return imported
-    }
-
-    /// How a bulk copy went.
-    struct ImportSummary: Sendable {
-        var copied = 0
-        var skipped = 0
-        var failed = 0
-    }
-
-    /// Copies every server playlist that does not already have a copy.
-    ///
-    /// Deliberately *skips* ones already copied rather than refreshing them. A refresh
-    /// replaces contents outright, so a bulk button that refreshed would silently
-    /// destroy every local edit made since — and the whole point of a bulk action is
-    /// that somebody presses it without inspecting each row. Refreshing one playlist
-    /// stays a per-playlist decision with its own confirmation.
-    ///
-    /// Safe to run twice, and re-running is how a newly-made server playlist gets
-    /// copied without touching anything already here.
-    @discardableResult
-    func importAllFromServer(_ serverPlaylists: [JellyfinItem]) async -> ImportSummary {
-        var summary = ImportSummary()
-        for playlist in serverPlaylists {
-            if importedSourceIds.contains(playlist.id) {
-                summary.skipped += 1
-                continue
-            }
-            if await importFromServer(playlist) == nil {
-                summary.failed += 1
-            } else {
-                summary.copied += 1
-            }
-        }
-        return summary
-    }
 
     /// Sets a picked photo as the playlist's cover.
     ///
@@ -588,7 +516,7 @@ final class LocalPlaylistStore {
             try store.record(row)
         }
         // Published straight away rather than left for the sweep, so the cover is on
-        // its way to the other devices — and to Jellyfin — while the person who chose
+        // its way to the other devices while the person who chose
         // it is still looking at it.
         if itemId != nil, let refreshed = try? CurationDatabase.shared?.playlist(playlist.id) {
             await publishCover(for: refreshed)
@@ -596,19 +524,18 @@ final class LocalPlaylistStore {
         await reload()
     }
 
-    /// Turns a chosen album cover into a blob, so it reaches other devices and
-    /// Jellyfin rather than only existing as a reference this app knows how to follow.
+    /// Turns a chosen album cover into a blob, so it reaches other devices rather
+    /// than only existing as a reference this app knows how to follow.
     ///
     /// An `artworkItemId` is an instruction — "draw the cover of that album" — which
-    /// only something holding this database can carry out. The exporter putting art on
-    /// a Jellyfin playlist has a hash and nothing else, so a cover that never becomes
-    /// bytes is a cover that exists in Aoide alone.
+    /// only something holding this database can carry out. Another device's sync has a
+    /// hash and nothing else, so a cover that never becomes bytes is a cover that
+    /// exists on this device alone.
     ///
     /// Mosaics are deliberately *not* published. They are derived from what a playlist
     /// currently holds and change whenever it does, so freezing one into an immutable
-    /// blob would pin a cover that has stopped being true — and Jellyfin builds its
-    /// own collage for a playlist with no artwork, which is the same picture kept
-    /// honest by somebody else.
+    /// blob would pin a cover that has stopped being true; each device draws its own
+    /// from what the playlist holds.
     private func publishCover(for playlist: Playlist) async {
         guard playlist.imageHash == nil, let itemId = playlist.artworkItemId else { return }
         let url = client.artworkURL(itemId: itemId, tag: nil, maxWidth: 1000)

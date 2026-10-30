@@ -33,7 +33,7 @@ The selection is about this device in this moment. A phone in a pocket adopting
 the desktop's "Focus" because the desktop is at a desk would be nonsense, and the
 same in reverse.
 
-The sidecar needs no change for either. Play events are opaque payloads to it, so
+The server needs no change for either. Play events are opaque payloads to it, so
 a new field inside one travels without the server knowing the field exists.
 
 ## When the tag is written

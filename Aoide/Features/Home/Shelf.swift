@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// A horizontally scrolling row of albums, the unit Home is built from.
@@ -9,7 +9,7 @@ import SwiftUI
 struct AlbumShelf: View {
     let title: String
     var subtitle: String?
-    let albums: [JellyfinItem]
+    let albums: [MusicItem]
     var cardSize: CGFloat = Design.Size.shelfCard
 
     @Environment(LibraryStore.self) private var store
@@ -46,7 +46,7 @@ struct AlbumShelf: View {
 /// `width` of `nil` means "fill whatever you're given", which is what a grid cell
 /// needs; a fixed value is what a horizontal shelf needs.
 struct AlbumCard: View {
-    let album: JellyfinItem
+    let album: MusicItem
     var width: CGFloat? = Design.Size.shelfCard
 
     @Environment(LibraryStore.self) private var store
@@ -81,7 +81,7 @@ struct AlbumCard: View {
 /// for being there — Apple Music's eyebrow line, except ours states a fact about
 /// your own library rather than an editor's opinion.
 struct HeroCard: View {
-    let album: JellyfinItem
+    let album: MusicItem
     let eyebrow: String
 
     @Environment(LibraryStore.self) private var store
@@ -129,7 +129,7 @@ struct HeroCard: View {
 /// from albums at a glance.
 struct ArtistShelf: View {
     let title: String
-    let artists: [JellyfinItem]
+    let artists: [MusicItem]
 
     @Environment(LibraryStore.self) private var store
 
@@ -173,7 +173,7 @@ struct ArtistShelf: View {
 /// "See All" for any shelf.
 struct ShelfDetailView: View {
     let title: String
-    let albums: [JellyfinItem]
+    let albums: [MusicItem]
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: Design.Spacing.card)]
 

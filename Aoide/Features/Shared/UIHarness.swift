@@ -1,5 +1,5 @@
 #if DEBUG
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// A scratch screen for looking at layout without a server.
@@ -35,7 +35,7 @@ struct UIHarness: View {
                 sample("Track rows — the per-song download control") {
                     VStack(spacing: 0) {
                         ForEach(UIHarness.sampleTracks) { track in
-                            TrackRow(track: track, position: track.indexNumber, showsArtist: true)
+                            TrackRow(track: track, position: track.trackNumber, showsArtist: true)
                             Divider()
                         }
                     }
@@ -86,18 +86,16 @@ struct UIHarness: View {
         }
     }
 
-    /// Decoded rather than constructed: `JellyfinItem` is a wire type with no public
-    /// memberwise initialiser, and inventing one purely for a debug screen would put
-    /// a second way to build it into the shipping API.
-    static let sampleTracks: [JellyfinItem] = {
-        let json = Data("""
-        [
-          {"id":"h1","name":"A Song With Quite a Long Title","type":"Audio","artists":["Someone"],"indexNumber":1,"runTimeTicks":2010000000},
-          {"id":"h2","name":"Short One","type":"Audio","artists":["Someone Else"],"indexNumber":2,"runTimeTicks":1350000000}
-        ]
-        """.utf8)
-        return (try? JSONDecoder().decode([JellyfinItem].self, from: json)) ?? []
-    }()
+    static let sampleTracks: [MusicItem] = [
+        MusicItem(
+            id: "h1", name: "A Song With Quite a Long Title", type: .audio,
+            artists: ["Someone"], trackNumber: 1, duration: .seconds(201)
+        ),
+        MusicItem(
+            id: "h2", name: "Short One", type: .audio,
+            artists: ["Someone Else"], trackNumber: 2, duration: .seconds(135)
+        ),
+    ]
 
     /// A centre line is drawn behind each row: if the capsule is off centre by even
     /// a couple of points, it shows against this immediately.

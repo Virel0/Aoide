@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// Decides *when* the sync engine runs, and holds the only account of what happened.
@@ -140,7 +140,7 @@ final class SyncCoordinator {
     // MARK: - Session lifecycle
 
     /// Wires the engine to a signed-in server and syncs once.
-    func connect(client: JellyfinClient) {
+    func connect(client: MeleteClient) {
         disconnect()
 
         // Absent when the store failed to open. Never force-unwrapped: music plays
@@ -153,7 +153,7 @@ final class SyncCoordinator {
         self.store = store
         // One value in both roles: ops and cover bytes go to the same sidecar with
         // the same credentials, and two would be two things to keep in step.
-        let transport = JellyfinSyncTransport(client: client)
+        let transport = MeleteSyncTransport(client: client)
         engine = SyncEngine(
             store: store,
             transport: transport,
@@ -246,7 +246,7 @@ final class SyncCoordinator {
     /// it will never draw — so these are pulled when something is about to show one.
     func fetchImage(hash: String) async -> Data? {
         guard let client = AppSession.shared.client else { return nil }
-        return try? await JellyfinSyncTransport(client: client).downloadImage(sha256: hash)
+        return try? await MeleteSyncTransport(client: client).downloadImage(sha256: hash)
     }
 
     /// Watches the outbound queue and syncs once writing has stopped.
@@ -371,18 +371,18 @@ final class SyncCoordinator {
     }
 
     private static func describe(_ error: any Error) -> Failure {
-        if JellyfinClient.isSidecarAbsent(error) { return .unsupported }
+        if MeleteClient.isSidecarAbsent(error) { return .unsupported }
 
-        if let jellyfin = error as? JellyfinError {
+        if let melete = error as? MeleteError {
             // Deliberately does *not* sign the session out on a 401, unlike the library
             // screens. Those run because somebody is looking at them, so a rejected
             // token explains a screen that is visibly broken. This runs unasked, and
             // throwing a listener back to a login form because a background request
             // failed would be an ejection with no cause they can see.
-            if jellyfin == .unauthorized || jellyfin == .forbidden {
+            if melete == .unauthorized || melete == .forbidden {
                 return .unavailable("Your login was refused. Sign out and back in.")
             }
-            return .unavailable(jellyfin.errorDescription ?? "Couldn't reach the server")
+            return .unavailable(melete.errorDescription ?? "Couldn't reach the server")
         }
         if case SyncError.pushStalled(let count, let accepted, let rejected, let unmatched) = error {
             // The bare count is true and useless: it describes this device's

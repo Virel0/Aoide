@@ -1,5 +1,5 @@
 import CarPlay
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import UIKit
 import os
@@ -130,7 +130,7 @@ final class CarPlayNowPlaying: NSObject {
     private func favouriteCurrent() async {
         guard let track = PlaybackEngine.shared.currentTrack, let client = AppSession.shared.client else { return }
         do {
-            _ = try await client.setFavorite(true, itemId: track.id)
+            try await client.setLiked(true, trackId: track.id)
             favourited.insert(track.id)
             refreshButtons()
         } catch {
@@ -147,9 +147,8 @@ final class CarPlayNowPlaying: NSObject {
         station.handler = { _, completion in
             Task { @MainActor in
                 if let client = AppSession.shared.client,
-                   let mix = try? await client.instantMix(seededBy: track.id) {
-                    let wanted = await TasteStore.shared.withoutNotInterested(mix)
-                    let mapped = JellyfinPlaybackBridge.playableTracks(from: wanted, client: client)
+                   let wanted = try? await Station.tracks(seed: "track:\(track.id)", client: client) {
+                    let mapped = MeletePlaybackBridge.playableTracks(from: wanted, client: client)
                     if !mapped.tracks.isEmpty {
                         PlaybackContext.attributing(.carplay) { PlaybackEngine.shared.play(mapped.tracks) }
                     }

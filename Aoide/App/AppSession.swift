@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import UIKit
 import os
 
@@ -16,7 +16,7 @@ final class AppSession {
     enum State: Equatable {
         case loading
         case signedOut
-        case signedIn(JellyfinUser)
+        case signedIn(MeleteUser)
     }
 
     enum SessionError: LocalizedError {
@@ -33,7 +33,7 @@ final class AppSession {
     private static let log = Logger(subsystem: AppIdentity.bundle, category: "session")
 
     private(set) var state: State = .loading
-    private(set) var client: JellyfinClient?
+    private(set) var client: MeleteClient?
 
     /// The address this device last signed in to. Deliberately not among `Keys`:
     /// signing out clears the session, but the sign-in screen should still offer the
@@ -50,9 +50,8 @@ final class AppSession {
 
     private init() {}
 
-    /// A stable per-install identifier. Jellyfin keys playback sessions off this, so
-    /// it must survive app launches — regenerating it every launch would litter the
-    /// server's dashboard with a new "device" each time.
+    /// A stable per-install identifier: what sync names this device by, so it must
+    /// survive app launches.
     static var deviceId: String {
         if let existing = UserDefaults.standard.string(forKey: Keys.deviceId) {
             return existing
@@ -98,33 +97,62 @@ final class AppSession {
             return
         }
 
-        let credentials = JellyfinCredentials(
+        let credentials = MeleteCredentials(
             serverURL: serverURL,
             userId: userId,
             username: username,
             accessToken: token
         )
-        let restored = JellyfinClient(serverURL: serverURL, device: Self.deviceProfile)
+        let restored = MeleteClient(serverURL: serverURL, device: Self.deviceProfile)
             .authenticated(as: credentials)
         client = restored
         // Before anything can read a row or queue an op, so a store left behind by a
         // different account is gone rather than being pushed into this one's log.
-        CurationDatabase.adopt(accountId: userId)
-        JellyfinPlaybackBridge.connect(client: restored)
+        CurationDatabase.adopt(accountId: Self.storeOwner(userId: userId, serverURL: serverURL))
+        MeletePlaybackBridge.connect(client: restored)
         SyncCoordinator.shared.connect(client: restored)
-        state = .signedIn(JellyfinUser(id: userId, name: username, serverId: nil))
+        state = .signedIn(MeleteUser(id: userId, name: username))
+    }
+
+    /// Whose the local store is: one per user per server, since Melete numbers
+    /// its users from 1 on every server.
+    static func storeOwner(userId: String, serverURL: URL) -> String {
+        "\(userId)@\(serverURL.absoluteString)"
     }
 
     func signIn(serverAddress: String, username: String, password: String) async throws {
-        let serverURL = try JellyfinClient.normalizeServerURL(serverAddress)
-        let anonymous = JellyfinClient(serverURL: serverURL, device: Self.deviceProfile)
+        let serverURL = try MeleteClient.normalizeServerURL(serverAddress)
+        let anonymous = MeleteClient(serverURL: serverURL, device: Self.deviceProfile)
 
-        // Probe first: a wrong address should say "that isn't a Jellyfin server"
+        // Probe first: a wrong address should say "that isn't a Melete server"
         // rather than "your password was rejected".
-        _ = try await anonymous.systemInfo()
+        _ = try await anonymous.serverInfo()
 
         let (credentials, user) = try await anonymous.signIn(username: username, password: password)
+        try keep(credentials, user, from: anonymous)
+    }
 
+    /// Quick Connect's first half: the address is checked and a code made for this
+    /// device, to show until someone approves it in Melete's web UI.
+    func startQuickConnect(serverAddress: String) async throws -> (client: MeleteClient, code: QuickConnectCode) {
+        let serverURL = try MeleteClient.normalizeServerURL(serverAddress)
+        let anonymous = MeleteClient(serverURL: serverURL, device: Self.deviceProfile)
+        _ = try await anonymous.serverInfo()
+        return (anonymous, try await anonymous.startQuickConnect())
+    }
+
+    /// Quick Connect's second half, asked every few seconds: false while the code
+    /// waits; once approved, signs in as signing in with a password does.
+    func pollQuickConnect(client anonymous: MeleteClient, secret: String) async throws -> Bool {
+        guard let (credentials, user) = try await anonymous.pollQuickConnect(secret: secret) else { return false }
+        try keep(credentials, user, from: anonymous)
+        return true
+    }
+
+    /// Keeps a new session: the token in the keychain, the profile on disk, and the
+    /// app connected to it.
+    private func keep(_ credentials: MeleteCredentials, _ user: MeleteUser, from anonymous: MeleteClient) throws {
+        let serverURL = anonymous.serverURL
         // The token goes in first and its failure is fatal to signing in. Writing
         // the other three and then discovering we can't keep the secret would leave
         // a half-signed-in state that looks fine until the next launch.
@@ -138,15 +166,14 @@ final class AppSession {
 
         let authenticated = anonymous.authenticated(as: credentials)
         client = authenticated
-        CurationDatabase.adopt(accountId: credentials.userId)
-        JellyfinPlaybackBridge.connect(client: authenticated)
+        CurationDatabase.adopt(accountId: Self.storeOwner(userId: credentials.userId, serverURL: serverURL))
+        MeletePlaybackBridge.connect(client: authenticated)
         SyncCoordinator.shared.connect(client: authenticated)
         state = .signedIn(user)
     }
 
-    /// The stored token is no longer accepted — the password changed, or the device
-    /// was removed from Jellyfin's dashboard, which is how a shared TestFlight build
-    /// gets de-authorised.
+    /// The stored token is no longer accepted — the password changed, or the session
+    /// was signed out from Melete's web UI.
     ///
     /// Without this the app sat on a signed-in shell showing "Your username or
     /// password wasn't accepted" on every screen, with no route back to the login
@@ -156,9 +183,8 @@ final class AppSession {
         Self.log.error("Access token rejected; signing out.")
 
         // Disconnect first, exactly as signOut does: otherwise the engine keeps a
-        // queue of 401ing URLs and a reporter posting to a session that no longer
-        // exists, with the mini player gone and no way to stop it.
-        JellyfinPlaybackBridge.disconnect()
+        // queue of 401ing streams, with the mini player gone and no way to stop it.
+        MeletePlaybackBridge.disconnect()
         SyncCoordinator.shared.disconnect()
         DiscoverStore.shared.clear()
         clearStoredCredentials()
@@ -183,9 +209,8 @@ final class AppSession {
 
     func signOut() async {
         Self.log.info("Signing out")
-        // Stop the music and drop the reporter before the token goes away, so the
-        // server doesn't keep showing a session that no longer exists.
-        JellyfinPlaybackBridge.disconnect()
+        // Stop the music before the token goes away.
+        MeletePlaybackBridge.disconnect()
 
         // Not "sync one last time first". Signing out must never block on the
         // network, and it does not need to: unpushed ops stay in the queue, and

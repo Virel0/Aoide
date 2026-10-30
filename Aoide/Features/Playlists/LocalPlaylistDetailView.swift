@@ -1,12 +1,12 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
 /// One local playlist: its songs, playable, reorderable, and — if it's smart — the rules
 /// that decide what's in it.
 ///
-/// Not `TrackListView`. That screen is built around a `JellyfinItem` it can ask the server
+/// Not `TrackListView`. That screen is built around a `MusicItem` it can ask the server
 /// about; this one starts from a row in a local database that holds ids and fingerprints,
 /// has to render songs the server can no longer find, and has to be editable. Sharing one
 /// view would have meant a pile of flags inside it and two half-right screens.
@@ -263,7 +263,7 @@ struct LocalPlaylistDetailView: View {
     /// from. Its own contents rather than the whole library: picking a cover is
     /// saying "this playlist looks like *this* record", and offering ten thousand
     /// albums makes that a search problem instead of a choice.
-    private var albumChoices: [JellyfinItem] {
+    private var albumChoices: [MusicItem] {
         var seen: Set<String> = []
         return contents.tracks.compactMap(\.item).filter { track in
             guard let albumId = track.albumId, !seen.contains(albumId) else { return false }
@@ -272,10 +272,9 @@ struct LocalPlaylistDetailView: View {
         }
     }
 
-    /// A cover chosen by hand, or inherited from the Jellyfin playlist this was
-    /// copied from — the image that playlist already had on the server.
+    /// A cover chosen by hand.
     private var chosenCoverURL: URL? {
-        guard let itemId = playlist.artworkItemId ?? playlist.sourceJellyfinId else { return nil }
+        guard let itemId = playlist.artworkItemId else { return nil }
         return library.artworkURL(itemId: itemId, maxWidth: Design.ArtworkWidth.hero)
     }
 
@@ -576,7 +575,7 @@ struct PlaylistHeroArtwork: View {
     let name: String
     var isSmart = false
     let covers: [URL]
-    /// A cover chosen by hand, or the Jellyfin playlist this was copied from. Beats
+    /// A cover chosen by hand. Beats
     /// the mosaic: a mosaic describes what a playlist holds, and a chosen cover is
     /// somebody saying what it *is*.
     var chosen: URL?

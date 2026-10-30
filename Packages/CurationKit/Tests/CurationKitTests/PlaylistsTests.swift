@@ -504,90 +504,6 @@ struct PlaylistsTests {
     }
 }
 
-/// A copy, not a link. Jellyfin cannot tell us when it changed, so a local playlist
-/// that silently drifted from the server one it claims to mirror would be worse than
-/// an honest snapshot.
-@Suite("Importing from Jellyfin")
-struct PlaylistImportTests {
-    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
-
-    private func links(_ ids: [String]) -> [TrackLink] {
-        ids.map { TrackLink(jellyfinId: $0, contentKey: "key-\($0)") }
-    }
-
-    @Test("importing copies the server's songs in order")
-    func imports() throws {
-        let store = try store()
-        let list = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b", "c"]))
-
-        #expect(list.name == "Road Trip")
-        #expect(list.sourceJellyfinId == "srv-1")
-        #expect(try store.items(in: list.id).map(\.jellyfinId) == ["a", "b", "c"])
-    }
-
-    /// The obvious mistake: tapping import twice must not leave two playlists.
-    @Test("importing the same playlist twice refreshes one copy rather than making two")
-    func refreshesRatherThanDuplicating() throws {
-        let store = try store()
-        let first = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b"]))
-        let second = try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a", "b", "c"]))
-
-        #expect(first.id == second.id)
-        #expect(try store.playlists().count == 1)
-        #expect(try store.items(in: second.id).map(\.jellyfinId) == ["a", "b", "c"])
-    }
-
-    /// The server's contents are the answer, so a song removed there is removed here.
-    @Test("a refresh drops songs the server no longer has")
-    func refreshRemoves() throws {
-        let store = try store()
-        let list = try store.importPlaylist(named: "Trimmed", from: "srv-2", tracks: links(["a", "b", "c"]))
-        try store.importPlaylist(named: "Trimmed", from: "srv-2", tracks: links(["b"]))
-
-        #expect(try store.items(in: list.id).map(\.jellyfinId) == ["b"])
-    }
-
-    /// Removals have to travel: a device that only truncated locally would leave every
-    /// other device holding the old contents forever.
-    @Test("a refresh emits a delete op for every song it drops")
-    func refreshEmitsOps() throws {
-        let store = try store()
-        try store.importPlaylist(named: "Trimmed", from: "srv-3", tracks: links(["a", "b"]))
-        let before = try store.pendingOps().filter { $0.operation == "delete" }.count
-
-        try store.importPlaylist(named: "Trimmed", from: "srv-3", tracks: links(["a"]))
-
-        let after = try store.pendingOps().filter { $0.operation == "delete" }.count
-        #expect(after == before + 2, "both old rows have to be told to the other devices")
-    }
-
-    @Test("playlists made by hand are untouched by an import of the same name")
-    func handMadeIsSeparate() throws {
-        let store = try store()
-        let mine = try store.createPlaylist(name: "Road Trip")
-        try store.addTracks(links(["x"]), to: mine.id)
-
-        try store.importPlaylist(named: "Road Trip", from: "srv-1", tracks: links(["a"]))
-
-        #expect(try store.playlists().count == 2)
-        #expect(try store.items(in: mine.id).map(\.jellyfinId) == ["x"])
-    }
-
-    @Test("the imported set names exactly the server playlists that have a copy")
-    func importedIds() throws {
-        let store = try store()
-        try store.importPlaylist(named: "One", from: "srv-1", tracks: links(["a"]))
-        _ = try store.createPlaylist(name: "By Hand")
-
-        #expect(try store.importedSourceIds() == ["srv-1"])
-
-        // A deleted copy stops counting, so the server row offers to copy again.
-        let copy = try #require(try store.importedPlaylist(from: "srv-1"))
-        try store.deletePlaylist(copy.id)
-        #expect(try store.importedSourceIds().isEmpty)
-    }
-}
-
 /// Covers are ids, never image bytes. The op log replays in full onto every new
 /// device and payloads are capped at 256 KB, so a cover held as data would be the
 /// largest thing in the system and would be copied forever.
@@ -851,57 +767,8 @@ struct ImageBlobTests {
     }
 }
 
-/// Export adoption on the sidecar matches an Aoide playlist to a Jellyfin one by
-/// name, so what import does to names decides whether adoption finds them.
-@Suite("Import for export adoption")
-struct ImportForAdoptionTests {
-    private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }
-
-    private func links(_ ids: [String]) -> [TrackLink] {
-        ids.map { TrackLink(jellyfinId: $0, contentKey: "key-\($0)") }
-    }
-
-    /// The name is the join. A copy that renamed, trimmed or decorated it would make
-    /// adoption miss and the exporter create a duplicate alongside the original.
-    @Test("a copy keeps the server playlist's name exactly")
-    func nameIsPreservedExactly() throws {
-        let store = try store()
-        for name in ["Road Trip", "  Padded  ", "Café — 90s", "Copy"] {
-            let list = try store.importPlaylist(named: name, from: "srv-\(name)", tracks: links(["a"]))
-            #expect(list.name == name)
-        }
-    }
-
-    /// Adoption needs exactly one same-named candidate, so two server playlists
-    /// sharing a name are ambiguous and the sidecar will create a new one rather than
-    /// guess. Import must at least not *add* to the ambiguity by inventing collisions.
-    @Test("two server playlists sharing a name stay two distinct copies")
-    func duplicateNamesStayDistinct() throws {
-        let store = try store()
-        let first = try store.importPlaylist(named: "Favourites", from: "srv-1", tracks: links(["a"]))
-        let second = try store.importPlaylist(named: "Favourites", from: "srv-2", tracks: links(["b"]))
-
-        #expect(first.id != second.id)
-        #expect(try store.playlists().count == 2)
-        #expect(first.sourceJellyfinId == "srv-1")
-        #expect(second.sourceJellyfinId == "srv-2")
-    }
-
-    /// `sourceJellyfinId` is an exact mapping the client already has, and it travels
-    /// in the payload — so the sidecar can match on it instead of guessing by name
-    /// for every playlist that came from an import.
-    @Test("a copy records exactly which server playlist it came from")
-    func sourceIsRecorded() throws {
-        let store = try store()
-        let list = try store.importPlaylist(named: "Road Trip", from: "srv-42", tracks: links(["a"]))
-
-        let op = try #require(try store.pendingOps().last { $0.entityId == list.id })
-        #expect(op.payload.contains("srv-42"), "the mapping has to reach the server to be usable there")
-    }
-}
-
-/// The exporter that puts art on a Jellyfin playlist has a hash and nothing else, so
-/// a cover that never becomes bytes is a cover that exists in Aoide alone.
+/// Another device's sync has a cover's hash and nothing else, so a cover that never
+/// becomes bytes is a cover that exists on this device alone.
 @Suite("Covers that reach the server")
 struct CoverPublishingTests {
     private func store() throws -> CurationStore { try .inMemory(deviceId: "phone") }

@@ -1,11 +1,11 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// Groups items into the A–Z sections a long list needs to be navigable.
 enum AlphabetSections {
     struct Section: Identifiable {
         let id: String
-        let items: [JellyfinItem]
+        let items: [MusicItem]
     }
 
     /// `#` collects everything that doesn't start with a letter — numbers, symbols,
@@ -13,9 +13,9 @@ enum AlphabetSections {
     /// always has some.
     static let symbolKey = "#"
 
-    static func group(_ items: [JellyfinItem]) -> [Section] {
+    static func group(_ items: [MusicItem]) -> [Section] {
         var order: [String] = []
-        var buckets: [String: [JellyfinItem]] = [:]
+        var buckets: [String: [MusicItem]] = [:]
 
         for item in items {
             let key = key(for: item.name)
@@ -98,7 +98,7 @@ struct AlphabetIndexBar: View {
 /// A list that carries an A–Z rail, used by Artists and Songs.
 struct AlphabetIndexedList<Row: View>: View {
     let sections: [AlphabetSections.Section]
-    @ViewBuilder var row: (JellyfinItem) -> Row
+    @ViewBuilder var row: (MusicItem) -> Row
 
     var body: some View {
         ScrollViewReader { proxy in

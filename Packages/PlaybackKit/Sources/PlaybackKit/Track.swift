@@ -2,7 +2,7 @@ import Foundation
 
 /// Everything the player needs to play and display one song.
 ///
-/// Deliberately knows nothing about Jellyfin. The app maps `JellyfinItem` into this,
+/// Deliberately knows nothing about Melete. The app maps `MusicItem` into this,
 /// which keeps the queue logic testable without a server and leaves room for locally
 /// downloaded files to become `Track`s with a `file://` stream URL.
 public struct Track: Identifiable, Hashable, Sendable {

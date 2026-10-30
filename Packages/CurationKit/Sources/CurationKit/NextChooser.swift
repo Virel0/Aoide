@@ -1,6 +1,6 @@
 import Foundation
 
-/// The sidecar's answer to "what should play after this?" — see
+/// Melete's answer to "what should play after this?" — see
 /// `docs/infinity.md` for what was asked and why.
 ///
 /// The server scores the whole library against the record playing: taste

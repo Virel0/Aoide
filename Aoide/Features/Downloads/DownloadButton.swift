@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// The download control on an album or playlist page.
@@ -8,7 +8,7 @@ import SwiftUI
 /// aggregate is deliberately strict: it only reads as downloaded when every track
 /// is, so a half-finished album never looks safe to fly with.
 struct CollectionDownloadButton: View {
-    let tracks: [JellyfinItem]
+    let tracks: [MusicItem]
     /// What these tracks are as a whole, so the Downloads screen can file them
     /// under it. Nil for a set that is nobody's album or playlist.
     var collection: DownloadedCollection?
@@ -16,7 +16,7 @@ struct CollectionDownloadButton: View {
     @Environment(LibraryStore.self) private var library
     @State private var downloads = DownloadStore.shared
 
-    private var audio: [JellyfinItem] { tracks.filter { $0.type == .audio } }
+    private var audio: [MusicItem] { tracks.filter { $0.type == .audio } }
 
     private var completed: Int {
         audio.filter { downloads.state(for: $0.id).isPresent }.count
@@ -86,7 +86,7 @@ struct CollectionDownloadButton: View {
 /// "Remove Download" in words.
 struct TrackDownloadBadge: View {
     let trackId: String
-    let track: JellyfinItem
+    let track: MusicItem
 
     @State private var downloads = DownloadStore.shared
     /// Optional so the debug harness can render this without a signed-in store.

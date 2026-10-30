@@ -9,8 +9,8 @@ included:
   - Aoide
   - Packages/CurationKit/Sources
   - Packages/CurationKit/Tests
-  - Packages/JellyfinKit/Sources
-  - Packages/JellyfinKit/Tests
+  - Packages/MeleteKit/Sources
+  - Packages/MeleteKit/Tests
   - Packages/PlaybackKit/Sources
   - Packages/PlaybackKit/Tests
 

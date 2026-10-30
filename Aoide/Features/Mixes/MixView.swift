@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// Describe a mood, hear a mix.
@@ -17,7 +17,7 @@ struct MixView: View {
     @State private var indexer = SongIndexer.shared
     @State private var description = ""
     @State private var rules: [SmartRules] = []
-    @State private var tracks: [JellyfinItem] = []
+    @State private var tracks: [MusicItem] = []
     @State private var isBuilding = false
     @State private var message: String?
     /// What the model made of the description, shown so an empty mix is explained.
@@ -220,7 +220,7 @@ struct MixView: View {
 
     /// Tracks the library holds under a name: the songs found by it, and every song
     /// of every album found by it — a soundtrack is an album, not a track title.
-    private static func tracks(named name: String, client: JellyfinClient, library: LibraryStore) async -> [String] {
+    private static func tracks(named name: String, client: MeleteClient, library: LibraryStore) async -> [String] {
         guard let found = try? await client.search(name, limit: 30) else { return [] }
         var ids: [String] = []
         for item in found {

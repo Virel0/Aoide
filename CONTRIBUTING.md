@@ -32,7 +32,7 @@ The logic is in three local Swift packages, tested without a simulator:
 
 ```sh
 cd Packages/CurationKit && swift test    # store, op log, sync, smart playlists
-cd Packages/JellyfinKit && swift test    # API client, import matching
+cd Packages/MeleteKit && swift test    # API client, import matching
 cd Packages/PlaybackKit && swift test    # queue, conversion, silence bounds
 ```
 
@@ -54,7 +54,7 @@ fixing when you touch the code anyway.
 ## Making a change
 
 - Keep a pull request to one change. Tests come with the code they cover.
-- A change to what the app and the sidecar exchange starts in
+- A change to what the app and Melete exchange starts in
   [docs/sync-design.md](docs/sync-design.md) or the matching brief in docs/.
 - Interface text follows the app's existing words; errors say what happened
   and what to do next.

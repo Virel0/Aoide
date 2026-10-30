@@ -1,5 +1,5 @@
 import CoreSpotlight
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -49,11 +49,11 @@ struct RootView: View {
         } else if ProcessInfo.processInfo.arguments.contains("-AoidePlaybackProbe") {
             PlaybackProbeView()
         } else if ProcessInfo.processInfo.arguments.contains("-AoideTabPreview"),
-                  let url = try? JellyfinClient.normalizeServerURL("preview.invalid") {
+                  let url = try? MeleteClient.normalizeServerURL("preview.invalid") {
             // The tab bar itself, without a login. Every screen inside will fail to
             // load — that's fine and beside the point: this exists to check the bar's
             // own layout, which is otherwise unreachable without signing in.
-            MainTabView(client: JellyfinClient(serverURL: url, device: AppSession.deviceProfile))
+            MainTabView(client: MeleteClient(serverURL: url, device: AppSession.deviceProfile))
                 .environment(AppSession.shared)
         } else {
             signedInContent
@@ -90,7 +90,7 @@ struct RootView: View {
 struct MainTabView: View {
     private enum TabID: Hashable { case home, library, downloads, search }
 
-    private let client: JellyfinClient
+    private let client: MeleteClient
     @Environment(\.scenePhase) private var scenePhase
     @State private var store: LibraryStore
     @State private var lyrics: LyricsStore
@@ -103,7 +103,7 @@ struct MainTabView: View {
     /// tab that has never appeared.
     @State private var libraryPath = NavigationPath()
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
         _store = State(initialValue: LibraryStore(client: client))
         _lyrics = State(initialValue: LyricsStore(client: client))
@@ -141,7 +141,7 @@ struct MainTabView: View {
         .task { await QueueRestorer.restore(client: client) }
         .task { await playlists.ensureBuiltIns() }
         .task { await SongIndexer.shared.indexIfStale(library: store) }
-        // The op log already syncs on return (see RootView); the Jellyfin caches
+        // The op log already syncs on return (see RootView); the library caches
         // did not, so an album added from the desk stayed invisible on the phone
         // until a pull-to-refresh. The store decides whether it has been long
         // enough to be worth a request.

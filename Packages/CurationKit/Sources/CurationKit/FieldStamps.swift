@@ -9,7 +9,7 @@ import GRDB
 /// Stamping fields individually lets both survive.
 ///
 /// Carried *inside* the payload rather than beside it, which is why this needed no
-/// server change: the sidecar stores payloads verbatim and never parses them, so a
+/// server change: Melete stores payloads verbatim and never parses them, so a
 /// new field is a client-only concern. Ops written before this existed carry no
 /// stamps at all and fall back to the row's `updatedAt`, so older ops in the log and
 /// devices on older builds keep working and keep interoperating.

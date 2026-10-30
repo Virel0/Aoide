@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// The two things a listener can say about a track beyond liking it.
@@ -30,11 +30,11 @@ final class TasteStore {
     func isNotInterested(_ jellyfinId: String) -> Bool { flags(for: jellyfinId)?.notInterested == true }
     func isDontCount(_ jellyfinId: String) -> Bool { flags(for: jellyfinId)?.dontCount == true }
 
-    func setNotInterested(_ value: Bool, on item: JellyfinItem) async {
+    func setNotInterested(_ value: Bool, on item: MusicItem) async {
         await write(item) { store, key in try store.setNotInterested(value, on: item.id, contentKey: key) }
     }
 
-    func setDontCount(_ value: Bool, on item: JellyfinItem) async {
+    func setDontCount(_ value: Bool, on item: MusicItem) async {
         await write(item) { store, key in try store.setDontCount(value, on: item.id, contentKey: key) }
     }
 
@@ -50,7 +50,7 @@ final class TasteStore {
     }
 
     /// The tracks not marked "not interested", in the order given.
-    func withoutNotInterested(_ items: [JellyfinItem]) async -> [JellyfinItem] {
+    func withoutNotInterested(_ items: [MusicItem]) async -> [MusicItem] {
         guard let store = CurationDatabase.shared, !items.isEmpty else { return items }
         let ids = items.map(\.id)
         let hidden = (try? await Task.detached { try store.notInterested(among: ids) }.value) ?? []
@@ -63,7 +63,7 @@ final class TasteStore {
         flagged = (try? await Task.detached { try store.flaggedTracks() }.value) ?? []
     }
 
-    private func write(_ item: JellyfinItem, _ body: @escaping @Sendable (CurationStore, String) throws -> Void) async {
+    private func write(_ item: MusicItem, _ body: @escaping @Sendable (CurationStore, String) throws -> Void) async {
         guard let store = CurationDatabase.shared else { return }
         let key = TrackCatalogue.trackRef(for: item, at: Date().millis).contentKey
         do {

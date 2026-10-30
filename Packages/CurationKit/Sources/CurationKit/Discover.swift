@@ -1,7 +1,7 @@
 import Foundation
 
-/// The sidecar's weekly Discover list — see `docs/discover.md` and the
-/// sidecar's own contract. The server chooses; the client shows.
+/// Melete's weekly Discover list — see `docs/discover.md` and the
+/// `/aoide/discover` contract. The server chooses; the client shows.
 public enum Discover {
     public static let limit = 30
 

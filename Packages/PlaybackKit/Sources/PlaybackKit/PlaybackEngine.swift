@@ -158,6 +158,12 @@ public final class PlaybackEngine {
     /// after the queue was built. Main-actor, synchronous: a lookup, never a fetch.
     public var soundResolver: ((Track) -> SilenceBounds?)?
 
+    /// Makes the asset a stream plays from, when the app wants more than a plain
+    /// `AVURLAsset` — a URL whose real address is asked for only when the player
+    /// starts loading it, through a resource loader the app attaches. Main-actor,
+    /// synchronous; nothing is fetched here.
+    public var assetMaker: ((URL) -> AVURLAsset)?
+
     /// How loud a track was measured to be, so every record plays at one level.
     /// Returns decibels to apply, or nil to leave the track alone. Read when a
     /// track becomes current, so an answer arriving after the queue was built

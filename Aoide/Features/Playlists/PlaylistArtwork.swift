@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PhotosUI
 import SwiftUI
 
@@ -8,12 +8,9 @@ import SwiftUI
 /// Resolved rather than stored, in this order:
 ///
 /// 1. A cover chosen by hand.
-/// 2. For an imported playlist, the Jellyfin playlist it came from — so a playlist
-///    copied off the server keeps the image it had there, which is the whole point of
-///    a copy looking like the original.
-/// 3. A mosaic of up to four albums it holds, which is what Jellyfin and Apple Music
-///    both do and costs nothing to keep true as the playlist changes.
-/// 4. The lettered gradient, for a playlist that is empty or whose albums have no art.
+/// 2. A mosaic of up to four albums it holds, which is what Apple Music does and
+///    costs nothing to keep true as the playlist changes.
+/// 3. The lettered gradient, for a playlist that is empty or whose albums have no art.
 ///
 /// Only *ids* are ever stored, never image bytes. The op log replays in full onto
 /// every new device and payloads are capped at 256 KB, so a cover held as data would
@@ -51,7 +48,7 @@ struct PlaylistArtwork: View {
     }
 
     private var chosenItemId: String? {
-        playlist.artworkItemId ?? playlist.sourceJellyfinId
+        playlist.artworkItemId
     }
 
     private var mosaic: some View {
@@ -90,7 +87,7 @@ struct PlaylistArtwork: View {
 /// onto every new device.
 struct CoverPicker: View {
     let playlist: Playlist
-    let albums: [JellyfinItem]
+    let albums: [MusicItem]
 
     @Environment(LibraryStore.self) private var library
     @Environment(LocalPlaylistStore.self) private var playlists

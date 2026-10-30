@@ -1,5 +1,10 @@
 # Sound bounds: where each track's sound starts and stops
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Proposed 2026-09-04 from the client side. Built and shipped on iOS for downloaded
 files; this asks the sidecar to provide the same for streamed tracks, so the
 desktop (which never holds a file) and the phone (for anything not downloaded)

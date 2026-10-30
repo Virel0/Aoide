@@ -11,14 +11,14 @@ That is why this is called Crossfade: it is a crossfade.
 
 Matching beats needs to know where the beats *fall* — a downbeat and a grid, not
 a count. What the library holds is one BPM figure per track, measured by the
-sidecar to about a beat per minute, whose own
+server to about a beat per minute, whose own
 [documentation](audio-analysis.md) says not to match on it. Two tracks locked to
 the same tempo but a quarter-beat apart sound markedly worse than two tracks
 that were never locked at all, so tempo here does exactly one job: deciding
 whether a pair is worth a long blend or a short one.
 
 A tempo also has to *describe* its track before anything can be matched to it.
-The sidecar reports `bpmStability` — the fraction of twenty-second windows that
+The server reports `bpmStability` — the fraction of twenty-second windows that
 agreed with the whole-track figure — and a track that ramps 105→145 reports a
 confident 135 at a stability of 0.10. Below 0.5 the number is an average of a
 track that was never at it, so the pair gets the short blend. A track from a
@@ -117,39 +117,19 @@ record. Somebody who wants the whole song every time has the other two.
 The other toggle: Crossfade decides *how* one song becomes the next, Infinity
 decides that there **is** a next one.
 
-When fewer than three songs are left in front of the listener, it asks the server
-for an Instant Mix seeded by whatever is playing — a hundred of them, drops
-anything already queued or marked Not Interested, and then **picks twenty of that
-hundred by what this listener actually finishes.**
-
-The station is the pool, not the answer. Jellyfin knows what is *like* the song
-playing; only the local history knows which genres and artists get listened to
-all the way through, which individual tracks get skipped every time, and what has
-been heard in the last hour. `TasteRanking` scores each candidate on those:
-strongest matching genre (0.45), familiar artist (0.3 — less, so a long evening
-widens out instead of circling four artists), the track's own finish rate (±0.3,
-and a track with fewer than three decided listens is neither promoted nor
-punished), and a recency penalty wide enough to put everything heard lately below
-everything that has not been.
+When fewer than three songs are left in front of the listener, it asks Melete's
+`/aoide/next` for twenty to follow whatever is playing. The server scores the
+whole library: this listener's taste from what they finish, a shared genre with
+the seed, closeness in tempo, key and energy, and penalties for what and who was
+heard lately. It leaves out anything queued, recently played or marked Not
+Interested. [infinity.md](infinity.md) is the rule, term by term.
 
 It is arithmetic, not a recommender: every position it produces can be explained
-in a sentence, and when it is wrong it is wrong somewhere you can point at. With
-no history to read — a new install — the station's own order stands.
+in a sentence, and when it is wrong it is wrong somewhere you can point at.
 
-**With Auto DJ on, Infinity is the set planner.** Two more terms join the score.
-Each candidate is asked, ahead of time, the same question the mix would ask —
-can it follow the record playing? — and the mix score it would earn is worth
-0.6, more than any single taste factor: a record the room would love that
-cannot be mixed into what is playing is a record for later, and one that can
-only be crossfaded scores a little rather than nothing. And a record by an
-artist heard lately loses 0.4, because the same artist twice in a row is the
-one repetition a room notices, and "most similar next" would pick it every
-time. The pool's grids and arrangements are fetched before it is ranked; a
-record still unread ranks by taste alone.
-
-The pool itself is the weak link — Jellyfin's Instant Mix is a random sample
-by genre — and [infinity.md](infinity.md) asks the sidecar to take the whole
-question over, from the whole library, for both clients.
+**With Auto DJ on, Infinity is the set planner.** The request is made in `autodj`
+mode: the same records are chosen, then put in the order they mix best, each
+one the record that follows the last most smoothly.
 
 Off by default: a queue that ends is not a fault, and a player that quietly plays
 on for an hour after the album finished is one nobody asked for. It does nothing

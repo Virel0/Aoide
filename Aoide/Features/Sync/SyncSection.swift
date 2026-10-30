@@ -88,7 +88,7 @@ struct SyncSection: View {
         if let detail = sync.statusDetail { return detail }
         return """
             Playlists, favourites and listening history sync between your devices \
-            through your Jellyfin server. It happens by itself when you open the app and \
+            through your Melete server. It happens by itself when you open the app and \
             after you make changes \u{2014} this button is only for when you don't want \
             to wait.
             """

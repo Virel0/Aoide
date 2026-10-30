@@ -18,7 +18,7 @@ enum Schema {
         #endif
 
         migrator.registerMigration("v1") { db in
-            // Local cache of what Jellyfin knows, so a playlist can render its rows
+            // Local cache of what the server knows, so a playlist can render its rows
             // offline. Deliberately not synced: every device rebuilds it from its
             // own connection to the same server, and shipping it would dominate the
             // sync payload for no gain.
@@ -63,7 +63,7 @@ enum Schema {
                 t.primaryKey("id", .text)
                 t.column("playlistId", .text).notNull()
                 t.column("jellyfinId", .text).notNull()
-                // Stored beside the id because Jellyfin ids are derived per-file: a
+                // Stored beside the id because track ids belong to files: a
                 // library rescan after files move mints new ones, and without this
                 // every entry would dangle with no way back.
                 t.column("contentKey", .text).notNull()
@@ -86,9 +86,9 @@ enum Schema {
 
             // Append-only. Never updated after insert, which is what makes it the
             // easiest thing here to sync: there is no such thing as a conflicting
-            // append. It is also the only honest source of play counts — Jellyfin
-            // increments its own at playback *start*, so a four-second skip counts
-            // there exactly as much as a full listen.
+            // append. It is also the only honest source of play counts — a count
+            // taken at playback *start* counts a four-second skip
+            // exactly as much as a full listen.
             try db.create(table: "playEvent") { t in
                 t.primaryKey("id", .text)
                 t.column("jellyfinId", .text).notNull().indexed()
@@ -174,10 +174,9 @@ enum Schema {
         }
 
         migrator.registerMigration("v4") { db in
-            // Which Jellyfin playlist this was imported from, if any. Kept so a second
-            // import refreshes the same local playlist instead of silently making a
-            // duplicate — and so the server list can say which of its playlists are
-            // already here.
+            // Which Jellyfin playlist this was imported from, if any, from when the app
+            // copied Jellyfin's playlists. Nothing writes it now (Melete's import of the
+            // old sync data clears it); the column stays because migrations only add.
             try db.alter(table: "playlist") { t in
                 t.add(column: "sourceJellyfinId", .text)
             }
@@ -200,7 +199,7 @@ enum Schema {
         }
 
         migrator.registerMigration("v6") { db in
-            // A Jellyfin item id whose Primary image is this playlist's cover — never
+            // An album id whose cover is this playlist's cover — never
             // image bytes. The op log replays in full onto every fresh device and the
             // payload ceiling is 256 KB, so a cover stored as data would be the
             // largest thing in the system and would be copied forever. An id is
@@ -211,7 +210,7 @@ enum Schema {
             }
             // The album a cached track belongs to, so a playlist with no cover of its
             // own can be drawn from the albums it holds. The track cache is local and
-            // rebuilt from Jellyfin, so a null here just means "not seen since this
+            // rebuilt from the server, so a null here just means "not seen since this
             // column existed" and fills in on the next index.
             try db.alter(table: "track") { t in
                 t.add(column: "albumId", .text)

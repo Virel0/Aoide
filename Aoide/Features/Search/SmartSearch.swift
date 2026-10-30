@@ -1,6 +1,6 @@
 import FoundationModels
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// Turns a phrase like "upbeat rock from the nineties" into a `MusicQuery`.
@@ -10,7 +10,7 @@ import os
 /// model picked the right songs for a named genre 2–5 times out of 8, which is worse
 /// than useless when the server can answer the same question exactly. Mapping a
 /// phrase onto a genre name and a year range is the part it is reliably good at, and
-/// Jellyfin does the selecting afterwards.
+/// Melete does the selecting afterwards.
 @MainActor
 @Observable
 final class SmartSearch {
@@ -22,7 +22,7 @@ final class SmartSearch {
     }
 
     private let log = Logger(subsystem: AppIdentity.bundle, category: "smart-search")
-    private let client: JellyfinClient
+    private let client: MeleteClient
 
     /// Genre names the library actually contains, lower-cased for matching.
     ///
@@ -33,7 +33,7 @@ final class SmartSearch {
     /// into a closed-set choice.
     private var knownGenres: [String: String] = [:]
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
     }
 

@@ -9,6 +9,35 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+Aoide now plays from [Melete](https://github.com/Virel0/Melete), the server
+that replaces Jellyfin and keeps Aoide's sync itself. Sign in again after
+updating; the local store belongs to the old server and is cleared at sign-in,
+and playlists, likes and history come back from Melete.
+
+### Added
+- Quick Connect: sign in by approving a code in Melete's web UI.
+
+### Changed
+- Everything the app asked of Jellyfin it asks of Melete: the library, search,
+  streams, downloads, lyrics and likes. The `JellyfinKit` package is now
+  `MeleteKit`.
+- A stream's link is asked for when the player starts the track, so a long
+  queue starts at once.
+- Favourites are your liked songs; the heart on an album page is gone, since
+  Melete likes songs, not albums.
+- Covers are fetched with your sign-in.
+- In Lossless, a file Apple's players can't open (Ogg, WavPack, Monkey's Audio)
+  is streamed and downloaded as FLAC instead, so it plays.
+- Stations and Infinity start from what `/aoide/next` picks after the seed
+  song, in place of Jellyfin's Instant Mix.
+
+### Removed
+- Jellyfin playlists, importing them, and the playlist-surface setting:
+  Melete's playlists are Aoide's own.
+- The Rediscover shelf on Home and library scopes, which needed Jellyfin's play
+  counts and libraries.
+- The playback reports Jellyfin needed.
+
 ## [1.0 (2)] - 2026-10-26
 
 The first tagged release.

@@ -1,32 +1,22 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
-/// The album / playlist page: big cover, Play and Shuffle, then the tracks.
-/// One view serves both because they differ only in where the tracks come from
-/// and whether track numbers make sense.
+/// The album page: big cover, Shuffle, Play and Station, then the tracks.
+/// (Aoide playlists have a page of their own, `LocalPlaylistDetailView`.)
 struct TrackListView: View {
     enum Source {
         case album(String)
-        case playlist(String)
 
-        var showsTrackNumbers: Bool {
-            if case .album = self { return true }
-            return false
-        }
+        var showsTrackNumbers: Bool { true }
 
         /// How the local history files a play started from this page.
-        var playSource: PlaySource {
-            switch self {
-            case .album: .album
-            case .playlist: .playlist
-            }
-        }
+        var playSource: PlaySource { .album }
     }
 
     let title: String
-    let artworkItem: JellyfinItem
+    let artworkItem: MusicItem
     let source: Source
     var subtitle: String?
 
@@ -34,11 +24,10 @@ struct TrackListView: View {
     @Environment(LocalPlaylistStore.self) private var playlists
     @State private var downloads = DownloadStore.shared
     @State private var adding: TrackSelection?
-    @State private var tracks: [JellyfinItem] = []
+    @State private var tracks: [MusicItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
-    @State private var isFavorite = false
     /// How much of this record the listener actually finishes. Nil until there
     /// is enough history to say anything honest.
     @State private var finishRate: Double?
@@ -48,21 +37,21 @@ struct TrackListView: View {
     /// Albums pressed to more than one disc need their track numbers explained —
     /// otherwise numbering restarts at 1 partway down the page with no reason given.
     /// A personal FLAC library is exactly the kind that holds box sets.
-    private var discs: [(number: Int?, tracks: [JellyfinItem])] {
+    private var discs: [(number: Int?, tracks: [MusicItem])] {
         // Disc headers are meaningless on a playlist, and grouping one by the disc
         // numbers its tracks happen to carry would scatter it into nonsense.
         guard source.showsTrackNumbers else { return [] }
 
-        let numbers = Set(tracks.compactMap(\.parentIndexNumber))
+        let numbers = Set(tracks.compactMap(\.discNumber))
         guard numbers.count > 1 else { return [] }
 
-        var sections: [(number: Int?, tracks: [JellyfinItem])] = numbers.sorted().map { disc in
-            (disc, tracks.filter { $0.parentIndexNumber == disc })
+        var sections: [(number: Int?, tracks: [MusicItem])] = numbers.sorted().map { disc in
+            (disc, tracks.filter { $0.discNumber == disc })
         }
         // A track with no disc tag matched no section and rendered nowhere —
         // silently missing from the page. A personal library with hand-tagged rips
         // hits this constantly.
-        let untagged = tracks.filter { $0.parentIndexNumber == nil }
+        let untagged = tracks.filter { $0.discNumber == nil }
         if !untagged.isEmpty { sections.append((nil, untagged)) }
         return sections
     }
@@ -116,16 +105,15 @@ struct TrackListView: View {
         }
         .task { await load() }
         .task(id: artworkItem.id) {
-            isFavorite = artworkItem.userData?.isFavorite ?? false
             guard let url = store.artworkURL(for: artworkItem, width: Design.ArtworkWidth.card) else { return }
             palette = await ArtworkColorExtractor.shared.palette(for: url)
         }
     }
 
-    private func row(for track: JellyfinItem, at index: Int) -> some View {
+    private func row(for track: MusicItem, at index: Int) -> some View {
         TrackRow(
             track: track,
-            position: source.showsTrackNumbers ? track.indexNumber : index + 1,
+            position: source.showsTrackNumbers ? track.trackNumber : index + 1,
             isCurrent: engine.currentTrack?.id == track.id,
             // A various-artists compilation is unreadable without the artist on
             // each row, even though an ordinary album doesn't want it.
@@ -255,32 +243,27 @@ struct TrackListView: View {
 
     private var actionRow: some View {
         DetailActionRow(
-            isFavorite: isFavorite,
+            // Melete keeps likes on songs, not albums, so Station takes the place
+            // a favourite heart had, as on an artist's page.
+            trailingIcon: "dot.radiowaves.left.and.right",
+            trailingLabel: "Start Station",
+            trailingFills: false,
             isEnabled: !tracks.isEmpty,
-            // Shuffle is still the album (or the playlist): it says how these tracks
-            // are being played, not where they came from.
+            // Shuffle is still the album: it says how these tracks are being
+            // played, not where they came from.
             onLeading: { store.play(tracks, shuffled: true, from: source.playSource); remember() },
             onPlay: { store.play(tracks, from: source.playSource); remember() },
-            onTrailing: {
-                // Drive from local intent and adopt what the server confirms.
-                // Deriving the new value from `artworkItem.userData` read a snapshot
-                // frozen when the list was fetched, so the glyph never moved and a
-                // second tap re-sent the same value.
-                let desired = !isFavorite
-                isFavorite = desired
-                Task { isFavorite = await store.toggleFavorite(artworkItem, to: desired) }
-            }
+            onTrailing: { Task { await store.startStation(seededBy: artworkItem) } }
         )
         .padding(.top, 6)
     }
 
     /// This page as a thing Home can offer to resume.
     private func remember() {
-        let kind: RecentContext.Kind
+        let kind = RecentContext.Kind.album
         let id: String
         switch source {
-        case .album(let albumId): kind = .album; id = albumId
-        case .playlist(let playlistId): kind = .jellyfinPlaylist; id = playlistId
+        case .album(let albumId): id = albumId
         }
         store.remember(RecentContext(
             kind: kind, id: id, name: title, subtitle: subtitle ?? nonEmptySubtitle,
@@ -297,11 +280,6 @@ struct TrackListView: View {
                 subtitle: subtitle ?? nonEmptySubtitle,
                 trackIds: tracks.filter { $0.type == .audio }.map(\.id)
             )
-        case .playlist(let id):
-            DownloadedCollection(
-                id: id, kind: .playlist, name: title, subtitle: nil,
-                trackIds: tracks.filter { $0.type == .audio }.map(\.id)
-            )
         }
     }
 
@@ -313,7 +291,7 @@ struct TrackListView: View {
     /// "2019 · 12 songs · 48 minutes", skipping whatever the server didn't give us.
     private var detailLine: String? {
         var parts: [String] = []
-        if let year = artworkItem.productionYear { parts.append(String(year)) }
+        if let year = artworkItem.year { parts.append(String(year)) }
         if !tracks.isEmpty { parts.append("\(tracks.count) song\(tracks.count == 1 ? "" : "s")") }
 
         let total = tracks.compactMap(\.duration).reduce(Duration.zero, +)
@@ -337,11 +315,9 @@ struct TrackListView: View {
             switch source {
             case .album(let id):
                 tracks = try await store.tracks(inAlbum: id)
-            case .playlist(let id):
-                tracks = try await store.tracks(inPlaylist: id)
             }
         } catch {
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
         await loadFinishRate()
@@ -349,7 +325,7 @@ struct TrackListView: View {
 }
 
 struct AlbumDetailView: View {
-    let album: JellyfinItem
+    let album: MusicItem
 
     var body: some View {
         TrackListView(
@@ -363,7 +339,7 @@ struct AlbumDetailView: View {
 // MARK: - Track row
 
 struct TrackRow: View {
-    let track: JellyfinItem
+    let track: MusicItem
     var position: Int?
     var isCurrent: Bool = false
     /// Playlists and search results mix albums together, so the artist matters there

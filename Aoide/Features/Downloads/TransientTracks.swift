@@ -1,4 +1,5 @@
 import Foundation
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -79,15 +80,20 @@ final class TransientTracks {
     private func fetch(_ track: Track) async {
         defer { inFlight.remove(track.id) }
         do {
-            let (temporary, response) = try await URLSession.shared.download(from: track.streamURL)
+            // A streamed track's URL stands for a link still to be asked for.
+            var url = track.streamURL
+            if let client = AppSession.shared.client, MeleteClient.lazyStream(url) != nil {
+                url = try await client.streamLink(forLazyURL: url, canPlay: StreamLinkLoader.canPlay).url
+            }
+            let (temporary, response) = try await URLSession.shared.download(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 try? FileManager.default.removeItem(at: temporary)
                 return
             }
             // The extension matters to the reader: it is how the container is
             // recognised. The server names the file it sends.
-            let ext = (response.suggestedFilename as NSString?)?.pathExtension.lowercased() ?? ""
-            let destination = Self.directory.appendingPathComponent("\(track.id).\(ext.isEmpty ? "flac" : ext)")
+            let ext = DownloadStore.fileExtension(for: response)
+            let destination = Self.directory.appendingPathComponent("\(track.id).\(ext)")
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.moveItem(at: temporary, to: destination)
             files[track.id] = destination

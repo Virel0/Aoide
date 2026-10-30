@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 struct SearchView: View {
@@ -7,7 +7,7 @@ struct SearchView: View {
     @Environment(SmartSearch.self) private var smart
 
     @State private var query = ""
-    @State private var results: [JellyfinItem] = []
+    @State private var results: [MusicItem] = []
     @State private var isSearching = false
     @State private var errorMessage: String?
     @State private var recents: [String] = RecentSearches.load()
@@ -18,15 +18,14 @@ struct SearchView: View {
     /// Results from interpreting the phrase, kept apart from the name-matched ones.
     /// Merging them would hide which is which, and these are a guess where the
     /// others are exact.
-    @State private var smartResults: [JellyfinItem] = []
+    @State private var smartResults: [MusicItem] = []
     @State private var smartQuery: MusicQuery?
     @State private var isInterpreting = false
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespaces) }
-    private var songs: [JellyfinItem] { results.filter { $0.type == .audio } }
-    private var albums: [JellyfinItem] { results.filter { $0.type == .musicAlbum } }
-    private var artists: [JellyfinItem] { results.filter { $0.type == .musicArtist } }
-    private var playlists: [JellyfinItem] { results.filter { $0.type == .playlist } }
+    private var songs: [MusicItem] { results.filter { $0.type == .audio } }
+    private var albums: [MusicItem] { results.filter { $0.type == .musicAlbum } }
+    private var artists: [MusicItem] { results.filter { $0.type == .musicArtist } }
 
     var body: some View {
         NavigationStack {
@@ -176,17 +175,6 @@ struct SearchView: View {
                 }
             }
 
-            if !playlists.isEmpty {
-                Section("Playlists") {
-                    ForEach(playlists) { playlist in
-                        NavigationLink {
-                            TrackListView(title: playlist.name, artworkItem: playlist, source: .playlist(playlist.id))
-                        } label: {
-                            resultRow(playlist, radius: Design.Radius.thumbnail)
-                        }
-                    }
-                }
-            }
 
             if !songs.isEmpty {
                 Section("Songs") {
@@ -211,7 +199,7 @@ struct SearchView: View {
         .scrollContentBackground(.hidden)
     }
 
-    private func resultRow(_ item: JellyfinItem, radius: CGFloat) -> some View {
+    private func resultRow(_ item: MusicItem, radius: CGFloat) -> some View {
         HStack(spacing: 12) {
             ArtworkView(url: store.artworkURL(for: item, width: Design.ArtworkWidth.thumbnail), cornerRadius: radius)
                 .frame(width: 44, height: 44)
@@ -273,7 +261,7 @@ struct SearchView: View {
             return
         } catch {
             guard !Task.isCancelled, mine == generation else { return }
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
         isSearching = false
     }
@@ -283,7 +271,7 @@ struct SearchView: View {
 /// start rather than a dead end.
 private struct BrowseGenresSection: View {
     @Environment(LibraryStore.self) private var store
-    @State private var genres: [JellyfinItem] = []
+    @State private var genres: [MusicItem] = []
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: Design.Spacing.card)]
 

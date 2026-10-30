@@ -26,6 +26,8 @@ public protocol Syncable {
 public struct TrackRef: Codable, FetchableRecord, PersistableRecord, Hashable, Sendable {
     public static let databaseTableName = "track"
 
+    /// The server's track id. Named for Jellyfin, the server Aoide started on: the
+    /// name is part of the sync format every device and Melete share, so it stays.
     public var jellyfinId: String
     public var contentKey: String
     public var musicbrainzId: String?
@@ -75,7 +77,7 @@ public struct TrackRef: Codable, FetchableRecord, PersistableRecord, Hashable, S
     }
 }
 
-/// The fingerprint that survives a Jellyfin rescan.
+/// The fingerprint that survives a rescan that gives a track a new id.
 ///
 /// Normalised hard, because the point is to match the *same recording* after its id
 /// changed — not to be a checksum. Duration is rounded to the second so a re-encode
@@ -146,9 +148,10 @@ public struct Playlist: Codable, FetchableRecord, PersistableRecord, Syncable, F
     public var originDevice: String
     /// When each field last changed. `nil` on rows written before per-field merging.
     public var fieldUpdatedAt: FieldStamps?
-    /// The Jellyfin playlist this was imported from, if it was.
+    /// The Jellyfin playlist this was copied from, in playlists made before Melete.
+    /// Nothing writes it now.
     public var sourceJellyfinId: String?
-    /// A Jellyfin item whose cover stands in for this playlist's. `nil` means one is
+    /// An album whose cover stands in for this playlist's. `nil` means one is
     /// drawn from the playlist's own albums instead.
     public var artworkItemId: String?
     /// SHA-256 of a cover uploaded for this playlist, when one was chosen from
@@ -365,7 +368,7 @@ public struct QueueState: Codable, FetchableRecord, PersistableRecord, Hashable,
 
     public var deviceId: String
     public var deviceName: String
-    /// JSON array of Jellyfin ids.
+    /// JSON array of track ids.
     public var trackIds: String
     public var position: Int
     public var elapsedMs: Int

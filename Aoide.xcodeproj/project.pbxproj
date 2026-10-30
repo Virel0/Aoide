@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		100000000000000000000014 /* JellyfinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000012 /* JellyfinKit */; };
+		100000000000000000000014 /* MeleteKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000012 /* MeleteKit */; };
 		100000000000000000000015 /* PlaybackKit in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000013 /* PlaybackKit */; };
 		1000000000000000000000C1 /* CurationKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1000000000000000000000C2 /* CurationKit */; };
 /* End PBXBuildFile section */
@@ -32,7 +32,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000014 /* JellyfinKit in Frameworks */,
+				100000000000000000000014 /* MeleteKit in Frameworks */,
 				100000000000000000000015 /* PlaybackKit in Frameworks */,
 				1000000000000000000000C1 /* CurationKit in Frameworks */,
 			);
@@ -88,7 +88,7 @@
 			);
 			name = Aoide;
 			packageProductDependencies = (
-				100000000000000000000012 /* JellyfinKit */,
+				100000000000000000000012 /* MeleteKit */,
 				100000000000000000000013 /* PlaybackKit */,
 				1000000000000000000000C2 /* CurationKit */,
 			);
@@ -121,7 +121,7 @@
 			mainGroup = 100000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/JellyfinKit" */,
+				100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/MeleteKit" */,
 				100000000000000000000011 /* XCLocalSwiftPackageReference "Packages/PlaybackKit" */,
 				1000000000000000000000C3 /* XCLocalSwiftPackageReference "Packages/CurationKit" */,
 			);
@@ -297,9 +297,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/JellyfinKit" */ = {
+		100000000000000000000010 /* XCLocalSwiftPackageReference "Packages/MeleteKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/JellyfinKit;
+			relativePath = Packages/MeleteKit;
 		};
 		100000000000000000000011 /* XCLocalSwiftPackageReference "Packages/PlaybackKit" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -312,9 +312,9 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		100000000000000000000012 /* JellyfinKit */ = {
+		100000000000000000000012 /* MeleteKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = JellyfinKit;
+			productName = MeleteKit;
 		};
 		100000000000000000000013 /* PlaybackKit */ = {
 			isa = XCSwiftPackageProductDependency;

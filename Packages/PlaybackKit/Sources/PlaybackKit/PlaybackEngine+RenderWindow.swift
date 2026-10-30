@@ -133,7 +133,8 @@ extension PlaybackEngine {
     /// takes the app down. The same item also cannot appear twice in one queue,
     /// which is why repeat-one needs two distinct items for one entry.
     func makeItem(for track: Track, entryId: UUID) -> AVPlayerItem {
-        let item = AVPlayerItem(url: track.streamURL)
+        let asset = assetMaker?(track.streamURL) ?? AVURLAsset(url: track.streamURL)
+        let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = Self.forwardBufferSeconds
         // Play only where the sound is. The end point is the item's end as far as
         // the player is concerned, so the handover to the next item is the same

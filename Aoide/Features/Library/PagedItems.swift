@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// A lazily-paged list of library items.
@@ -11,7 +11,7 @@ import os
 @MainActor
 @Observable
 final class PagedItems {
-    private(set) var items: [JellyfinItem] = []
+    private(set) var items: [MusicItem] = []
     private(set) var isLoadingFirstPage = false
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
@@ -50,7 +50,7 @@ final class PagedItems {
 
     /// Called as rows appear. Cheap to call for every row — it exits immediately
     /// unless the row is near the end and nothing is already in flight.
-    func loadMoreIfNeeded(currentItem item: JellyfinItem) async {
+    func loadMoreIfNeeded(currentItem item: MusicItem) async {
         guard !isLoadingMore, !isLoadingFirstPage, hasMore else { return }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         guard index >= items.count - prefetchMargin else { return }
@@ -85,11 +85,11 @@ final class PagedItems {
             return
         } catch {
             if Task.isCancelled { return }
-            if case JellyfinError.unauthorized = error {
+            if case MeleteError.unauthorized = error {
                 AppSession.shared.invalidateSession()
                 return
             }
-            let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            let message = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
             log.error("Page load failed at \(startIndex, privacy: .public): \(message, privacy: .public)")
             // Only surface the error if there's nothing on screen; failing to extend
             // a list the user is already reading shouldn't replace it with an error.

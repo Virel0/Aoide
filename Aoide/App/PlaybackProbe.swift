@@ -1,7 +1,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 
 /// Plays a locally generated tone through the real engine and the real reporters.
@@ -16,13 +16,12 @@ enum PlaybackProbe {
     static func run() {
         guard let url = writeSilence() else { return }
 
-        // The real bridge, so the Jellyfin reporter and the curation recorder are both
-        // attached exactly as they are in a signed-in session. The client cannot resolve,
-        // which is correct: reporting to the server is meant to fail here, and the point
-        // is what happens locally.
-        if let server = try? JellyfinClient.normalizeServerURL("probe.invalid") {
-            JellyfinPlaybackBridge.connect(
-                client: JellyfinClient(serverURL: server, device: AppSession.deviceProfile)
+        // The real bridge, so the curation recorder is attached exactly as it is in a
+        // signed-in session. The client cannot resolve, which is correct: the point is
+        // what happens locally.
+        if let server = try? MeleteClient.normalizeServerURL("probe.invalid") {
+            MeletePlaybackBridge.connect(
+                client: MeleteClient(serverURL: server, device: AppSession.deviceProfile)
             )
         }
 

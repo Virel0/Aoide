@@ -100,7 +100,7 @@ public extension CurationStore {
         // looks more recent than it is and can sort above a queue that is genuinely
         // newer. That is the tolerable direction for this error to point — the
         // alternative is hiding a queue the user put down thirty seconds ago — and
-        // the sidecar's server-side receipt time is the real fix.
+        // a server-side receipt time is the real fix.
         let cutoff = window < now ? now - window : Millis.min
         return try read { db in
             try QueueState

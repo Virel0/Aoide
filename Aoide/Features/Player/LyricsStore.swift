@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -35,10 +35,10 @@ final class LyricsStore {
     }
 
     private static let offsetKey = "aoide.lyricsOffset"
-    private let client: JellyfinClient
+    private let client: MeleteClient
     private let log = Logger(subsystem: AppIdentity.bundle, category: "lyrics")
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
         let stored = UserDefaults.standard.double(forKey: Self.offsetKey)
         offset = .seconds(stored)
@@ -118,7 +118,7 @@ final class LyricsStore {
                 entries[trackId] = nil
                 return
             }
-            let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            let message = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
             log.error("Lyrics load failed: \(message, privacy: .public)")
             entries[trackId] = .failed(message)
         }

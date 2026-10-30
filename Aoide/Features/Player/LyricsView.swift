@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 @preconcurrency import Translation

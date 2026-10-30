@@ -64,9 +64,7 @@ struct MixableView: View {
                         ? "Your server measures the whole library on a schedule, so coverage climbs on its own."
                         : """
                             Your server measures a track the first time something asks about it, so this \
-                            climbs as you listen. To do the whole library at once, turn on \"Analyse the \
-                            whole library nightly\" in Jellyfin's Aoide Sidecar plugin settings — the \
-                            first run takes hours on a large library, which is why it is off by default.
+                            climbs as you listen.
                             """)
                 }
             }

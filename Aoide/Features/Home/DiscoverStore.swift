@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 import os
 
@@ -17,7 +17,7 @@ final class DiscoverStore {
     enum State: Equatable {
         case unknown
         case unavailable
-        case loaded(week: String, items: [JellyfinItem])
+        case loaded(week: String, items: [MusicItem])
     }
 
     private(set) var state: State = .unknown
@@ -26,12 +26,12 @@ final class DiscoverStore {
 
     private init() {}
 
-    var items: [JellyfinItem] {
+    var items: [MusicItem] {
         if case .loaded(_, let items) = state { return items }
         return []
     }
 
-    func loadIfNeeded(client: JellyfinClient) async {
+    func loadIfNeeded(client: MeleteClient) async {
         switch state {
         case .unavailable: return
         case .loaded(let week, _) where week == Discover.week(of: Date()): return
@@ -45,7 +45,7 @@ final class DiscoverStore {
             // Items come back in the order asked for, which is the server's.
             let items = try await client.items(ids: response.candidates.map(\.id))
             state = .loaded(week: response.week, items: items)
-        } catch JellyfinError.notFound {
+        } catch MeleteError.notFound {
             state = .unavailable
             log.info("This server has no /aoide/discover; the tile is hidden")
         } catch {

@@ -3,8 +3,8 @@ import GRDB
 
 /// How often a listen actually reaches the end.
 ///
-/// The number a music server cannot produce. Jellyfin counts a play the moment
-/// audio starts, so a four-second skip counts there exactly as much as an album
+/// The number a play count cannot give. A server that counts a play the moment
+/// audio starts counts so a four-second skip counts there exactly as much as an album
 /// side; this counts only the listens that finished, against the listens that
 /// were decided either way.
 ///

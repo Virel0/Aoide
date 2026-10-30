@@ -3,7 +3,7 @@ import Combine
 import CurationKit
 import Foundation
 import GroupActivities
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -33,7 +33,7 @@ final class SharePlayCoordinator {
     private var messenger: GroupSessionMessenger?
     private var cancellables: Set<AnyCancellable> = []
     private var tasks: Set<Task<Void, Never>> = []
-    private var client: JellyfinClient?
+    private var client: MeleteClient?
 
     /// Suppresses the echo when applying a queue that arrived from someone else —
     /// otherwise adopting their track broadcasts it straight back and the two
@@ -48,7 +48,7 @@ final class SharePlayCoordinator {
             .store(in: &cancellables)
     }
 
-    func connect(client: JellyfinClient) {
+    func connect(client: MeleteClient) {
         self.client = client
     }
 
@@ -178,7 +178,7 @@ final class SharePlayCoordinator {
 
         // Resolved against *this* participant's own server session, so the stream
         // URLs carry their token rather than the sender's.
-        var tracks: [JellyfinItem] = []
+        var tracks: [MusicItem] = []
         for id in message.trackIds {
             guard let item = try? await client.item(id: id) else { continue }
             tracks.append(item)
@@ -188,7 +188,7 @@ final class SharePlayCoordinator {
         // Built through the bridge so unplayable rows are dropped by the same rule
         // as everywhere else — and so the index still addresses the right track
         // after they are.
-        let (playable, sourceIndices) = JellyfinPlaybackBridge.playableTracks(from: tracks, client: client)
+        let (playable, sourceIndices) = MeletePlaybackBridge.playableTracks(from: tracks, client: client)
         guard !playable.isEmpty else { return }
         let start = sourceIndices.firstIndex { $0 >= message.startIndex } ?? 0
 

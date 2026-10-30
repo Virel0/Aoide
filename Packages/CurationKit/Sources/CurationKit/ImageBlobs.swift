@@ -96,7 +96,7 @@ public extension CurationStore {
     }
 
     /// How long a blob nothing references is kept before it is even considered for
-    /// removal, matching the sidecar's own sweep.
+    /// removal, matching the server's own sweep.
     ///
     /// The period exists because "nothing references this" is only ever true *here*.
     /// A cover dropped on this device may still be named by a playlist another device

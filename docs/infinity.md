@@ -1,5 +1,10 @@
 # Infinity: let the server choose what plays next
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Asked of the sidecar on 2026-09-11 from the client side. Asked after a listener
 with Auto DJ on found the set choosing records whose names matched the one
 playing — which turned out to be the Songs list, not Infinity — and then asked

@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
 /// Turns a Spotify link or a CSV export into "here, and not here".
@@ -23,7 +23,7 @@ final class PlaylistImporter {
 
     struct Match: Identifiable {
         let track: ImportedTrack
-        let song: JellyfinItem?
+        let song: MusicItem?
         var id: String { track.id }
     }
 
@@ -31,17 +31,17 @@ final class PlaylistImporter {
     private(set) var playlist: ImportedPlaylist?
     private(set) var matches: [Match] = []
 
-    var found: [JellyfinItem] { matches.compactMap(\.song) }
+    var found: [MusicItem] { matches.compactMap(\.song) }
     var missing: [ImportedTrack] { matches.filter { $0.song == nil }.map(\.track) }
 
-    private let client: JellyfinClient
+    private let client: MeleteClient
     private let log = Logger(subsystem: AppIdentity.bundle, category: "import")
 
     /// Looked up a few at a time. The server answers a search in tens of
     /// milliseconds, but a hundred at once is a burst it need not be asked for.
     private static let lookupsAtOnce = 4
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
     }
 
@@ -110,11 +110,11 @@ final class PlaylistImporter {
         for chunk in stride(from: 0, to: total, by: Self.lookupsAtOnce) {
             let slice = Array(imported.tracks[chunk..<min(chunk + Self.lookupsAtOnce, total)])
             let client = client
-            let found = await withTaskGroup(of: (Int, JellyfinItem?).self) { group in
+            let found = await withTaskGroup(of: (Int, MusicItem?).self) { group in
                 for (offset, track) in slice.enumerated() {
                     group.addTask { (offset, await Self.lookUp(track, client: client)) }
                 }
-                var songs = [JellyfinItem?](repeating: nil, count: slice.count)
+                var songs = [MusicItem?](repeating: nil, count: slice.count)
                 for await (offset, song) in group { songs[offset] = song }
                 return songs
             }
@@ -134,7 +134,7 @@ final class PlaylistImporter {
         do {
             answers = try await client.match(tracks)
         } catch {
-            if !JellyfinClient.isSidecarAbsent(error) {
+            if !MeleteClient.isSidecarAbsent(error) {
                 log.warning("Sidecar match failed, matching here instead: \(error.localizedDescription, privacy: .public)")
             }
             return nil
@@ -145,7 +145,7 @@ final class PlaylistImporter {
         // hundred at a time, which is one request per hundred hits rather than
         // several per track.
         let ids = answers.compactMap { $0?.jellyfinId }
-        var byId: [String: JellyfinItem] = [:]
+        var byId: [String: MusicItem] = [:]
         for start in stride(from: 0, to: ids.count, by: 100) {
             let slice = Array(ids[start..<min(start + 100, ids.count)])
             guard let items = try? await client.items(ids: slice) else { return nil }
@@ -162,7 +162,7 @@ final class PlaylistImporter {
     /// "(Remastered 2009)"; the matcher then judges what comes back. Never
     /// throws: a search that fails is a track reported missing, which is the
     /// honest answer from here.
-    private nonisolated static func lookUp(_ track: ImportedTrack, client: JellyfinClient) async -> JellyfinItem? {
+    private nonisolated static func lookUp(_ track: ImportedTrack, client: MeleteClient) async -> MusicItem? {
         // Asked in the title's own spelling first, then wider. See `searchTerms`.
         for term in TrackMatcher.searchTerms(for: track.title) {
             guard let items = try? await client.songs(searching: String(term.prefix(60)), limit: 40),

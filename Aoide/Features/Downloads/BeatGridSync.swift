@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -80,7 +80,7 @@ final class BeatGridSync {
         }
     }
 
-    private func fetch(_ ids: [String], client: JellyfinClient) async {
+    private func fetch(_ ids: [String], client: MeleteClient) async {
         defer { inFlight.subtract(ids) }
         do {
             let data = try await client.beatGrids(ids: ids)
@@ -94,7 +94,7 @@ final class BeatGridSync {
             for id in wire.pending ?? [] { pendingUntil[id] = retryAt }
             save()
         } catch {
-            if JellyfinClient.isSidecarAbsent(error) {
+            if MeleteClient.isSidecarAbsent(error) {
                 absentUntil = Date().addingTimeInterval(3_600)
                 log.info("This server has no beat grids; nothing will be mixed")
             } else {
@@ -322,7 +322,7 @@ final class ArrangementSync {
         }
     }
 
-    private func fetch(_ ids: [String], client: JellyfinClient) async {
+    private func fetch(_ ids: [String], client: MeleteClient) async {
         defer { inFlight.subtract(ids) }
         do {
             let data = try await client.arrangements(ids: ids)
@@ -334,7 +334,7 @@ final class ArrangementSync {
             for id in wire.pending ?? [] { pendingUntil[id] = retryAt }
             save()
         } catch {
-            if JellyfinClient.isSidecarAbsent(error) {
+            if MeleteClient.isSidecarAbsent(error) {
                 absentUntil = Date().addingTimeInterval(3_600)
                 log.info("This server has no arrangements; mixes will not see the music")
             } else {
