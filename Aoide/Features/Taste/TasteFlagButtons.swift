@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -7,7 +7,7 @@ import SwiftUI
 /// Worded as what they do rather than as flags: a menu that says "Not Interested"
 /// is understood; one that says "notInterested: true" is a database.
 struct TasteFlagButtons: View {
-    let track: JellyfinItem
+    let track: MusicItem
     @State private var taste = TasteStore.shared
 
     var body: some View {
@@ -32,7 +32,7 @@ struct TasteFlagButtons: View {
 /// The same two toggles for a track the player holds rather than a library
 /// row — the one playing, or one in the queue.
 ///
-/// The player's `Track` is not the library's `JellyfinItem`, and a flag is
+/// The player's `Track` is not the library's `MusicItem`, and a flag is
 /// written against the item (its content key is built from the item's own
 /// fields, the same way on every device). So the item is fetched when the
 /// button is pressed, the way CarPlay does it; the label reads the flag by id
@@ -78,7 +78,7 @@ struct TrackTasteButtons: View {
         }
     }
 
-    private func resolve() async -> JellyfinItem? {
+    private func resolve() async -> MusicItem? {
         guard let client = AppSession.shared.client else { return nil }
         return try? await client.items(ids: [track.id]).first
     }

@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// Your listening, as a story: this month, this year, or all of it.
@@ -31,7 +31,7 @@ struct ReplayView: View {
     @Environment(LibraryStore.self) private var store
     @State private var period: Period = .year
     @State private var recap: Recap?
-    @State private var topTracks: [JellyfinItem] = []
+    @State private var topTracks: [MusicItem] = []
     @State private var isLoading = true
 
     var body: some View {

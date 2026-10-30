@@ -30,12 +30,12 @@ enum CurationDatabase {
             shared = store
         } catch {
             // Left nil rather than trapping: a corrupt store must not stop the app
-            // playing music, which still works entirely from Jellyfin.
+            // playing music, which still works entirely from Melete.
             log.error("Couldn't open the curation store: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Hands the store to a Jellyfin account, erasing it first if it belonged to
+    /// Hands the store to a Melete account, erasing it first if it belonged to
     /// somebody else.
     ///
     /// Called before the session is announced as signed in, so nothing has read a row

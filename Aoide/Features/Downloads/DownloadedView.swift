@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -20,7 +20,7 @@ struct DownloadedView: View {
     @State private var index = DownloadIndex.shared
     @State private var isConfirmingClear = false
 
-    private var tracks: [JellyfinItem] {
+    private var tracks: [MusicItem] {
         index.tracks.filter { downloads.state(for: $0.id).isPresent }
     }
 
@@ -34,7 +34,7 @@ struct DownloadedView: View {
     }
 
     /// Songs downloaded on their own — in no album or playlist that was downloaded whole.
-    private var looseTracks: [JellyfinItem] {
+    private var looseTracks: [MusicItem] {
         let filed = Set(index.collections.flatMap(\.trackIds))
         return tracks
             .filter { !filed.contains($0.id) }
@@ -193,14 +193,14 @@ struct DownloadedView: View {
     }
 
     /// The collection's tracks that are on disk, in the collection's order.
-    private func tracks(in collection: DownloadedCollection) -> [JellyfinItem] {
+    private func tracks(in collection: DownloadedCollection) -> [MusicItem] {
         let byId = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return collection.trackIds.compactMap { byId[$0] }
     }
 
     /// The play source stays `.unknown` — "downloaded" is a property of the file, not
     /// somewhere the listener browsed, and there is no word for it in the history.
-    private func play(_ track: JellyfinItem, in queue: [JellyfinItem]) {
+    private func play(_ track: MusicItem, in queue: [MusicItem]) {
         guard let start = queue.firstIndex(where: { $0.id == track.id }) else { return }
         store.play(queue, startingAt: start)
     }
@@ -223,7 +223,7 @@ struct DownloadedCollectionView: View {
     @State private var index = DownloadIndex.shared
     @State private var isConfirmingRemove = false
 
-    private var tracks: [JellyfinItem] {
+    private var tracks: [MusicItem] {
         let byId = Dictionary(
             index.tracks.filter { downloads.state(for: $0.id).isPresent }.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -284,7 +284,7 @@ struct DownloadedCollectionView: View {
         }
     }
 
-    private func play(_ track: JellyfinItem) {
+    private func play(_ track: MusicItem) {
         let queue = tracks
         guard let start = queue.firstIndex(where: { $0.id == track.id }) else { return }
         store.play(queue, startingAt: start, from: collection.kind == .album ? .album : .playlist)
@@ -301,7 +301,7 @@ struct DownloadedCollectionView: View {
 final class DownloadIndex {
     static let shared = DownloadIndex()
 
-    private(set) var tracks: [JellyfinItem] = []
+    private(set) var tracks: [MusicItem] = []
     /// Albums and playlists downloaded whole. See ``DownloadedCollection``.
     private(set) var collections: [DownloadedCollection] = []
 
@@ -317,7 +317,7 @@ final class DownloadIndex {
 
     private init() { load() }
 
-    func record(_ items: [JellyfinItem]) {
+    func record(_ items: [MusicItem]) {
         var known = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
         for item in items where item.type == .audio {
             known[item.id] = item
@@ -362,11 +362,11 @@ final class DownloadIndex {
     }
 
     private func load() {
-        // A plain coder, not the package's Jellyfin one: this is our own round trip,
-        // so the keys are already exactly what `JellyfinItem` encodes. The Jellyfin
-        // decoder exists to absorb the server's PascalCase, which never applies here.
+        // A plain coder, not the package's Melete one: this is our own round trip,
+        // so the keys are already exactly what `MusicItem` encodes. The Melete
+        // decoder exists to absorb the server's snake_case, which never applies here.
         if let data = try? Data(contentsOf: url) {
-            tracks = (try? JSONDecoder().decode([JellyfinItem].self, from: data)) ?? []
+            tracks = (try? JSONDecoder().decode([MusicItem].self, from: data)) ?? []
         }
         if let data = try? Data(contentsOf: collectionsURL) {
             collections = (try? JSONDecoder().decode([DownloadedCollection].self, from: data)) ?? []

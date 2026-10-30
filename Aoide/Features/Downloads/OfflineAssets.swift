@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import UIKit
 
 /// Cover art and lyrics kept on disk for downloaded tracks.
@@ -43,8 +43,7 @@ final class OfflineAssets {
     nonisolated private static var lyricsDirectory: URL { root.appendingPathComponent("Lyrics", isDirectory: true) }
 
     /// Artwork is keyed by a hash of its URL rather than by track, because a
-    /// Jellyfin artwork URL already carries the image tag and the requested width —
-    /// so the same key means the same bytes, and an album's twelve tracks share one
+    /// Melete cover URL names the album — so the same key means the same bytes, and an album's twelve tracks share one
     /// file instead of storing the cover twelve times.
     nonisolated private static func artworkFile(for url: URL) -> URL {
         let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
@@ -76,20 +75,18 @@ final class OfflineAssets {
 
     /// Fetches everything a track needs to be usable with no connection.
     ///
-    /// Both sizes the app actually renders are stored: the row thumbnail and the
-    /// large Now Playing cover. Caching one and scaling would either blur the big
-    /// one or waste bandwidth on the small.
-    func cache(_ items: [JellyfinItem], client: JellyfinClient) async {
+    /// Melete serves a cover at its own size, so one file serves every size the
+    /// app draws it at.
+    func cache(_ items: [MusicItem], client: MeleteClient) async {
         for item in items where item.type == .audio {
-            for width in [Design.ArtworkWidth.thumbnail, Design.ArtworkWidth.player] {
-                guard let url = client.artworkURL(for: item, maxWidth: width) else { continue }
-                await storeArtwork(from: url)
+            if let url = client.artworkURL(for: item, maxWidth: Design.ArtworkWidth.player) {
+                await storeArtwork(from: url, authorization: client.authorization)
             }
             await storeLyrics(for: item.id, client: client)
         }
     }
 
-    private func storeArtwork(from url: URL) async {
+    private func storeArtwork(from url: URL, authorization: String?) async {
         let destination = Self.artworkFile(for: url)
         guard !FileManager.default.fileExists(atPath: destination.path) else { return }
 
@@ -102,15 +99,17 @@ final class OfflineAssets {
         artworkInFlight.insert(url)
         defer { artworkInFlight.remove(url) }
 
+        var request = URLRequest(url: url)
+        if let authorization { request.setValue(authorization, forHTTPHeaderField: "Authorization") }
         guard
-            let (data, response) = try? await URLSession.shared.data(from: url),
+            let (data, response) = try? await URLSession.shared.data(for: request),
             (response as? HTTPURLResponse)?.statusCode == 200,
             UIImage(data: data) != nil
         else { return }
         try? data.write(to: destination, options: .atomic)
     }
 
-    private func storeLyrics(for trackId: String, client: JellyfinClient) async {
+    private func storeLyrics(for trackId: String, client: MeleteClient) async {
         guard !Self.hasLyrics(for: trackId) else { return }
         guard let lyrics = try? await client.lyrics(forItem: trackId) else { return }
         guard let data = try? JSONEncoder().encode(lyrics) else { return }

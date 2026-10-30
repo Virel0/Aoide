@@ -13,7 +13,7 @@ struct DownloadedCollection: Codable, Identifiable, Hashable, Sendable {
         case playlist
     }
 
-    /// The Jellyfin album id, or the local playlist's id — whichever it came from.
+    /// The Melete album id, or the local playlist's id — whichever it came from.
     let id: String
     let kind: Kind
     var name: String

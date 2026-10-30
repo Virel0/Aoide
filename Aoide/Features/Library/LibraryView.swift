@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -102,8 +102,8 @@ struct LibraryView: View {
 
 /// Two columns of covers, used in Library and behind every "See All".
 struct AlbumGrid: View {
-    let albums: [JellyfinItem]
-    var onAppearItem: ((JellyfinItem) -> Void)?
+    let albums: [MusicItem]
+    var onAppearItem: ((MusicItem) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: Design.Spacing.card)]
 
@@ -275,7 +275,7 @@ struct SongsListView: View {
     /// The play source stays `.unknown`: every song in the library is in this list, so
     /// it says nothing about what the listener chose. Calling it `.album` because the
     /// songs happen to have albums would fill a recap with albums nobody opened.
-    private func play(_ song: JellyfinItem, in paged: PagedItems) {
+    private func play(_ song: MusicItem, in paged: PagedItems) {
         if InfinityQueue.shared.isOn {
             store.play([song])
             return
@@ -284,7 +284,7 @@ struct SongsListView: View {
         store.play(paged.items, startingAt: index)
     }
 
-    private func songRow(_ song: JellyfinItem, in paged: PagedItems) -> some View {
+    private func songRow(_ song: MusicItem, in paged: PagedItems) -> some View {
         SongRow(song: song)
             .contentShape(.rect)
             .onTapGesture { play(song, in: paged) }
@@ -299,7 +299,7 @@ struct SongsListView: View {
 /// A song row carrying its own artwork — needed anywhere songs from different
 /// albums are mixed together.
 struct SongRow: View {
-    let song: JellyfinItem
+    let song: MusicItem
 
     @Environment(LibraryStore.self) private var store
     @State private var engine = PlaybackEngine.shared

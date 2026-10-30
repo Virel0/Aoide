@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -52,7 +52,7 @@ final class SoundBoundsSync {
         }
     }
 
-    private func fetch(_ ids: [String], client: JellyfinClient) async {
+    private func fetch(_ ids: [String], client: MeleteClient) async {
         defer { inFlight.subtract(ids) }
         do {
             let data = try await client.soundBounds(ids: ids)
@@ -64,7 +64,7 @@ final class SoundBoundsSync {
             let retry = Date().addingTimeInterval(60)
             for id in wire.pending ?? [] { pendingUntil[id] = retry }
         } catch {
-            if JellyfinClient.isSidecarAbsent(error) {
+            if MeleteClient.isSidecarAbsent(error) {
                 // Not built yet, or not this version. Asked again in ten minutes.
                 absentUntil = Date().addingTimeInterval(600)
             } else {
@@ -101,7 +101,7 @@ final class SoundBoundsSync {
             log.info("Sent \(batch.count, privacy: .public) sound measurements to the server")
         } catch {
             // Best effort; the server can always measure for itself.
-            if JellyfinClient.isSidecarAbsent(error) { absentUntil = Date().addingTimeInterval(600) }
+            if MeleteClient.isSidecarAbsent(error) { absentUntil = Date().addingTimeInterval(600) }
         }
         if !toUpload.isEmpty { await flushUploads() }
     }

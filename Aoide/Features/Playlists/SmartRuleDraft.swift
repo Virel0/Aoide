@@ -125,8 +125,7 @@ enum SmartField {
     /// The fields the editor offers.
     ///
     /// `liked` is in the rule model and is deliberately **not** here. Nothing in this app
-    /// writes the `like` table yet — the heart on an album page is Jellyfin's favourite
-    /// flag, which lives on the server — so every rule about it would match either
+    /// writes the `like` table yet — a like is Melete's, kept on the server — so every rule about it would match either
     /// nothing or everything, and an always-empty playlist is indistinguishable from a
     /// broken one. It comes back the day there is a local like to read.
     static let all: [SmartRule.Field] = [

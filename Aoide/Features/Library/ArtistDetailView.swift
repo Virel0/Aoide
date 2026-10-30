@@ -1,16 +1,16 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// An artist page: hero artwork, transport, then their records.
 ///
-/// Apple Music separates Albums / Singles & EPs / Appears On. Jellyfin doesn't mark
+/// Apple Music separates Albums / Singles & EPs / Appears On. Melete doesn't mark
 /// release type, so rather than invent a distinction we'd get wrong, this splits on
 /// something the data actually supports — track count — and labels it honestly.
 struct ArtistDetailView: View {
-    let artist: JellyfinItem
+    let artist: MusicItem
 
     @Environment(LibraryStore.self) private var store
-    @State private var albums: [JellyfinItem] = []
+    @State private var albums: [MusicItem] = []
     /// How much of this artist the listener actually finishes. Nil until
     /// there is enough history to say anything honest.
     @State private var finishRate: Double?
@@ -18,8 +18,8 @@ struct ArtistDetailView: View {
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
 
-    private var fullLength: [JellyfinItem] { albums.filter { ($0.childCount ?? 99) > 3 } }
-    private var shortReleases: [JellyfinItem] { albums.filter { ($0.childCount ?? 99) <= 3 } }
+    private var fullLength: [MusicItem] { albums.filter { ($0.childCount ?? 99) > 3 } }
+    private var shortReleases: [MusicItem] { albums.filter { ($0.childCount ?? 99) <= 3 } }
 
     var body: some View {
         ScrollView {
@@ -113,7 +113,7 @@ struct ArtistDetailView: View {
         .animation(.easeOut(duration: 0.45), value: palette)
     }
 
-    private func section(_ title: String, _ items: [JellyfinItem]) -> some View {
+    private func section(_ title: String, _ items: [MusicItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             PlainShelfHeader(title: title).pageMargin()
             AlbumGrid(albums: items).pageMargin()
@@ -141,7 +141,7 @@ struct ArtistDetailView: View {
     }
 
     private func playEverything(shuffled: Bool) async {
-        var everything: [JellyfinItem] = []
+        var everything: [MusicItem] = []
         for album in albums {
             guard let tracks = try? await store.tracks(inAlbum: album.id) else { continue }
             everything += tracks
@@ -156,7 +156,7 @@ struct ArtistDetailView: View {
         do {
             albums = try await store.albums(byArtist: artist.id)
         } catch {
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
     }

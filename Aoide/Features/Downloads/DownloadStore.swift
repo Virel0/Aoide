@@ -1,5 +1,5 @@
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -34,7 +34,7 @@ final class DownloadStore: NSObject {
         }
     }
 
-    /// Keyed by Jellyfin item id.
+    /// Keyed by Melete track id.
     private(set) var states: [String: State] = [:]
 
     /// Where each downloaded track actually lives, including its extension.
@@ -119,8 +119,8 @@ final class DownloadStore: NSObject {
 
     /// Works out the container from what the server actually sent.
     ///
-    /// Guessing from the request would be wrong — `/Audio/{id}/universal` decides
-    /// server-side whether to hand back the original file or a transcode.
+    /// Guessing from the request would be wrong — the link says nothing of what it
+    /// serves.
     nonisolated static func fileExtension(for response: URLResponse?) -> String {
         if let suggested = response?.suggestedFilename {
             let ext = (suggested as NSString).pathExtension
@@ -146,28 +146,31 @@ final class DownloadStore: NSObject {
 
     // MARK: - Starting and stopping
 
-    func download(_ items: [JellyfinItem], client: JellyfinClient) {
+    func download(_ items: [MusicItem], client: MeleteClient) {
         for item in items where item.type == .audio {
             download(item, client: client)
         }
     }
 
-    func download(_ item: JellyfinItem, client: JellyfinClient) {
+    func download(_ item: MusicItem, client: MeleteClient) {
         guard item.type == .audio else { return }
         guard state(for: item.id) == .absent || isFailed(item.id) else { return }
 
-        // Always lossless for a download. A bitrate ceiling would make the server
-        // transcode, so the file kept forever would be worse than the source — and
-        // it would arrive with a gap between tracks that no later fix can remove.
-        guard let url = try? client.streamURL(for: item.id, quality: .lossless) else {
-            states[item.id] = .failed("Couldn't work out where to fetch this from.")
-            return
-        }
-
-        let task = session.downloadTask(with: url)
-        trackForTask[task.taskIdentifier] = item.id
+        // Always the file as it is for a download. A conversion would leave the file
+        // kept forever worse than the source — and with a gap between tracks that no
+        // later fix can remove.
         states[item.id] = .waiting
-        task.resume()
+        Task {
+            // The link is asked for now, not when queued: it lasts a day, and the
+            // background session may start the transfer much later than this.
+            guard let link = try? await client.streamLink(for: item.id, quality: .lossless) else {
+                states[item.id] = .failed("Couldn't get this from your server.")
+                return
+            }
+            let task = session.downloadTask(with: link.url)
+            trackForTask[task.taskIdentifier] = item.id
+            task.resume()
+        }
 
         // Cover and lyrics ride along with the audio. They are fetched on a plain
         // session rather than the background one: both are small enough to finish

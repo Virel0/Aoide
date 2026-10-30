@@ -1,9 +1,9 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import os
 
-/// Turns Jellyfin items into local track-cache rows, and fills that cache from the
+/// Turns Melete tracks into local track-cache rows, and fills that cache from the
 /// library.
 ///
 /// Until this existed the cache filled itself from playback alone — the recorder writes
@@ -17,13 +17,13 @@ enum TrackCatalogue {
     /// logger — it is isolated to the main actor and the tidy-up deliberately is not.
     static let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
 
-    /// The single definition of what a `TrackRef` for a Jellyfin item looks like.
+    /// The single definition of what a `TrackRef` for a Melete track looks like.
     ///
     /// Shared with `PlaybackContext` rather than written twice, because the field that
     /// matters most here is the content key: it is what a playlist entry survives a
     /// library rescan by, and two derivations that disagree by one character mean an
     /// entry that can never be relinked.
-    static func trackRef(for item: JellyfinItem, at now: Millis) -> TrackRef {
+    static func trackRef(for item: MusicItem, at now: Millis) -> TrackRef {
         // The *track* artist first, not the album artist. Recaps group plays by this
         // column, and crediting every song on a compilation to "Various Artists" would
         // make it the loudest entry of the year while saying nothing about anyone's
@@ -31,9 +31,7 @@ enum TrackCatalogue {
         // reads.
         let artist = item.artists.first ?? item.albumArtist ?? "Unknown Artist"
         let album = item.album ?? ""
-        // Jellyfin measures in 100-nanosecond ticks, so this divides exactly rather than
-        // round-tripping through `Duration` and its floating-point seconds.
-        let durationMs = item.runTimeTicks.map { Int($0 / 10_000) }
+        let durationMs = item.durationMs
 
         return TrackRef(
             jellyfinId: item.id,
@@ -49,7 +47,7 @@ enum TrackCatalogue {
             albumArtist: item.albumArtist,
             albumId: item.albumId,
             durationMs: durationMs,
-            year: item.productionYear,
+            year: item.year,
             genres: item.genres,
             lastSeenAt: now
         )
@@ -61,7 +59,7 @@ enum TrackCatalogue {
     /// `nonisolated` and taking the store as a parameter so it can be called from a
     /// detached task: this writes to SQLite, which blocks the thread it runs on, and the
     /// main actor is where the queue and every screen live.
-    static func remember(_ items: [JellyfinItem], in store: CurationStore) {
+    static func remember(_ items: [MusicItem], in store: CurationStore) {
         let now = Date().millis
         let rows = items.filter { $0.type == .audio }.map { trackRef(for: $0, at: now) }
         guard !rows.isEmpty else { return }
@@ -87,9 +85,7 @@ final class SongIndexer {
 
     enum State: Equatable {
         case idle
-        /// `indexed` counts songs written so far. There is no total: Jellyfin reports one
-        /// per library and the pass spans all of them, so a percentage would jump
-        /// backwards at each library boundary. A rising count never lies.
+        /// `indexed` counts songs written so far.
         case running(indexed: Int)
         case finished(indexed: Int)
         case failed(String)
@@ -103,7 +99,7 @@ final class SongIndexer {
     }
 
     private let log = Logger(subsystem: AppIdentity.bundle, category: "curation")
-    /// Jellyfin pages happily at this size, and it keeps each write transaction to
+    /// Melete's largest page, and it keeps each write transaction to
     /// something that finishes between two frames of the progress row.
     private let pageSize = 500
 
@@ -160,19 +156,12 @@ final class SongIndexer {
         // below. Reading the clock afterwards would leave the whole pass on the wrong
         // side of its own cutoff.
         let startedAt = Date().millis
-        // An empty scope means the libraries couldn't be resolved; the unscoped query is
-        // what every other screen falls back to, so this matches rather than giving up.
-        let ids = await library.musicLibraryScope()
-        let scope: [String?] = ids.isEmpty ? [nil] : ids.map { $0 }
-
-        for parentId in scope {
-            guard await indexLibrary(parentId, from: library, into: store, indexed: &indexed) else { return }
-        }
+        guard await indexLibrary(from: library, into: store, indexed: &indexed) else { return }
 
         log.info("Indexed \(indexed, privacy: .public) songs for smart playlists")
         state = .finished(indexed: indexed)
 
-        // Only a pass that walked every library to the end gets to say what the cache
+        // Only a pass that walked the library to the end gets to say what the cache
         // should contain, which is why neither of these runs on the cancelled or failed
         // paths above — they return before here.
         //
@@ -185,11 +174,10 @@ final class SongIndexer {
         await Task.detached { SongIndexer.finishIndex(in: store, startedAt: startedAt) }.value
     }
 
-    /// Indexes every song in one library, page by page, adding to `indexed` as it
-    /// goes. Returns false when the pass has to stop — cancelled or failed — with
-    /// `state` already saying which.
+    /// Indexes every song, page by page, adding to `indexed` as it goes. Returns
+    /// false when the pass has to stop — cancelled or failed — with `state` already
+    /// saying which.
     private func indexLibrary(
-        _ parentId: String?,
         from library: LibraryStore,
         into store: CurationStore,
         indexed: inout Int
@@ -197,11 +185,7 @@ final class SongIndexer {
         var startIndex = 0
         while true {
             do {
-                let page = try await library.songsBatch(
-                    parentId: parentId,
-                    startIndex: startIndex,
-                    limit: pageSize
-                )
+                let page = try await library.songsBatch(startIndex: startIndex, limit: pageSize)
                 guard !page.items.isEmpty else { break }
 
                 // Detached: the write blocks its thread, and this loop is running on
@@ -227,7 +211,7 @@ final class SongIndexer {
             } catch {
                 log.error("Song index failed at \(startIndex, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 state = .failed(
-                    (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+                    (error as? MeleteError)?.errorDescription ?? error.localizedDescription
                 )
                 return false
             }
@@ -247,7 +231,7 @@ final class SongIndexer {
             let removed = try store.pruneTracks(notSeenSince: startedAt)
             if removed > 0 { TrackCatalogue.log.info("Pruned \(removed, privacy: .public) tracks the server no longer lists") }
 
-            // The documented moment to run this. A Jellyfin rescan mints new item
+            // The documented moment to run this. A rescan can mint new track
             // ids for files that moved, which leaves every playlist entry pointing
             // at nothing; the cache has just been rebuilt from the ids that exist
             // *now*, so this is when those entries can be matched back by

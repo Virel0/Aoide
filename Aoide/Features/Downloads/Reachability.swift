@@ -4,7 +4,7 @@ import Observation
 
 /// Whether the phone has a usable network path.
 ///
-/// This answers "is there any connection at all", not "can we reach the Jellyfin
+/// This answers "is there any connection at all", not "can we reach the Melete
 /// server" — a captive hotel wifi satisfies it and the server still won't answer.
 /// That's the right question for choosing a launch screen: being on a network that
 /// happens to be useless is rare, whereas being on a plane is exactly the case this

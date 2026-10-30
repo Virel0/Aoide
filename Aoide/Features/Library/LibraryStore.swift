@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -35,94 +35,39 @@ final class LibraryStore {
         }
     }
 
-    private(set) var albums: Loadable<[JellyfinItem]> = .idle
-    private(set) var artists: Loadable<[JellyfinItem]> = .idle
-    private(set) var playlists: Loadable<[JellyfinItem]> = .idle
-    private(set) var recentlyAdded: Loadable<[JellyfinItem]> = .idle
+    private(set) var albums: Loadable<[MusicItem]> = .idle
+    private(set) var artists: Loadable<[MusicItem]> = .idle
+    private(set) var recentlyAdded: Loadable<[MusicItem]> = .idle
 
     // Home shelves. Each is independent so one failing server query leaves the
     // rest of the page intact rather than blanking it.
-    private(set) var recentlyPlayed: Loadable<[JellyfinItem]> = .idle
-    private(set) var mostPlayed: Loadable<[JellyfinItem]> = .idle
-    private(set) var favorites: Loadable<[JellyfinItem]> = .idle
-    private(set) var rediscover: Loadable<[JellyfinItem]> = .idle
+    private(set) var recentlyPlayed: Loadable<[MusicItem]> = .idle
+    private(set) var mostPlayed: Loadable<[MusicItem]> = .idle
+    /// The albums of the songs the listener likes: Melete keeps likes on songs.
+    private(set) var favorites: Loadable<[MusicItem]> = .idle
 
     /// Album tracks, keyed by album id, so reopening an album is instant.
-    private var trackCache: [String: [JellyfinItem]] = [:]
+    private var trackCache: [String: [MusicItem]] = [:]
 
-    private let client: JellyfinClient
+    private let client: MeleteClient
     private let log = Logger(subsystem: AppIdentity.bundle, category: "library")
 
-    /// Ids of the user's music libraries, resolved once. `nil` until then.
-    private var musicLibraryIds: [String]?
+    /// Melete's Home view while it is being fetched, so the three shelves it fills
+    /// ask for it once.
+    private var homeFetch: Task<MusicHome, any Error>?
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
-    }
-
-    // MARK: - Library scope
-
-    /// Which libraries to search.
-    ///
-    /// Without this every query ran `recursive: true` with no parent, i.e. across
-    /// the entire server. That matters beyond wasted work: a Jellyfin audiobook
-    /// library stores its chapters as `Audio` items, so an unscoped track query
-    /// returns audiobook chapters alongside music.
-    private func libraryScope() async -> [String] {
-        if let musicLibraryIds { return musicLibraryIds }
-        do {
-            let ids = try await client.musicLibraries().map(\.id)
-            musicLibraryIds = ids
-            log.info("Scoped to \(ids.count, privacy: .public) music librar\(ids.count == 1 ? "y" : "ies", privacy: .public)")
-            return ids
-        } catch {
-            // Deliberately NOT caching the failure. Assigning `[]` here looks
-            // harmless but is the same non-nil sentinel a successful empty result
-            // produces, so the fast path above would return it forever — silently
-            // un-scoping every query for the rest of the session and letting
-            // audiobook chapters back into Songs and Search.
-            log.error("Could not resolve music libraries, querying unscoped once: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }
-
-    /// Runs a query once per music library and merges the results, because
-    /// Jellyfin's `parentId` accepts a single id. With one music library — the
-    /// common case — this is exactly one request.
-    private func acrossLibraries<T: Sendable>(
-        _ body: @Sendable @escaping (String?) async throws -> [T]
-    ) async throws -> [T] {
-        let ids = await libraryScope()
-        guard !ids.isEmpty else { return try await body(nil) }
-        guard ids.count > 1 else { return try await body(ids[0]) }
-
-        return try await withThrowingTaskGroup(of: [T].self) { group in
-            for id in ids {
-                group.addTask { try await body(id) }
-            }
-            var merged: [T] = []
-            for try await chunk in group { merged.append(contentsOf: chunk) }
-            return merged
-        }
     }
 
     // MARK: - Loading
 
     func loadAlbumsIfNeeded() async { await fill(\.albums, with: fetchAlbums) }
     func loadArtistsIfNeeded() async { await fill(\.artists, with: fetchArtists) }
-    func loadPlaylistsIfNeeded() async { await fill(\.playlists, with: fetchPlaylists) }
     func loadRecentlyAddedIfNeeded() async { await fill(\.recentlyAdded, with: fetchRecentlyAdded) }
     func loadRecentlyPlayedIfNeeded() async { await fill(\.recentlyPlayed, with: fetchRecentlyPlayed) }
     func loadMostPlayedIfNeeded() async { await fill(\.mostPlayed, with: fetchMostPlayed) }
     func loadFavoritesIfNeeded() async { await fill(\.favorites, with: fetchFavorites) }
-    func loadRediscoverIfNeeded() async { await fill(\.rediscover, with: fetchRediscover) }
-
-    /// Forces a retry from a `.failed` state, which `loadPlaylistsIfNeeded` will
-    /// not do — its `.idle` guard is what made the Try Again button a no-op.
-    func reloadPlaylists() async {
-        playlists = .idle
-        await loadPlaylistsIfNeeded()
-    }
 
     /// Loads the Home shelves concurrently.
     ///
@@ -136,7 +81,6 @@ final class LibraryStore {
             group.addTask { await self.loadRecentlyPlayedIfNeeded() }
             group.addTask { await self.loadMostPlayedIfNeeded() }
             group.addTask { await self.loadFavoritesIfNeeded() }
-            group.addTask { await self.loadRediscoverIfNeeded() }
         }
     }
 
@@ -178,12 +122,10 @@ final class LibraryStore {
         let refreshers: [@MainActor () async -> Void] = [
             { await self.replace(\.albums, with: self.fetchAlbums) },
             { await self.replace(\.artists, with: self.fetchArtists) },
-            { await self.replace(\.playlists, with: self.fetchPlaylists) },
             { await self.replace(\.recentlyAdded, with: self.fetchRecentlyAdded) },
             { await self.replace(\.recentlyPlayed, with: self.fetchRecentlyPlayed) },
             { await self.replace(\.mostPlayed, with: self.fetchMostPlayed) },
             { await self.replace(\.favorites, with: self.fetchFavorites) },
-            { await self.replace(\.rediscover, with: self.fetchRediscover) },
         ]
         await withTaskGroup(of: Void.self) { group in
             for refresh in refreshers {
@@ -203,84 +145,76 @@ final class LibraryStore {
 
     // MARK: - Queries behind the sections
 
-    private func fetchAlbums() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.albums(parentId: parentId, sort: .name).items
-        }
+    private func fetchAlbums() async throws -> [MusicItem] {
+        try await client.albums(sort: .name).items
     }
 
-    private func fetchArtists() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.albumArtists(parentId: parentId).items
-        }
+    private func fetchArtists() async throws -> [MusicItem] {
+        try await client.albumArtists().items
     }
 
-    private func fetchPlaylists() async throws -> [JellyfinItem] {
-        try await client.playlists()
+    /// Melete's Home view, asked for once however many shelves want it.
+    private func home() async throws -> MusicHome {
+        if let homeFetch { return try await homeFetch.value }
+        let fetch = Task { [client] in try await client.home() }
+        homeFetch = fetch
+        defer { homeFetch = nil }
+        return try await fetch.value
     }
 
-    private func fetchRecentlyAdded() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.recentlyAdded(parentId: parentId, limit: 20)
-        }
+    private func fetchRecentlyAdded() async throws -> [MusicItem] {
+        try await home().recentlyAdded
     }
 
-    private func fetchRecentlyPlayed() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.recentlyPlayedAlbums(parentId: parentId, limit: 20)
-        }
+    private func fetchRecentlyPlayed() async throws -> [MusicItem] {
+        try await home().recentlyPlayed
     }
 
-    private func fetchMostPlayed() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.mostPlayedAlbums(parentId: parentId, limit: 20)
-        }
+    /// The albums of the songs played most in the last 30 days, on every device.
+    private func fetchMostPlayed() async throws -> [MusicItem] {
+        Self.albums(of: try await home().mostPlayed.map(\.track), limit: 20)
     }
 
-    private func fetchFavorites() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.favoriteAlbums(parentId: parentId, limit: 20)
-        }
+    private func fetchFavorites() async throws -> [MusicItem] {
+        Self.albums(of: try await client.likedTracks(), limit: 20)
     }
 
-    private func fetchRediscover() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.notPlayedRecently(parentId: parentId, limit: 20)
+    /// The albums `tracks` are on, each once, in the order first met.
+    static func albums(of tracks: [MusicItem], limit: Int) -> [MusicItem] {
+        var seen = Set<String>()
+        return tracks.compactMap { track -> MusicItem? in
+            guard let albumId = track.albumId, seen.insert(albumId).inserted else { return nil }
+            return MusicItem(
+                id: albumId, name: track.album ?? track.name, type: .musicAlbum,
+                albumId: albumId, albumArtist: track.albumArtist, hasCover: track.hasCover
+            )
         }
+        .prefix(limit)
+        .map { $0 }
     }
 
     /// Pull to refresh — drops every cache and reloads what's on screen.
     func refresh() async {
         lastRefresh = Date()
         trackCache.removeAll()
-        musicLibraryIds = nil
         albums = .idle
         artists = .idle
-        playlists = .idle
         recentlyAdded = .idle
         recentlyPlayed = .idle
         mostPlayed = .idle
         favorites = .idle
-        rediscover = .idle
         await loadHomeIfNeeded()
         await loadAlbumsIfNeeded()
     }
 
-    func tracks(inAlbum albumId: String) async throws -> [JellyfinItem] {
+    func tracks(inAlbum albumId: String) async throws -> [MusicItem] {
         if let cached = trackCache[albumId] { return cached }
         let tracks = try await client.tracks(inAlbum: albumId)
         trackCache[albumId] = tracks
         return tracks
     }
 
-    func tracks(inPlaylist playlistId: String) async throws -> [JellyfinItem] {
-        if let cached = trackCache[playlistId] { return cached }
-        let tracks = try await client.tracks(inPlaylist: playlistId)
-        trackCache[playlistId] = tracks
-        return tracks
-    }
-
-    func albums(byArtist artistId: String) async throws -> [JellyfinItem] {
+    func albums(byArtist artistId: String) async throws -> [MusicItem] {
         try await client.albums(byArtist: artistId)
     }
 
@@ -292,75 +226,38 @@ final class LibraryStore {
     func albumsPage(sort: ItemSort) -> PagedItems {
         PagedItems { [weak self] startIndex, limit in
             guard let self else { return ItemsResponse.empty }
-            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
-                try await self.client.albums(
-                    parentId: parentId,
-                    sort: sort,
-                    direction: sort.naturalDirection,
-                    startIndex: start,
-                    limit: count
-                )
-            }
+            return try await self.client.albums(
+                sort: sort,
+                direction: sort.naturalDirection,
+                startIndex: startIndex,
+                limit: limit
+            )
         }
     }
 
     func artistsPage() -> PagedItems {
         PagedItems { [weak self] startIndex, limit in
             guard let self else { return ItemsResponse.empty }
-            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
-                try await self.client.albumArtists(parentId: parentId, startIndex: start, limit: count)
-            }
+            return try await self.client.albumArtists(startIndex: startIndex, limit: limit)
         }
     }
 
     func songsPage(sort: ItemSort) -> PagedItems {
         PagedItems { [weak self] startIndex, limit in
             guard let self else { return ItemsResponse.empty }
-            return try await self.acrossLibrariesPaged(startIndex: startIndex, limit: limit) { parentId, start, count in
-                try await self.client.songs(
-                    parentId: parentId,
-                    sort: sort,
-                    direction: sort.naturalDirection,
-                    startIndex: start,
-                    limit: count
-                )
-            }
+            return try await self.client.songs(
+                sort: sort,
+                direction: sort.naturalDirection,
+                startIndex: startIndex,
+                limit: limit
+            )
         }
     }
 
-    /// The music libraries, for callers that have to walk them one at a time.
-    ///
-    /// Exposed only for the song index, which is the one pass that genuinely must cover
-    /// every library: `acrossLibrariesPaged` below pages the first and accepts it, which
-    /// is right for a browsable list and would silently index only part of the music on
-    /// a server with two.
-    func musicLibraryScope() async -> [String] {
-        await libraryScope()
-    }
-
-    /// One page of songs from one library, for the index. Sorted by name only so the
-    /// paging is stable from the first page to the last — `.random` would return a
-    /// different permutation per request and index some tracks twice and others never.
-    func songsBatch(parentId: String?, startIndex: Int, limit: Int) async throws -> ItemsResponse {
-        try await client.songs(
-            parentId: parentId,
-            sort: .name,
-            direction: .ascending,
-            startIndex: startIndex,
-            limit: limit
-        )
-    }
-
-    /// Paging across several music libraries can't be merged correctly — two
-    /// independently-paged sorted lists don't interleave — so with more than one
-    /// library we page the first and accept it. In practice a music server has one.
-    private func acrossLibrariesPaged(
-        startIndex: Int,
-        limit: Int,
-        _ body: @escaping (String?, Int, Int) async throws -> ItemsResponse
-    ) async throws -> ItemsResponse {
-        let ids = await libraryScope()
-        return try await body(ids.first, startIndex, limit)
+    /// One page of songs for the index, by title, so the paging is stable from the
+    /// first page to the last.
+    func songsBatch(startIndex: Int, limit: Int) async throws -> ItemsResponse {
+        try await client.songs(sort: .name, direction: .ascending, startIndex: startIndex, limit: limit)
     }
 
     // MARK: - Downloads
@@ -382,7 +279,7 @@ final class LibraryStore {
         TransientTracks.shared.prepare(([engineQueue.current].compactMap { $0 } + engineQueue.upNext).map(\.track))
     }
 
-    func download(_ items: [JellyfinItem], in collection: DownloadedCollection? = nil) {
+    func download(_ items: [MusicItem], in collection: DownloadedCollection? = nil) {
         // Written before the transfer starts, not after: offline, the server cannot
         // be asked what a downloaded file contains, so the metadata must already be
         // on disk or the Downloaded screen is a list of identifiers.
@@ -393,7 +290,7 @@ final class LibraryStore {
 
     // MARK: - Playback shortcuts
 
-    func playAlbum(_ album: JellyfinItem, shuffled: Bool = false) async {
+    func playAlbum(_ album: MusicItem, shuffled: Bool = false) async {
         guard let tracks = try? await tracks(inAlbum: album.id) else { return }
         // `.album` whether or not it was shuffled. Shuffle is how the album is being
         // played, not where it came from, and `.shuffle` is reserved for a queue the
@@ -406,26 +303,19 @@ final class LibraryStore {
         ))
     }
 
-    func queueAlbum(_ album: JellyfinItem, next: Bool) async {
+    func queueAlbum(_ album: MusicItem, next: Bool) async {
         guard let tracks = try? await tracks(inAlbum: album.id) else { return }
         if next { playNext(tracks, from: .album) } else { addToQueue(tracks, from: .album) }
     }
 
     /// Shuffle the whole library.
     ///
-    /// Asks the server for a random page rather than fetching everything and
+    /// Samples the library at random places rather than fetching everything and
     /// shuffling locally — on a large library that would be a very long wait for
     /// what is meant to be an instant action.
     func shuffleEverything(limit: Int = 300) async {
         do {
-            let tracks = try await acrossLibraries { parentId in
-                try await self.client.songs(
-                    parentId: parentId,
-                    sort: .random,
-                    startIndex: 0,
-                    limit: limit
-                ).items
-            }
+            let tracks = try await client.randomSongs(count: limit)
             let wanted = await TasteStore.shared.withoutNotInterested(tracks)
             guard !wanted.isEmpty else { return }
             // The one true `.shuffle`: a queue with no album, playlist or search behind
@@ -436,15 +326,16 @@ final class LibraryStore {
         }
     }
 
-    /// Jellyfin's Instant Mix — a station seeded from any track, album or artist.
-    /// The closest thing a personal library has to Apple Music's radio.
-    func startStation(seededBy item: JellyfinItem) async {
-        await startStation(seededById: item.id, named: item.name, artworkItemId: item.id)
+    /// A station seeded from any track, album or artist (see ``Station``). The
+    /// closest thing a personal library has to Apple Music's radio.
+    func startStation(seededBy item: MusicItem) async {
+        await startStation(seededById: Station.seed(for: item), named: item.name, artworkItemId: item.coverAlbumId)
     }
 
+    /// `id` is a station's seed as ``Station/seed(for:)`` writes it.
     func startStation(seededById id: String, named name: String, artworkItemId: String?) async {
         do {
-            let mix = await TasteStore.shared.withoutNotInterested(try await client.instantMix(seededBy: id))
+            let mix = try await Station.tracks(seed: id, client: client)
             // Left `.unknown`: a station is none of the sources the schema has a word
             // for, and filing it under the nearest one would put songs nobody chose
             // into the recap's "you played this album a lot".
@@ -460,27 +351,26 @@ final class LibraryStore {
         RecentContextStore.shared.remember(context)
     }
 
-    func items(ids: [String]) async throws -> [JellyfinItem] {
+    func items(ids: [String]) async throws -> [MusicItem] {
         try await client.items(ids: ids)
     }
 
-    /// Flips the favourite flag on the server. Favourites are the one piece of
-    /// album-level user data Jellyfin genuinely keeps, because the user sets it
-    /// rather than it being derived from playback.
-    /// `desired` is the intent, not a derivation. Deriving it from `item.userData`
+    /// Likes or unlikes a song in Melete, which writes it into the sync log as a
+    /// device of this listener's would; the local store sees it on its next pull.
+    /// `desired` is the intent, not a derivation. Deriving it from `item.liked`
     /// read a snapshot captured when the list was fetched, so a second tap sent the
-    /// same value again and un-favouriting was impossible.
+    /// same value again and un-liking was impossible.
     @discardableResult
     func toggleFavorite(
-        _ item: JellyfinItem,
+        _ item: MusicItem,
         to desired: Bool? = nil
     ) async -> Bool {
-        let target = desired ?? !(item.userData?.isFavorite ?? false)
+        let target = desired ?? !item.liked
         do {
-            let updated = try await client.setFavorite(target, itemId: item.id)
+            try await client.setLiked(target, trackId: item.id)
             // The shelf is now stale; let it reload rather than patching it.
             favorites = .idle
-            return updated.isFavorite
+            return target
         } catch {
             log.error("Could not set favourite: \(error.localizedDescription, privacy: .public)")
             // Report the unchanged value so the glyph snaps back rather than lying.
@@ -488,22 +378,16 @@ final class LibraryStore {
         }
     }
 
-    func search(_ term: String) async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.search(term, parentId: parentId)
-        }
+    func search(_ term: String) async throws -> [MusicItem] {
+        try await client.search(term)
     }
 
-    func musicGenres() async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.musicGenres(parentId: parentId)
-        }
+    func musicGenres() async throws -> [MusicItem] {
+        try await client.musicGenres()
     }
 
-    func albums(inGenre genreId: String) async throws -> [JellyfinItem] {
-        try await acrossLibraries { parentId in
-            try await self.client.albums(inGenre: genreId, parentId: parentId)
-        }
+    func albums(inGenre genre: String) async throws -> [MusicItem] {
+        try await client.albums(inGenre: genre)
     }
 
     /// The signed-in user and server, for Settings.
@@ -511,45 +395,52 @@ final class LibraryStore {
         (client.credentials?.username ?? "—", client.serverURL.host() ?? client.serverURL.absoluteString)
     }
 
-    /// One item by id. Spotlight hands back an identifier and nothing else.
-    func item(id: String) async throws -> JellyfinItem {
-        try await client.item(id: id)
+    /// What a Spotlight entry names: `album:…` or `artist:…`, as the indexer
+    /// writes them. An entry from before Melete names neither, and opens nothing.
+    func spotlightItem(id: String) async throws -> MusicItem? {
+        let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        switch parts[0] {
+        case "album": return try await client.album(id: parts[1]).album
+        case "artist": return try await client.artist(id: parts[1])
+        default: return nil
+        }
     }
 
     /// Songs matching a structured query, as built by smart search.
-    func songs(matching query: MusicQuery) async throws -> [JellyfinItem] {
+    func songs(matching query: MusicQuery) async throws -> [MusicItem] {
         try await client.songs(matching: query)
     }
 
-    /// Artwork for an item we hold only the id of — a playlist cover chosen from the
-    /// curation store, where nothing but ids are kept.
-    func artworkURL(itemId: String, maxWidth: Int) -> URL? {
-        client.artworkURL(itemId: itemId, tag: nil, maxWidth: maxWidth)
+    /// The cover of an album we hold only the id of — a playlist's or a resume
+    /// tile's, where nothing but ids are kept.
+    func artworkURL(itemId albumId: String, maxWidth: Int) -> URL? {
+        client.artworkURL(itemId: albumId)
     }
 
-    func artworkURL(for item: JellyfinItem, width: Int) -> URL? {
+    func artworkURL(for item: MusicItem, width: Int) -> URL? {
         client.artworkURL(for: item, maxWidth: width)
     }
 
     // MARK: - Playback
 
-    /// Turns Jellyfin items into tracks and hands them to the engine.
+    /// Turns Melete's tracks into the player's and hands them to the engine.
     ///
     /// `source` names where the listener started this from, and is written onto every
     /// play event the queue produces. It defaults to `.unknown` rather than to a
     /// plausible value: a recap built on a guess is wrong in a way nobody can spot.
     func play(
-        _ items: [JellyfinItem],
+        _ items: [MusicItem],
         startingAt index: Int = 0,
         shuffled: Bool = false,
         from source: PlaySource = .unknown
     ) {
         // `index` addresses `items`, but the bridge drops anything that isn't
-        // playable — a Jellyfin playlist can hold non-audio entries. Clamping the
+        // playable — a list can hold non-audio entries. Clamping the
         // old index was not enough: one dropped row above the tap made every
         // subsequent tap start the wrong song. The bridge now reports which source
         // rows survived so the position can be translated exactly.
-        let mapped = JellyfinPlaybackBridge.playableTracks(from: items, client: client)
+        let mapped = MeletePlaybackBridge.playableTracks(from: items, client: client)
         guard !mapped.tracks.isEmpty else { return }
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
         PlaybackContext.attributing(source) {
@@ -558,16 +449,16 @@ final class LibraryStore {
         }
     }
 
-    func playNext(_ items: [JellyfinItem], from source: PlaySource = .unknown) {
-        let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+    func playNext(_ items: [MusicItem], from source: PlaySource = .unknown) {
+        let tracks = MeletePlaybackBridge.tracks(from: items, client: client)
         PlaybackContext.attributing(source) {
             PlaybackEngine.shared.playNext(tracks)
         }
         queueDidChange()
     }
 
-    func addToQueue(_ items: [JellyfinItem], from source: PlaySource = .unknown) {
-        let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+    func addToQueue(_ items: [MusicItem], from source: PlaySource = .unknown) {
+        let tracks = MeletePlaybackBridge.tracks(from: items, client: client)
         PlaybackContext.attributing(source) {
             PlaybackEngine.shared.addToQueue(tracks)
         }
@@ -586,11 +477,11 @@ final class LibraryStore {
             return .idle
         } catch {
             if Task.isCancelled { return .idle }
-            if case JellyfinError.unauthorized = error {
+            if case MeleteError.unauthorized = error {
                 AppSession.shared.invalidateSession()
                 return .idle
             }
-            let message = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            let message = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
             log.error("Library load failed: \(message, privacy: .public)")
             return .failed(message)
         }

@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 
@@ -9,7 +9,6 @@ struct SettingsView: View {
 
     @State private var isConfirmingSignOut = false
     @AppStorage("aoide.appearance") private var appearance = AppearanceMode.dark
-    @AppStorage(PlaylistSurface.key) private var playlistSurface = PlaylistSurface.both
     @AppStorage(TrimSilencePreference.key) private var trimSilence = true
     @AppStorage(CrossfadePreference.key) private var crossfade = false
     @AppStorage(AlbumLockPreference.key) private var albumLock = true
@@ -44,17 +43,9 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Playlists", selection: $playlistSurface) {
-                    ForEach(PlaylistSurface.allCases) { surface in
-                        Text(surface.displayName).tag(surface)
-                    }
-                }
-                .pickerStyle(.segmented)
                 NavigationLink("Hidden from Mixes") { TasteFlagsView() }
             } header: {
                 Text("Playlists")
-            } footer: {
-                Text("Which playlists the Playlists screen shows: the ones kept on your devices, the ones on your Jellyfin server, or both. Whatever's hidden is still there, under the screen's menu.")
             }
 
             Section {

@@ -1,18 +1,32 @@
+import MeleteKit
 import SwiftUI
 
 /// In-memory cover art cache.
 ///
 /// `AsyncImage` refetches every time a cell scrolls back into view, which on a grid
-/// of albums means visible flicker and a lot of pointless traffic. Artwork URLs
-/// include Jellyfin's image tag, so a URL is a safe cache key: different cover,
-/// different URL.
+/// of albums means visible flicker and a lot of pointless traffic, and it can't
+/// send the sign-in Melete's covers need. A cover's URL names its album, so it is
+/// the cache key; held for the session, which is well inside the day Melete says
+/// a cover may be kept.
 actor ArtworkCache {
     static let shared = ArtworkCache()
 
-    private let cache = NSCache<NSURL, UIImage>()
+    // NSCache is thread-safe; `use(_:)` empties it from outside the actor.
+    private nonisolated(unsafe) let cache = NSCache<NSURL, UIImage>()
     /// Tracks loads already running so ten cells appearing at once don't each
     /// fire their own request for the same album cover.
     private var inFlight: [URL: Task<UIImage?, Never>] = [:]
+
+    /// The signed-in server, whose covers are fetched with its token. Set from the
+    /// main actor at sign-in and sign-out, so it sits outside the actor.
+    private nonisolated(unsafe) static var client: MeleteClient?
+    private static let clientLock = NSLock()
+
+    /// Who covers are fetched for; `nil` signs out, and drops what was cached.
+    nonisolated func use(_ client: MeleteClient?) {
+        Self.clientLock.withLock { Self.client = client }
+        cache.removeAllObjects()
+    }
 
     private init() {
         cache.countLimit = 300
@@ -34,7 +48,12 @@ actor ArtworkCache {
             if let data = OfflineAssets.artworkData(for: url), let image = UIImage(data: data) {
                 return image
             }
-            guard let (data, response) = try? await URLSession.shared.data(from: url),
+            var request = URLRequest(url: url)
+            if let client = Self.clientLock.withLock({ Self.client }), client.isOwnURL(url),
+               let authorization = client.authorization {
+                request.setValue(authorization, forHTTPHeaderField: "Authorization")
+            }
+            guard let (data, response) = try? await URLSession.shared.data(for: request),
                   (response as? HTTPURLResponse)?.statusCode == 200,
                   let image = UIImage(data: data)
             else { return nil }

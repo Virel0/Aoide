@@ -1,18 +1,18 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// A set of songs on their way into a playlist.
 ///
-/// `[JellyfinItem]` is not `Identifiable`, and `.sheet(item:)` is the presentation that
+/// `[MusicItem]` is not `Identifiable`, and `.sheet(item:)` is the presentation that
 /// cannot show the wrong contents: `isPresented` plus a separate array is two pieces of
 /// state that can disagree for one frame, which is exactly long enough to add the
 /// previous song to a playlist.
 struct TrackSelection: Identifiable {
     let id = UUID()
-    let tracks: [JellyfinItem]
+    let tracks: [MusicItem]
 
-    init(_ tracks: [JellyfinItem]) {
+    init(_ tracks: [MusicItem]) {
         self.tracks = tracks
     }
 }
@@ -88,7 +88,7 @@ struct AddToPlaylistSheet: View {
                 } header: {
                     Text("Add “\(title)” to")
                 } footer: {
-                    Text("These are the playlists kept on your device. Playlists on your Jellyfin server can't be edited from here.")
+                    Text("These are the playlists kept on your device.")
                 }
             }
             .navigationTitle("Add to Playlist")

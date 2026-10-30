@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// Apple Music puts the same actions behind a long press on almost everything, and
@@ -10,17 +10,17 @@ extension View {
     /// defaults to `.unknown` because most of the screens using this genuinely have no
     /// answer — a song in the Songs list came from nowhere in particular — and guessing
     /// one would put a fiction in the recap.
-    func trackContextMenu(_ track: JellyfinItem, from source: PlaySource = .unknown) -> some View {
+    func trackContextMenu(_ track: MusicItem, from source: PlaySource = .unknown) -> some View {
         modifier(TrackContextMenu(track: track, source: source))
     }
 
-    func albumContextMenu(_ album: JellyfinItem) -> some View {
+    func albumContextMenu(_ album: MusicItem) -> some View {
         modifier(AlbumContextMenu(album: album))
     }
 }
 
 private struct TrackContextMenu: ViewModifier {
-    let track: JellyfinItem
+    let track: MusicItem
     let source: PlaySource
     @Environment(LibraryStore.self) private var store
     @Environment(LocalPlaylistStore.self) private var playlists
@@ -48,8 +48,8 @@ private struct TrackContextMenu: ViewModifier {
             Divider()
 
             Button(
-                track.userData?.isFavorite == true ? "Remove from Favourites" : "Favourite",
-                systemImage: track.userData?.isFavorite == true ? "heart.slash" : "heart"
+                track.liked ? "Remove from Favourites" : "Favourite",
+                systemImage: track.liked ? "heart.slash" : "heart"
             ) {
                 Task { await store.toggleFavorite(track) }
             }
@@ -83,7 +83,7 @@ private struct TrackContextMenu: ViewModifier {
 }
 
 private struct AlbumContextMenu: ViewModifier {
-    let album: JellyfinItem
+    let album: MusicItem
     @Environment(LibraryStore.self) private var store
     @Environment(LocalPlaylistStore.self) private var playlists
     @State private var adding: TrackSelection?
@@ -119,13 +119,6 @@ private struct AlbumContextMenu: ViewModifier {
             }
 
             Divider()
-
-            Button(
-                album.userData?.isFavorite == true ? "Remove from Favourites" : "Favourite",
-                systemImage: album.userData?.isFavorite == true ? "heart.slash" : "heart"
-            ) {
-                Task { await store.toggleFavorite(album) }
-            }
 
             Button("Start Station", systemImage: "dot.radiowaves.left.and.right") {
                 Task { await store.startStation(seededBy: album) }

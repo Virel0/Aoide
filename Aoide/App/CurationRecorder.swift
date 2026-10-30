@@ -6,11 +6,8 @@ import os
 
 /// Writes what was actually listened to into the local curation store.
 ///
-/// Hangs off the same `PlaybackReporter` calls that already tell Jellyfin about a play,
-/// and is strictly *additional* to them — Jellyfin still counts what Jellyfin counts.
-/// The reason for a second set of books is that the server's count increments the moment
-/// playback starts, so skipping through an album marks every track as played. This one
-/// can tell a four-second skip from a whole song, which is the fact every recap, smart
+/// Hangs off the engine's `PlaybackReporter` calls. A play is counted here, not on
+/// the server, because this can tell a four-second skip from a whole song, which is the fact every recap, smart
 /// playlist and weighted shuffle is built out of.
 ///
 /// An actor rather than a `@MainActor` type, deliberately. SQLite writes block the thread
@@ -56,7 +53,7 @@ actor CurationRecorder: PlaybackReporter {
         let row = snapshot.cacheRow
         do {
             // `writeLocal`, not `record`: the track cache is this device's own copy of
-            // what Jellyfin already knows, rebuilt from its own connection. Syncing it
+            // what Melete already knows, rebuilt from its own connection. Syncing it
             // would dominate the payload and buy nothing.
             try snapshot.store.writeLocal { db in try row.save(db) }
         } catch {

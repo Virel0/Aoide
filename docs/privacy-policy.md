@@ -1,14 +1,13 @@
 # Aoide privacy policy
 
-Aoide is a music player for a Jellyfin server you run yourself. It has no
+Aoide is a music player for a Melete server you run yourself. It has no
 account of its own, no analytics, and no servers of ours.
 
-**What the app stores, and where.** Your Jellyfin sign-in token is kept in the
+**What the app stores, and where.** Your Melete sign-in token is kept in the
 iPhone's keychain. Your playlists, likes, taste flags and listening history are
-kept on the phone, and — if your server runs the Aoide sidecar plugin — synced to
-*your* server, under your Jellyfin account. Nothing is sent anywhere else.
+kept on the phone, and synced to *your* server, under your Melete account. Nothing is sent anywhere else.
 
-**What leaves the phone.** Requests to the Jellyfin server you signed in to, and
+**What leaves the phone.** Requests to the Melete server you signed in to, and
 only that server: playback, library browsing, sync. Importing a Spotify playlist
 by link fetches that public page from Spotify; nothing about you is sent with it.
 Mixes and sentence search run on the phone with Apple Intelligence; your

@@ -1,9 +1,9 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 struct GenresListView: View {
     @Environment(LibraryStore.self) private var store
-    @State private var genres: [JellyfinItem] = []
+    @State private var genres: [MusicItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -50,7 +50,7 @@ struct GenresListView: View {
         do {
             genres = try await store.musicGenres()
         } catch {
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
     }
@@ -91,10 +91,10 @@ struct GenreTile: View {
 }
 
 struct GenreDetailView: View {
-    let genre: JellyfinItem
+    let genre: MusicItem
 
     @Environment(LibraryStore.self) private var store
-    @State private var albums: [JellyfinItem] = []
+    @State private var albums: [MusicItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -126,13 +126,8 @@ struct GenreDetailView: View {
         do {
             albums = try await store.albums(inGenre: genre.id)
         } catch {
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
     }
 }
-
-// The Jellyfin playlist list used to live here as `PlaylistsView`. It moved into
-// `PlaylistsHomeView` as the "On Your Server" section when local playlists arrived —
-// same rows, same loading and retry behaviour, now sitting beside the playlists this
-// device makes rather than on a screen of its own.

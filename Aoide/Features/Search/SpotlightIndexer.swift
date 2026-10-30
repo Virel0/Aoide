@@ -1,6 +1,6 @@
 import CoreSpotlight
 import Foundation
-import JellyfinKit
+import MeleteKit
 import UniformTypeIdentifiers
 import os
 
@@ -31,7 +31,7 @@ final class SpotlightIndexer {
 
     private init() {}
 
-    func indexIfNeeded(client: JellyfinClient, force: Bool = false) async {
+    func indexIfNeeded(client: MeleteClient, force: Bool = false) async {
         guard CSSearchableIndex.isIndexingAvailable() else { return }
         guard !isIndexing else { return }
 
@@ -46,12 +46,10 @@ final class SpotlightIndexer {
         do {
             async let albums = client.albums(sort: .name, direction: .ascending, limit: 500).items
             async let artists = client.albumArtists(limit: 500).items
-            async let playlists = client.playlists()
 
             let items = try await
                 albums.map { searchableItem(for: $0, kind: "Album") }
                 + artists.map { searchableItem(for: $0, kind: "Artist") }
-                + playlists.map { searchableItem(for: $0, kind: "Playlist") }
 
             try await CSSearchableIndex.default().indexSearchableItems(items)
             defaults.set(Date(), forKey: lastIndexedKey)
@@ -73,7 +71,7 @@ final class SpotlightIndexer {
         try? await CSSearchableIndex.default().deleteSearchableItems(withDomainIdentifiers: [Self.domain])
     }
 
-    private func searchableItem(for item: JellyfinItem, kind: String) -> CSSearchableItem {
+    private func searchableItem(for item: MusicItem, kind: String) -> CSSearchableItem {
         let attributes = CSSearchableItemAttributeSet(contentType: .audio)
         attributes.title = item.name
         attributes.contentDescription = item.subtitle.isEmpty ? kind : "\(kind) · \(item.subtitle)"
@@ -87,7 +85,9 @@ final class SpotlightIndexer {
         attributes.album = item.album
 
         let searchable = CSSearchableItem(
-            uniqueIdentifier: item.id,
+            // The kind goes with the id: Melete numbers albums and artists apart,
+            // so the same number can be both.
+            uniqueIdentifier: "\(kind.lowercased()):\(item.id)",
             domainIdentifier: Self.domain,
             attributeSet: attributes
         )

@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 import UniformTypeIdentifiers
 

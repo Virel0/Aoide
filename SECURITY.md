@@ -12,8 +12,8 @@ Say what you found, the commit you built, the iOS version and device, and the
 steps that show it. Replies come in the advisory thread; the aim is to fix the
 problem before the advisory is published.
 
-Problems in the Aoide sidecar plugin belong in
-[Virel0/aoide-sidecar](https://github.com/Virel0/aoide-sidecar), and problems
+Problems in Melete, the server, belong in
+[Virel0/Melete](https://github.com/Virel0/Melete), and problems
 in the Linux app in [Virel0/Aoide-Linux](https://github.com/Virel0/Aoide-Linux).
 
 ## Supported versions
@@ -24,19 +24,18 @@ There are no tagged releases yet. Fixes go to `main`.
 
 | What | Where |
 |---|---|
-| The Jellyfin access token | The keychain, available after the first unlock so CarPlay can start playback on a locked phone; not in `UserDefaults`, which backups can read |
+| The Melete access token | The keychain, available after the first unlock so CarPlay can start playback on a locked phone; not in `UserDefaults`, which backups can read |
 | Playlists, likes, taste flags, the play history, the sync log | A SQLite database in the app's Application Support folder |
 | Downloads, playlist covers, recent contexts | The app's container on the phone |
 | Preferences (appearance, Crossfade, Trim Silence and the like) | `UserDefaults` |
 
 Signing out removes the token. Deleting the app removes everything on the
-phone. Data synced to your server lives there, under your Jellyfin account.
+phone. Data synced to your server lives there, under your Melete account.
 
 ## What the app sends, and to whom
 
 The README's [Privacy](README.md#privacy) section and
-[docs/privacy-policy.md](docs/privacy-policy.md) list it: your Jellyfin server
-and its sidecar; Spotify's public playlist page only when you import one;
+[docs/privacy-policy.md](docs/privacy-policy.md) list it: your Melete server; Spotify's public playlist page only when you import one;
 Apple for Siri requests if you allow Siri, and for the one-time download of a
 translation language. Mixes, sentence search and lyric translation run on the
 phone. Settings → Diagnostics writes the app's own log from the last half hour

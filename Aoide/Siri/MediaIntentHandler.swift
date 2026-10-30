@@ -1,7 +1,7 @@
 import CurationKit
 import Foundation
 import Intents
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -21,20 +21,6 @@ final class MediaIntentHandler: NSObject {
     /// How many tracks a spoken request may queue. Enough for an artist's
     /// discography, bounded so "play everything" can't spend a minute fetching.
     private let maximumTracks = 300
-
-    /// Music library ids, resolved once and reused. Every query below is scoped to
-    /// them: unscoped, `includeItemTypes=Audio` also matches audiobook chapters,
-    /// so "play something" could start reading a novel aloud in the car.
-    private var scope: [String]?
-
-    fileprivate func musicScope(_ client: JellyfinClient) async -> String? {
-        if let scope { return scope.first }
-        let ids = (try? await client.musicLibraries().map(\.id)) ?? []
-        // Only cached on success — caching a failure would silently un-scope every
-        // later request for the life of the process.
-        if !ids.isEmpty { scope = ids }
-        return ids.first
-    }
 }
 
 // MARK: - INPlayMediaIntentHandling
@@ -80,7 +66,7 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
         }
 
         await MainActor.run {
-            let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+            let tracks = MeletePlaybackBridge.tracks(from: items, client: client)
             guard !tracks.isEmpty else { return }
             // `.siri` even when the request arrived through the car's voice button:
             // what was asked for was spoken, and that is what the source records.
@@ -115,12 +101,10 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
     /// Deliberately ordered most-specific first. Siri fills several fields at once
     /// for a phrase like "play Boreas by The Oh Hellos", and searching on the
     /// broadest of them would return the artist's whole catalogue.
-    private func findTracks(for request: MediaRequest, client: JellyfinClient) async -> [JellyfinItem] {
-        let parent = await musicScope(client)
-
+    private func findTracks(for request: MediaRequest, client: MeleteClient) async -> [MusicItem] {
         // 1. A named album, optionally by a named artist.
         if let album = request.albumName {
-            let matches = (try? await client.search(album, parentId: parent, limit: 25)) ?? []
+            let matches = (try? await client.search(album, limit: 25)) ?? []
             if let best = bestMatch(matches.filter { $0.type == .musicAlbum }, to: album, artist: request.artistName),
                let tracks = try? await client.tracks(inAlbum: best.id), !tracks.isEmpty {
                 return tracks
@@ -129,7 +113,7 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
 
         // 2. A named song.
         if let song = request.mediaName {
-            let matches = (try? await client.search(song, parentId: parent, limit: 40)) ?? []
+            let matches = (try? await client.search(song, limit: 40)) ?? []
             let songs = matches.filter { $0.type == .audio }
             if let best = bestMatch(songs, to: song, artist: request.artistName) {
                 // Everything else that matched follows it, so "play Shape of You"
@@ -150,7 +134,7 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
 
         // 3. A named artist.
         if let artistName = request.artistName {
-            let matches = (try? await client.search(artistName, parentId: parent, limit: 25)) ?? []
+            let matches = (try? await client.search(artistName, limit: 25)) ?? []
             if let artist = bestMatch(matches.filter { $0.type == .musicArtist }, to: artistName, artist: nil) {
                 return await tracks(byArtist: artist, client: client)
             }
@@ -158,27 +142,27 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
 
         // 4. A genre.
         if let genre = request.genreNames.first {
-            let genres = (try? await client.musicGenres(parentId: parent)) ?? []
+            let genres = (try? await client.musicGenres()) ?? []
             if let match = bestMatch(genres, to: genre, artist: nil) {
-                let albums = (try? await client.albums(inGenre: match.id, parentId: parent, limit: 20)) ?? []
+                let albums = (try? await client.albums(inGenre: match.id, limit: 20)) ?? []
                 return await tracks(fromAlbums: albums, client: client)
             }
         }
 
         // 5. Nothing recognisable, but a clear intent to hear music.
         if request.wantsAnything {
-            return (try? await client.songs(parentId: parent, sort: .random, limit: maximumTracks).items) ?? []
+            return (try? await client.randomSongs(count: maximumTracks)) ?? []
         }
         return []
     }
 
-    private func tracks(byArtist artist: JellyfinItem, client: JellyfinClient) async -> [JellyfinItem] {
+    private func tracks(byArtist artist: MusicItem, client: MeleteClient) async -> [MusicItem] {
         let albums = (try? await client.albums(byArtist: artist.id)) ?? []
         return await tracks(fromAlbums: albums, client: client)
     }
 
-    private func tracks(fromAlbums albums: [JellyfinItem], client: JellyfinClient) async -> [JellyfinItem] {
-        var all: [JellyfinItem] = []
+    private func tracks(fromAlbums albums: [MusicItem], client: MeleteClient) async -> [MusicItem] {
+        var all: [MusicItem] = []
         for album in albums {
             guard all.count < maximumTracks else { break }
             guard let tracks = try? await client.tracks(inAlbum: album.id) else { continue }
@@ -190,7 +174,7 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
     /// Prefers an exact name, then one whose artist also matches what was said,
     /// then simply the first. Speech recognition rarely returns the exact string,
     /// so an exact-only match would reject most real requests.
-    private func bestMatch(_ items: [JellyfinItem], to spoken: String, artist: String?) -> JellyfinItem? {
+    private func bestMatch(_ items: [MusicItem], to spoken: String, artist: String?) -> MusicItem? {
         guard !items.isEmpty else { return nil }
         let target = spoken.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
 
@@ -235,7 +219,7 @@ extension MediaIntentHandler: @preconcurrency INSearchForMediaIntentHandling {
         }
 
         await MainActor.run {
-            let tracks = JellyfinPlaybackBridge.tracks(from: items, client: client)
+            let tracks = MeletePlaybackBridge.tracks(from: items, client: client)
             guard !tracks.isEmpty else { return }
             PlaybackContext.attributing(.siri) {
                 PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)

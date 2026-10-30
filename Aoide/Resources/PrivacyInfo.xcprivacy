@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Aoide talks only to the user's own Jellyfin server. It has no
+	<!-- Aoide talks only to the user's own Melete server. It has no
 	     analytics, no third-party SDKs, and collects nothing. -->
 	<key>NSPrivacyTracking</key>
 	<false/>

@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import os
 
@@ -18,7 +18,7 @@ import os
 enum QueueRestorer {
     private static let log = Logger(subsystem: AppIdentity.bundle, category: "playback")
 
-    static func restore(client: JellyfinClient) async {
+    static func restore(client: MeleteClient) async {
         // Anything already queued wins: the car can connect and start playing
         // before the phone's own screen has ever run.
         guard PlaybackEngine.shared.queue.isEmpty else { return }
@@ -43,7 +43,7 @@ enum QueueRestorer {
         let startId = ids.indices.contains(saved.position) ? ids[saved.position] : ids[0]
         let start = ordered.firstIndex { $0.id == startId } ?? 0
 
-        let mapped = JellyfinPlaybackBridge.playableTracks(from: ordered, client: client)
+        let mapped = MeletePlaybackBridge.playableTracks(from: ordered, client: client)
         guard !mapped.tracks.isEmpty else { return }
         let playableStart = mapped.sourceIndices.firstIndex { $0 >= start } ?? 0
 

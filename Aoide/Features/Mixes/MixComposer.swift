@@ -1,7 +1,7 @@
 import CurationKit
 import Foundation
 import FoundationModels
-import JellyfinKit
+import MeleteKit
 import os
 
 /// Turns "something calm I haven't heard in months" into smart playlist rules.
@@ -28,7 +28,7 @@ final class MixComposer {
     }
 
     private let log = Logger(subsystem: AppIdentity.bundle, category: "mixes")
-    private let client: JellyfinClient
+    private let client: MeleteClient
 
     /// Genre names the library actually contains, lower-cased for matching.
     ///
@@ -37,7 +37,7 @@ final class MixComposer {
     /// as a broken feature rather than as a miss.
     private var knownGenres: [String: String] = [:]
 
-    init(client: JellyfinClient) {
+    init(client: MeleteClient) {
         self.client = client
     }
 

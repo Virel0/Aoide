@@ -1,5 +1,5 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import SwiftUI
 import os
@@ -9,11 +9,10 @@ import os
 /// Off by default — a queue that ends is not a fault, and a player that quietly
 /// plays on for an hour after the album finished is one nobody asked for.
 ///
-/// What it finds comes from the sidecar, which scores the whole library
-/// against whatever is playing — see `docs/infinity.md` and ``NextChooser``.
-/// Against an older server it falls back to Jellyfin's own Instant Mix, ranked
-/// here against what this listener has actually been listening to; see
-/// ``rank(_:)``.
+/// What it finds comes from Melete's `/aoide/next`, which scores the whole
+/// library against whatever is playing — see `docs/infinity.md` and
+/// ``NextChooser``. A server without it answers 404, and Infinity rests for the
+/// session.
 @MainActor
 @Observable
 final class InfinityQueue: PlaybackReporter {
@@ -32,14 +31,6 @@ final class InfinityQueue: PlaybackReporter {
     /// that follows what is playing *then*.
     static let batch = 20
 
-    /// How many the station is asked for to choose those from. Wide enough that
-    /// the ranking has something to reject, narrow enough to stay one request.
-    static let pool = 100
-
-    /// How far back the taste profile reads. Taste moves; a year of listening
-    /// describes somebody who no longer exists.
-    static let windowDays = 90.0
-
     private let log = Logger(subsystem: AppIdentity.bundle, category: "infinity")
 
     /// The switch as the listener set it. Read ``isOn`` for what is in force.
@@ -57,12 +48,11 @@ final class InfinityQueue: PlaybackReporter {
     /// and two stations arriving would double every top-up.
     private var isFetching = false
 
-    /// Whether the sidecar is the one choosing. Turned off for the session by
-    /// a 404 from `/aoide/next`, which is what an older sidecar answers; the
-    /// Instant Mix path then does what it did before the endpoint existed.
+    /// Whether the server is asked. Turned off for the session by a 404 from
+    /// `/aoide/next`, which is what a server without it answers.
     private(set) var sidecarChooses = true
 
-    /// Why each record the sidecar chose is where it is, by Jellyfin id, for
+    /// Why each record the server chose is where it is, by track id, for
     /// the queue to show. Kept for records still queued; nothing is ever
     /// removed, and a session's worth of these is a few kilobytes.
     private(set) var reasons: [String: NextChooser.Factors] = [:]
@@ -103,7 +93,7 @@ final class InfinityQueue: PlaybackReporter {
         let known = Set(engine.queue.entries.map(\.track.id))
 
         if sidecarChooses, let chosen = await askSidecar(seed: seed, client: client, known: known) {
-            let tracks = JellyfinPlaybackBridge.playableTracks(from: chosen, client: client).tracks
+            let tracks = MeletePlaybackBridge.playableTracks(from: chosen, client: client).tracks
             guard !tracks.isEmpty else { return }
             engine.extendQueue(tracks)
             // Fetched now rather than waited for: the first hand-over is at
@@ -116,49 +106,16 @@ final class InfinityQueue: PlaybackReporter {
             return
         }
 
-        do {
-            // The station is the pool, not the answer: Jellyfin picks what is
-            // *like* this song, and what follows is picked from that by what this
-            // listener actually finishes.
-            let pool = try await client.instantMix(seededBy: seed.id, limit: Self.pool)
-            let allowed = await TasteStore.shared.withoutNotInterested(pool)
-                .filter { !known.contains($0.id) }
-            guard !allowed.isEmpty else {
-                log.info("Infinity found nothing new to add after \(seed.title, privacy: .public)")
-                return
-            }
-
-            // With a set to program, the pool has to be readable before it can
-            // be ranked: the grids and arrangements are asked for and given a
-            // moment to arrive. A record still unread ranks by taste alone.
-            if AutoDJPreference.isOn {
-                BeatGridSync.shared.prefetch(ids: allowed.map(\.id))
-                ArrangementSync.shared.prefetch(ids: allowed.map(\.id))
-                try? await Task.sleep(for: .seconds(2))
-            }
-
-            let chosen = rank(allowed)
-            let tracks = JellyfinPlaybackBridge.playableTracks(from: chosen, client: client).tracks
-            guard !tracks.isEmpty else { return }
-            // Left attributed to whatever the queue already was rather than dressed
-            // up as a choice: nobody picked these, and the history should not say
-            // they did.
-            engine.extendQueue(tracks)
-            log.info("Infinity added \(tracks.count) songs after \(seed.title, privacy: .public)")
-        } catch {
-            // Nothing to tell anyone about. The queue simply ends, which is what
-            // it would have done anyway.
-            log.warning("Infinity couldn't reach the server: \(error.localizedDescription, privacy: .public)")
-        }
+        log.info("Infinity found nothing new to add after \(seed.title, privacy: .public)")
     }
 
-    /// Asks the sidecar what should follow `seed`, from the whole library.
+    /// Asks the server what should follow `seed`, from the whole library.
     ///
-    /// Nothing on a 404 — an older sidecar, remembered for the session — or on
-    /// any other failure, which is logged and left to the fallback; the queue
-    /// should keep going whichever server it is talking to. What comes back
-    /// is in the server's order and is kept in it.
-    private func askSidecar(seed: Track, client: JellyfinClient, known: Set<String>) async -> [JellyfinItem]? {
+    /// Nothing on a 404 — a server without the route, remembered for the
+    /// session — or on any other failure, which is logged: the queue then simply
+    /// ends, as it would have anyway. What comes back is in the server's order
+    /// and is kept in it.
+    private func askSidecar(seed: Track, client: MeleteClient, known: Set<String>) async -> [MusicItem]? {
         let engine = PlaybackEngine.shared
         let recent = (try? CurationDatabase.shared?.recentlyPlayed(limit: NextChooser.Request.maxRecent)) ?? []
         let request = NextChooser.Request(
@@ -179,86 +136,15 @@ final class InfinityQueue: PlaybackReporter {
             // Items come back in the order asked for, and the order asked for
             // is the server's.
             return try await client.items(ids: chosen.map(\.id))
-        } catch JellyfinError.notFound {
+        } catch MeleteError.notFound {
             sidecarChooses = false
-            log.info("This server has no /aoide/next; Infinity is using Instant Mix for the session")
+            log.info("This server has no /aoide/next; Infinity rests for the session")
             return nil
         } catch {
             log.warning("The server couldn't choose what plays next: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
-
-    /// Puts the station's suggestions in the order this listener is likeliest to
-    /// want them, and takes the best handful.
-    ///
-    /// The judgement is [`TasteRanking`](../../../Packages/CurationKit/Sources/CurationKit/TasteProfile.swift)'s,
-    /// working off the local history: which genres and artists get finished, what
-    /// each candidate's own finish rate is, and what has been heard lately. If
-    /// there is no history to read — a new install, or a database that failed to
-    /// open — the station's own order stands, which is what this did before.
-    private func rank(_ items: [JellyfinItem]) -> [JellyfinItem] {
-        guard let store = CurationDatabase.shared else { return Array(items.prefix(Self.batch)) }
-
-        let candidates = items.map {
-            // The same artist string the history is keyed on — the bridge writes
-            // exactly this into `Track.artist`, and the cache follows it.
-            TasteCandidate(
-                id: $0.id,
-                artist: $0.albumArtist ?? $0.artists.first ?? "Unknown Artist",
-                genres: $0.genres
-            )
-        }
-        let since = Date().addingTimeInterval(-Self.windowDays * 24 * 60 * 60).millis
-        guard let profile = try? store.tasteProfile(since: since),
-              !profile.isEmpty
-        else { return Array(items.prefix(Self.batch)) }
-
-        let finish = (try? store.finishCounts(jellyfinIds: candidates.map(\.id))) ?? [:]
-        let ranked = TasteRanking.rank(
-            candidates,
-            in: profile,
-            finish: finish,
-            compatibility: compatibility(of: items),
-            limit: Self.batch
-        )
-
-        let byId = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return ranked.compactMap { byId[$0.id] }
-    }
-
-    /// How well each candidate could follow the record playing, when a set is
-    /// being programmed — the same score the mix itself would get, asked ahead
-    /// of time. Nothing when Auto DJ is off: without it the question does not
-    /// arise, and the queue is ordered by taste alone.
-    ///
-    /// A pair that would be refused scores a little rather than nothing: it
-    /// can still crossfade, and a room would rather hear a good record faded in
-    /// than a mediocre one mixed.
-    private func compatibility(of items: [JellyfinItem]) -> [String: Double] {
-        guard AutoDJPreference.isOn,
-              let current = PlaybackEngine.shared.queue.currentTrack,
-              let grid = BeatGridSync.shared.grid(for: current.id),
-              let arrangement = ArrangementSync.shared.arrangement(for: current.id)
-        else { return [:] }
-
-        var scores: [String: Double] = [:]
-        for item in items {
-            guard let candidateGrid = BeatGridSync.shared.grid(for: item.id),
-                  let candidateArrangement = ArrangementSync.shared.arrangement(for: item.id)
-            else { continue }
-            let plan = DJPlanner.plan(
-                outgoing: grid, incoming: candidateGrid,
-                outgoingArrangement: arrangement, incomingArrangement: candidateArrangement
-            )
-            scores[item.id] = plan?.score.total ?? Self.crossfadeOnly
-        }
-        return scores
-    }
-
-    /// What a record that can only be crossfaded into is worth, against one
-    /// that can be mixed.
-    static let crossfadeOnly = 0.15
 
     // MARK: - PlaybackReporter
 

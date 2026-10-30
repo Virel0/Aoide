@@ -2,7 +2,7 @@ import Foundation
 import Security
 import os
 
-/// Minimal keychain wrapper for the one secret this app holds: the Jellyfin access
+/// Minimal keychain wrapper for the one secret this app holds: the Melete access
 /// token. It lives here rather than in `UserDefaults` because `UserDefaults` is a
 /// plist in the app container — readable from any unencrypted device backup.
 enum KeychainStore {

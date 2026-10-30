@@ -1,6 +1,6 @@
 import CarPlay
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 import UIKit
 import os
@@ -27,10 +27,7 @@ final class CarPlayBrowser: NSObject {
     /// moving, and larger than any row CarPlay draws.
     private let artworkWidth = 200
 
-    private var client: JellyfinClient? { AppSession.shared.client }
-
-    /// Music library ids, resolved once per connection.
-    private var scope: [String]?
+    private var client: MeleteClient? { AppSession.shared.client }
 
     /// The phone's own playlists, read from the same store the phone screen reads.
     private lazy var playlists: LocalPlaylistStore? = client.map { LocalPlaylistStore(client: $0) }
@@ -67,7 +64,7 @@ final class CarPlayBrowser: NSObject {
             items: [
                 CPInformationItem(
                     title: "Not signed in",
-                    detail: "Open Aoide on your iPhone to connect to your Jellyfin server."
+                    detail: "Open Aoide on your iPhone to connect to your Melete server."
                 )
             ],
             actions: []
@@ -201,9 +198,7 @@ final class CarPlayBrowser: NSObject {
 
     // MARK: - Pushed lists
 
-    /// The phone's own playlists first, each playing on the tap; the server's
-    /// after, browsed into, because a server playlist can hold things the car
-    /// cannot play and deserves a look before it starts.
+    /// The phone's own playlists, each playing on the tap.
     private func pushPlaylists() {
         pushList(title: "Playlists", empty: "No playlists yet.") { [weak self] in
             guard let self else { return [] }
@@ -229,18 +224,6 @@ final class CarPlayBrowser: NSObject {
                 }
             }
 
-            if let client = self.client, let server = try? await client.playlists(), !server.isEmpty {
-                let items = server.map { playlist -> CPListItem in
-                    let item = CPListItem(text: playlist.name, detailText: playlist.subtitle)
-                    self.loadArtwork(for: playlist, into: item)
-                    item.handler = { [weak self] _, completion in
-                        self?.pushPlaylistTracks(playlist)
-                        completion()
-                    }
-                    return item
-                }
-                sections.append(CPListSection(items: items, header: "On Your Server", sectionIndexTitle: nil))
-            }
             return sections
         }
     }
@@ -288,8 +271,8 @@ final class CarPlayBrowser: NSObject {
     private func pushAlbums() {
         pushList(title: "Albums", empty: "No albums in your library.") { [weak self] in
             guard let self else { return [] }
-            let albums = await self.fetch { client, parent in
-                try await client.albums(parentId: parent, sort: .name, limit: Self.pageLimit).items
+            let albums = await self.fetch { client in
+                try await client.albums(sort: .name, limit: Self.pageLimit).items
             }
             return [CPListSection(items: self.albumItems(albums))]
         }
@@ -298,8 +281,8 @@ final class CarPlayBrowser: NSObject {
     private func pushArtists() {
         pushList(title: "Artists", empty: "No artists in your library.") { [weak self] in
             guard let self else { return [] }
-            let artists = await self.fetch { client, parent in
-                try await client.albumArtists(parentId: parent, limit: Self.pageLimit).items
+            let artists = await self.fetch { client in
+                try await client.albumArtists(limit: Self.pageLimit).items
             }
             let items = artists.map { artist -> CPListItem in
                 let item = CPListItem(text: artist.name, detailText: nil)
@@ -314,7 +297,7 @@ final class CarPlayBrowser: NSObject {
         }
     }
 
-    func pushArtistAlbums(_ artist: JellyfinItem) {
+    func pushArtistAlbums(_ artist: MusicItem) {
         pushList(title: artist.name, empty: "No albums by this artist.") { [weak self] in
             guard let self, let client = self.client else { return [] }
             let albums = (try? await client.albums(byArtist: artist.id)) ?? []
@@ -325,24 +308,14 @@ final class CarPlayBrowser: NSObject {
     private func pushSongs() {
         pushList(title: "Songs", empty: "No songs in your library.") { [weak self] in
             guard let self else { return [] }
-            let songs = await self.fetch { client, parent in
-                try await client.songs(parentId: parent, sort: .name, limit: Self.pageLimit).items
+            let songs = await self.fetch { client in
+                try await client.songs(sort: .name, limit: Self.pageLimit).items
             }
             return [CPListSection(items: self.trackItems(songs))]
         }
     }
 
-    private func pushPlaylistTracks(_ playlist: JellyfinItem) {
-        pushList(title: playlist.name, empty: "This playlist is empty.") { [weak self] in
-            guard let self, let client = self.client else { return [] }
-            let tracks = (try? await client.tracks(inPlaylist: playlist.id)) ?? []
-            return [CPListSection(items: self.trackItems(tracks, remembering: RecentContext(
-                kind: .jellyfinPlaylist, id: playlist.id, name: playlist.name, artworkItemId: playlist.id, lastOpened: 0
-            )))]
-        }
-    }
-
-    private func pushAlbumTracks(_ album: JellyfinItem) {
+    private func pushAlbumTracks(_ album: MusicItem) {
         pushList(title: album.name, empty: "This album is empty.") { [weak self] in
             guard let self, let client = self.client else { return [] }
             let tracks = (try? await client.tracks(inAlbum: album.id)) ?? []
@@ -358,7 +331,7 @@ final class CarPlayBrowser: NSObject {
     /// An album row plays the album on the tap. The brief's point about pins is
     /// that a row you have to open is a row you will not use while driving;
     /// the track list is a tap away on the trailing button for the parked moment.
-    private func albumItems(_ albums: [JellyfinItem]) -> [CPListItem] {
+    private func albumItems(_ albums: [MusicItem]) -> [CPListItem] {
         albums.map { album in
             let item = CPListItem(text: album.name, detailText: album.subtitle)
             loadArtwork(for: album, into: item)
@@ -373,7 +346,7 @@ final class CarPlayBrowser: NSObject {
 
     /// Tapping a song plays from there through the rest of the list, which is what
     /// it means everywhere else in the app.
-    private func trackItems(_ tracks: [JellyfinItem], remembering context: RecentContext? = nil) -> [CPListItem] {
+    private func trackItems(_ tracks: [MusicItem], remembering context: RecentContext? = nil) -> [CPListItem] {
         tracks.enumerated().map { index, track in
             let item = CPListItem(text: track.name, detailText: track.subtitle)
             loadArtwork(for: track, into: item)
@@ -388,9 +361,9 @@ final class CarPlayBrowser: NSObject {
 
     // MARK: - Playing
 
-    private func play(_ items: [JellyfinItem], startingAt index: Int, shuffled: Bool = false) {
+    private func play(_ items: [MusicItem], startingAt index: Int, shuffled: Bool = false) {
         guard let client else { return }
-        let mapped = JellyfinPlaybackBridge.playableTracks(from: items, client: client)
+        let mapped = MeletePlaybackBridge.playableTracks(from: items, client: client)
         guard !mapped.tracks.isEmpty else { return }
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
         // `.carplay` covers everything reached through the car's own screens,
@@ -417,8 +390,8 @@ final class CarPlayBrowser: NSObject {
     }
 
     private func shuffleEverything() async {
-        let songs = await fetch { client, parent in
-            try await client.songs(parentId: parent, sort: .random, startIndex: 0, limit: 300).items
+        let songs = await fetch { client in
+            try await client.randomSongs(count: 300)
         }
         let wanted = await TasteStore.shared.withoutNotInterested(songs)
         guard !wanted.isEmpty else { return }
@@ -432,7 +405,9 @@ final class CarPlayBrowser: NSObject {
         case .album:
             if let tracks = try? await client.tracks(inAlbum: context.id) { play(tracks, startingAt: 0) }
         case .jellyfinPlaylist:
-            if let tracks = try? await client.tracks(inPlaylist: context.id) { play(tracks, startingAt: 0) }
+            // A playlist on the Jellyfin server Melete replaced: nothing to play.
+            RecentContextStore.shared.forget(context)
+            return
         case .localPlaylist:
             if let playlists {
                 await playlists.reload()
@@ -444,7 +419,7 @@ final class CarPlayBrowser: NSObject {
             RecentContextStore.shared.forget(context)
             return
         case .station:
-            let mix = await TasteStore.shared.withoutNotInterested((try? await client.instantMix(seededBy: context.id)) ?? [])
+            let mix = (try? await Station.tracks(seed: context.id, client: client)) ?? []
             guard !mix.isEmpty else { return }
             play(mix, startingAt: 0)
         }
@@ -485,7 +460,7 @@ final class CarPlayBrowser: NSObject {
 
     // MARK: - Artwork
 
-    private func loadArtwork(for item: JellyfinItem, into row: CPListItem) {
+    private func loadArtwork(for item: MusicItem, into row: CPListItem) {
         guard let client, let url = client.artworkURL(for: item, maxWidth: artworkWidth) else { return }
         load(url, into: row)
     }
@@ -537,16 +512,13 @@ final class CarPlayBrowser: NSObject {
         }
     }
 
-    /// Runs a query scoped to the music libraries, resolving them once per session.
+    /// Runs a query, an empty list when it fails.
     private func fetch(
-        _ body: @escaping (JellyfinClient, String?) async throws -> [JellyfinItem]
-    ) async -> [JellyfinItem] {
+        _ body: @escaping (MeleteClient) async throws -> [MusicItem]
+    ) async -> [MusicItem] {
         guard let client else { return [] }
         do {
-            if scope == nil {
-                scope = try? await client.musicLibraries().map(\.id)
-            }
-            return try await body(client, scope?.first)
+            return try await body(client)
         } catch {
             log.error("CarPlay query failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -573,8 +545,7 @@ extension CarPlayBrowser: @preconcurrency CPSearchTemplateDelegate {
                 return
             }
 
-            if scope == nil { scope = try? await client.musicLibraries().map(\.id) }
-            let results = (try? await client.search(trimmed, parentId: scope?.first, limit: 40)) ?? []
+            let results = (try? await client.search(trimmed, limit: 40)) ?? []
 
             // Songs first: on a car screen the thing you searched for is almost
             // always something to play right now, not something to browse into.

@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// Where the Library tab can be sent from outside itself.
@@ -17,7 +17,7 @@ struct SpotlightDestination: View {
     let id: String
 
     @Environment(LibraryStore.self) private var store
-    @State private var item: JellyfinItem?
+    @State private var item: MusicItem?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -28,8 +28,6 @@ struct SpotlightDestination: View {
                     AlbumDetailView(album: item)
                 case .musicArtist:
                     ArtistDetailView(artist: item)
-                case .playlist:
-                    TrackListView(title: item.name, artworkItem: item, source: .playlist(item.id))
                 default:
                     // Anything else was indexed by a version of the app that knew
                     // more than this one does, or has changed type on the server.
@@ -48,13 +46,17 @@ struct SpotlightDestination: View {
     private func load() async {
         errorMessage = nil
         do {
-            item = try await store.item(id: id)
+            guard let found = try await store.spotlightItem(id: id) else {
+                errorMessage = "This search result is from an older version of Aoide. Search for it again."
+                return
+            }
+            item = found
         } catch is CancellationError {
             return
         } catch {
             // A Spotlight entry outlives the thing it points at: the album may have
             // been removed from the server since it was indexed.
-            errorMessage = (error as? JellyfinError)?.errorDescription ?? error.localizedDescription
+            errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
     }
 }

@@ -1,6 +1,6 @@
 import CurationKit
 import Foundation
-import JellyfinKit
+import MeleteKit
 import PlaybackKit
 
 /// The two things the engine's reports can't carry: where a queue came from, and the
@@ -25,7 +25,7 @@ enum PlaybackContext {
     /// the same song twice, having arrived from two different places.
     private static var sources: [UUID: PlaySource] = [:]
 
-    /// What Jellyfin knows about each live track, by id. Tracks are the same object in
+    /// What Melete knows about each live track, by id. Tracks are the same object in
     /// every queue slot, so this one is keyed by track.
     private static var metadata: [String: TrackRef] = [:]
 
@@ -59,11 +59,11 @@ enum PlaybackContext {
         return result
     }
 
-    /// Remembers what Jellyfin knows about these items for as long as they stay queued.
+    /// Remembers what Melete knows about these items for as long as they stay queued.
     ///
     /// Called as items are mapped into tracks, because that is the last moment the full
     /// item is in hand — by the time anything plays, only the `Track` survives.
-    static func remember(_ items: [JellyfinItem]) {
+    static func remember(_ items: [MusicItem]) {
         let now = Date().millis
         for item in items where item.type == .audio {
             // One derivation, shared with the library index — see `TrackCatalogue`. The
@@ -114,12 +114,12 @@ enum PlaybackContext {
 
         // Nothing in this session mapped this track — a queue restored from disk, or a
         // path that reached the engine without going through the bridge. What `Track`
-        // carries is enough to count a play against; the fields only Jellyfin knows stay
+        // carries is enough to count a play against; the fields only Melete knows stay
         // empty until the song is played from a list again.
         //
         // The one cost is the content key, which is built from the artist: `Track.artist`
         // is the *album* artist where there is one, so a compilation resolved this way
-        // gets a different key than the same track resolved from its Jellyfin item, and
+        // gets a different key than the same track resolved from its Melete item, and
         // relinking after a rescan would miss it. Rare, and recoverable the next time
         // the track is played from a list.
         let durationMs = track.duration.map { Int(($0.seconds * 1000).rounded()) }

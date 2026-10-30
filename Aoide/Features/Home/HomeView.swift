@@ -1,4 +1,4 @@
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
 /// The landing screen: a stack of shelves built from your own library.
@@ -33,9 +33,8 @@ struct HomeView: View {
 
                     shelf("Recently Added", store.recentlyAdded)
                     shelf("Recently Played", store.recentlyPlayed)
-                    shelf("Most Played", store.mostPlayed, subtitle: "Your library")
-                    shelf("Favourites", store.favorites)
-                    shelf("Rediscover", store.rediscover, subtitle: "Not played in a while")
+                    shelf("Most Played", store.mostPlayed, subtitle: "The last 30 days")
+                    shelf("Favourites", store.favorites, subtitle: "Albums of songs you like")
 
                     if anyShelfFailed {
                         unreachableState
@@ -62,7 +61,7 @@ struct HomeView: View {
     @ViewBuilder
     private func shelf(
         _ title: String,
-        _ state: LibraryStore.Loadable<[JellyfinItem]>,
+        _ state: LibraryStore.Loadable<[MusicItem]>,
         subtitle: String? = nil
     ) -> some View {
         switch state {
@@ -84,7 +83,7 @@ struct HomeView: View {
     }
 
     /// The one album given hero treatment, with the reason it earned the spot.
-    private var heroAlbum: (album: JellyfinItem, reason: String)? {
+    private var heroAlbum: (album: MusicItem, reason: String)? {
         if let album = store.recentlyAdded.value?.first {
             return (album, "Added recently")
         }
@@ -94,8 +93,8 @@ struct HomeView: View {
         return store.albums.value?.first.map { ($0, "From your library") }
     }
 
-    private var shelfStates: [LibraryStore.Loadable<[JellyfinItem]>] {
-        [store.recentlyAdded, store.recentlyPlayed, store.mostPlayed, store.favorites, store.rediscover]
+    private var shelfStates: [LibraryStore.Loadable<[MusicItem]>] {
+        [store.recentlyAdded, store.recentlyPlayed, store.mostPlayed, store.favorites]
     }
 
     private var anyShelfFailed: Bool {

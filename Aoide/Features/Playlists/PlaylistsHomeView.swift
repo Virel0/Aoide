@@ -1,25 +1,10 @@
 import CurationKit
-import JellyfinKit
+import MeleteKit
 import SwiftUI
 
-/// Everything called a playlist, in one place.
-///
-/// There are two kinds and they are genuinely different things: the ones made here live
-/// in this device's own database, sync between the listener's devices, and can be smart;
-/// the ones on Jellyfin were made on the server, are shared with every other client, and
-/// this app can only read them.
-///
-/// They are presented as two labelled sections of one screen rather than two rows in
-/// Library. A listener has one mental category — "my playlists" — and two Library rows
-/// both spelled playlist-something would make them guess which is which every single
-/// time, before they know what the difference is. Sections put the distinction exactly
-/// where it becomes relevant: at the moment you look at a specific playlist and find that
-/// one of them offers Rename and Delete and the other doesn't. They are never merged into
-/// one list — that would be the genuinely confusing option, because the two behave
-/// differently and nothing on a merged row could explain why.
-///
-/// The order matters too. Local first: they are the only ones this screen can create, and
-/// the server's are still one glance away.
+/// Everything called a playlist, in one place: the ones made here, which live in this
+/// device's own database, sync between the listener's devices through Melete, and can
+/// be smart.
 struct PlaylistsHomeView: View {
     /// `nil` at the root. A folder pushes the same screen scoped to its contents, so
     /// there is one implementation of a playlist row rather than two that drift.
@@ -37,18 +22,10 @@ struct PlaylistsHomeView: View {
     @State private var renameTarget: RenameTarget?
     @State private var deleteTarget: RenameTarget?
     /// The server playlist whose local copy is about to be replaced.
-    @State private var refreshing: JellyfinItem?
-    @State private var isConfirmingImportAll = false
-    @State private var isImportingAll = false
-    @State private var importSummary: LocalPlaylistStore.ImportSummary?
     @State private var isConfirmingDelete = false
     @State private var isBuildingSmart = false
     @State private var isImportingPlaylist = false
     @State private var errorMessage: String?
-    @AppStorage(PlaylistSurface.key) private var surface = PlaylistSurface.both
-    /// Shows the kind the preference hides, for this visit only. A preference is a
-    /// statement about most days; this is for the day somebody needs the other list.
-    @State private var isShowingHidden = false
 
     private enum RenameTarget {
         case playlist(Playlist)
@@ -67,58 +44,13 @@ struct PlaylistsHomeView: View {
 
     var body: some View {
         List {
-            // Inside a folder there is only ever the local kind, whatever the
-            // preference says: the folder is itself a local thing.
-            if folder != nil || surface.showsLocal || isShowingHidden { localSection }
-            // Only at the root: a folder holds local playlists, and repeating the whole
-            // server list inside every one of them would say something untrue about
-            // where those playlists are filed.
-            if folder == nil, surface.showsServer || isShowingHidden { serverSection }
+            localSection
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .miniPlayerInset()
         .appBackground()
         .navigationTitle(folder?.name ?? "Playlists")
-        .confirmationDialog(
-            "Copy your Jellyfin playlists?",
-            isPresented: $isConfirmingImportAll,
-            titleVisibility: .visible
-        ) {
-            Button("Copy") {
-                if case .loaded(let server) = library.playlists { importAll(server) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            // Says what it will not touch, because that is the worry: a bulk
-            // button over playlists somebody has already edited reads as
-            // destructive even when it isn't.
-            Text("Each one becomes a playlist you can edit here. Copies you already have are left alone, including anything you've changed in them.")
-        }
-        .alert(
-            "Copied",
-            isPresented: Binding(get: { importSummary != nil }, set: { if !$0 { importSummary = nil } })
-        ) {
-            Button("OK") { importSummary = nil }
-        } message: {
-            Text(summaryMessage)
-        }
-        .confirmationDialog(
-            "Replace the copy of “\(refreshing?.name ?? "")”?",
-            isPresented: Binding(get: { refreshing != nil }, set: { if !$0 { refreshing = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Replace", role: .destructive) {
-                guard let target = refreshing else { return }
-                refreshing = nil
-                Task { await playlists.importFromServer(target) }
-            }
-            Button("Cancel", role: .cancel) { refreshing = nil }
-        } message: {
-            // Spelled out because it cannot be undone: a copy is a snapshot, and
-            // refreshing takes the server's contents whole rather than merging.
-            Text("This takes the songs from your server again. Anything you've added or reordered in your copy will be lost.")
-        }
         .navigationBarTitleDisplayMode(folder == nil ? .automatic : .inline)
         .toolbar { toolbar }
         .sheet(isPresented: $isImportingPlaylist) {
@@ -128,16 +60,14 @@ struct PlaylistsHomeView: View {
         }
         .task {
             await playlists.reload()
-            if folder == nil { await library.loadPlaylistsIfNeeded() }
             // Covers chosen before publishing existed have a reference but no bytes,
-            // so they reach neither the other devices nor Jellyfin. Done here rather
+            // so they reach no other device. Done here rather
             // than during sync: it downloads and re-uploads an image each time, and
             // this is the screen where a missing cover is the visible problem.
             await playlists.publishPendingCovers()
         }
         .refreshable {
             await playlists.reload()
-            if folder == nil { await library.reloadPlaylists() }
         }
         // A sync that landed another device's playlists wrote them straight into the
         // database, which this screen read once in `.task` and has held as an array
@@ -393,123 +323,6 @@ struct PlaylistsHomeView: View {
         }
     }
 
-    /// Reports failures rather than only successes. A bulk copy that silently lost
-    /// three playlists to a server hiccup is worse than one that says so.
-    private var summaryMessage: String {
-        guard let summary = importSummary else { return "" }
-        var parts = ["\(summary.copied) playlist\(summary.copied == 1 ? "" : "s") copied"]
-        if summary.skipped > 0 { parts.append("\(summary.skipped) already here") }
-        if summary.failed > 0 { parts.append("\(summary.failed) couldn't be read") }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Server playlists with no copy here yet. The count is on the button because
-    /// "copy everything" reads as destructive when some of it is already here, and
-    /// nothing is going to be overwritten.
-    private func uncopied(from serverPlaylists: [JellyfinItem]) -> Int {
-        serverPlaylists.count { !playlists.importedSourceIds.contains($0.id) }
-    }
-
-    private func importAll(_ serverPlaylists: [JellyfinItem]) {
-        isImportingAll = true
-        Task {
-            importSummary = await playlists.importAllFromServer(serverPlaylists)
-            isImportingAll = false
-        }
-    }
-
-    // MARK: - Server
-
-    @ViewBuilder
-    private var serverSection: some View {
-        Section {
-            switch library.playlists {
-            case .idle, .loading:
-                LoadingRow()
-            case .failed(let message):
-                // Not `loadPlaylistsIfNeeded` — its `.idle` guard makes it a no-op from a
-                // failed state, which is exactly when this button is on screen.
-                ErrorRow(message: message) { Task { await library.reloadPlaylists() } }
-            case .loaded(let serverPlaylists):
-                if !serverPlaylists.isEmpty, uncopied(from: serverPlaylists) > 0 {
-                    Button {
-                        isConfirmingImportAll = true
-                    } label: {
-                        Label(
-                            "Copy \(uncopied(from: serverPlaylists)) to My Playlists",
-                            systemImage: "square.and.arrow.down.on.square"
-                        )
-                    }
-                    .disabled(isImportingAll)
-                }
-                if serverPlaylists.isEmpty {
-                    Text("Playlists you create on your Jellyfin server show up here.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(serverPlaylists) { playlist in
-                        serverRow(playlist)
-                    }
-                }
-            }
-        } header: {
-            Text("On Your Server")
-        } footer: {
-            Text("Made on Jellyfin and shared with every client. Read-only here.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func serverRow(_ playlist: JellyfinItem) -> some View {
-        // Declared before the row so the confirmation can live on the list rather than
-        // on a context menu that is already gone by the time its action runs.
-
-        NavigationLink {
-            TrackListView(
-                title: playlist.name,
-                artworkItem: playlist,
-                source: .playlist(playlist.id)
-            )
-        } label: {
-            HStack(spacing: 12) {
-                ArtworkView(
-                    url: library.artworkURL(for: playlist, width: Design.ArtworkWidth.thumbnail),
-                    cornerRadius: Design.Radius.thumbnail
-                )
-                .frame(width: Design.Size.listThumbnail, height: Design.Size.listThumbnail)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(playlist.name).lineLimit(1)
-                    if !playlist.subtitle.isEmpty {
-                        Text(playlist.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                if playlists.importedSourceIds.contains(playlist.id) {
-                    // Says which server playlists already have a copy, so importing
-                    // the same one twice is a decision rather than an accident.
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                        .accessibilityLabel("Already copied")
-                }
-            }
-        }
-        .contextMenu {
-            if playlists.importedSourceIds.contains(playlist.id) {
-                Button("Refresh Copy", systemImage: "arrow.clockwise") {
-                    refreshing = playlist
-                }
-            } else {
-                Button("Copy to My Playlists", systemImage: "square.and.arrow.down") {
-                    Task { await playlists.importFromServer(playlist) }
-                }
-            }
-        }
-    }
-
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -534,20 +347,6 @@ struct PlaylistsHomeView: View {
             }
             .accessibilityLabel("New")
             .disabled(!playlists.isAvailable)
-        }
-        if folder == nil, surface != .both {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingHidden.toggle()
-                } label: {
-                    Image(systemName: isShowingHidden ? "eye.slash" : "eye")
-                }
-                .accessibilityLabel(
-                    isShowingHidden
-                        ? "Hide \(surface.showsLocal ? "server" : "my") playlists"
-                        : "Show \(surface.showsLocal ? "server" : "my") playlists"
-                )
-            }
         }
     }
 

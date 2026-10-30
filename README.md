@@ -3,10 +3,10 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.svg">
-  <img src="docs/assets/banner-light.svg" width="100%" alt="Aoide for iPhone: a native Jellyfin music player, with CarPlay.">
+  <img src="docs/assets/banner-light.svg" width="100%" alt="Aoide for iPhone: a native music player for Melete, with CarPlay.">
 </picture>
 
-**A music player for your own Jellyfin server, built to look and feel like Apple Music, in sync with Aoide on Linux.**
+**A music player for your own Melete server, built to look and feel like Apple Music, in sync with Aoide on Linux.**
 
 [![iOS 26+](https://img.shields.io/badge/iOS-26%2B-6244e5)](#requirements)
 [![Swift 6](https://img.shields.io/badge/Swift-6-6244e5)](https://www.swift.org)
@@ -23,14 +23,14 @@
 
 </div>
 
-Aoide is a native iOS app for the music on your Jellyfin server: big artwork,
+Aoide is a native iOS app for the music on your [Melete](https://github.com/Virel0/Melete)
+server: big artwork,
 synced lyrics, CarPlay, Siri, and a library that behaves like a library.
 
 It plays what is on your server and keeps what is yours on the phone:
 playlists, smart playlists, likes, taste flags and an honest play history, all
-synced between devices through the
-[Aoide sidecar](https://github.com/Virel0/aoide-sidecar), a small Jellyfin
-plugin. The [Linux app](https://github.com/Virel0/Aoide-Linux) reads and writes
+synced between devices through Melete, which keeps Aoide's sync log itself.
+The [Linux app](https://github.com/Virel0/Aoide-Linux) reads and writes
 the same data, so a playlist made on the phone is on the desk and a play at the
 desk counts on the phone.
 
@@ -70,7 +70,7 @@ desk counts on the phone.
 - Activity tags on plays: Gaming, Focus, Chores, Commute
 
 ### Across devices
-- Playlists, folders, likes, taste flags and plays synced with the Linux app through the sidecar
+- Playlists, folders, likes, taste flags and plays synced with the Linux app through Melete
 - A queue you can hand to another device
 
 </td>
@@ -93,17 +93,14 @@ with made-up artists, albums and lyrics.
 
 - **Aoide for iPhone** (this repository): the iOS app, in SwiftUI, with CarPlay and Siri.
 - **[Aoide for Linux](https://github.com/Virel0/Aoide-Linux)**: the desktop app, in Rust, with a pacman repository, a Flatpak, an AppImage and a deb.
-- **[Aoide sidecar](https://github.com/Virel0/aoide-sidecar)**: the Jellyfin plugin both apps sync through. Optional: without it, the apps still play music and keep playlists on the device.
+- **[Melete](https://github.com/Virel0/Melete)**: the media server both apps play from and sync through.
 
 Aoide was one of the three original Muses in Greek myth; the name means "song".
 
 ## Requirements
 
 - An iPhone on iOS 26 or later. Mixes and sentence search need Apple Intelligence.
-- A Jellyfin server. Developed against 10.11; older 10.x releases may work but are untested.
-- The Aoide sidecar plugin on that server, for sync, taste flags, Discover,
-  Spotify-import matching and silence measurement. Without it the app still
-  plays music and keeps playlists locally.
+- A Melete server. Developed against 0.1.
 
 ## Building
 
@@ -133,13 +130,13 @@ simulator:
 
 ```sh
 cd Packages/CurationKit && swift test    # store, op log, sync, smart playlists
-cd Packages/JellyfinKit && swift test    # API client, import matching
+cd Packages/MeleteKit && swift test      # API client, import matching
 cd Packages/PlaybackKit && swift test    # queue, conversion, silence bounds
 ```
 
 ### Design notes
 
-`docs/sync-design.md` is the contract the app and the sidecar both implement.
+`docs/sync-design.md` is the contract the apps and Melete's sync all implement.
 `docs/taste-flags.md` and `docs/sound-bounds.md` are the two later additions.
 The other files in [docs/](docs) are design briefs (audio analysis, Infinity,
 Discover, activity tags, crossfade) and the record of Auto DJ, which is
@@ -151,15 +148,14 @@ Aoide has no account of its own, no analytics, and no servers run for it.
 
 | Where | What is sent | When |
 |---|---|---|
-| Your Jellyfin server | Sign-in, library requests, streams and downloads, playback reports | Always |
-| The Aoide sidecar, on the same server | Sync, taste flags, Discover, Infinity, import matching, silence measurements | When the plugin is installed |
+| Your Melete server | Sign-in, library requests, streams and downloads, the sync log (playlists, likes, taste flags, plays), Discover, Infinity, import matching, measurements | Always |
 | Spotify | A request for the public playlist page you paste; nothing about you | Only when you import a playlist |
 | Apple | Siri requests, if you allow Siri; the system downloads a translation language once, the first time it is needed | Only for those features |
 
 Mixes, sentence search and lyric translation run on the phone; your
 descriptions and the lyrics do not leave the device. The sign-in token is kept
 in the keychain. Playlists, likes, taste flags, the play history and downloads
-are kept on the phone, and synced to your own server when it runs the sidecar.
+are kept on the phone, and synced to your own server.
 The full policy is [docs/privacy-policy.md](docs/privacy-policy.md).
 
 ## Licence
