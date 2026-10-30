@@ -3,8 +3,8 @@ import Foundation
 // What a play is, and what a skip is — in one place, in both languages this package
 // needs them in.
 //
-// Jellyfin increments its PlayCount the moment playback starts, so a four-second skip
-// counts there exactly as much as a full listen. Everything here exists to be honest
+// A server that counts a play the moment playback starts counts a four-second skip
+// exactly as much as a full listen. Everything here exists to be honest
 // where that is not.
 //
 // There are two consumers and they must never disagree. `PlayHistory` asks in SQL for

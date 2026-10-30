@@ -1,22 +1,25 @@
 # Aoide curation store — local schema and sync contract
 
-Jellyfin owns the library. This owns everything it is bad at.
+Melete owns the library. This owns everything about how it is listened to.
 
 The split is deliberate and worth stating precisely, because every design decision
 below follows from it:
 
-- **Jellyfin remains source of truth for** files, tags, artwork, item identity, and
+- **Melete remains source of truth for** files, tags, artwork, item identity, and
   which music exists at all.
 - **The curation store is source of truth for** playlists, folders, likes, play
   history, queue state, and smart-playlist rules.
 
-Nothing here duplicates what Jellyfin does well. It exists because Jellyfin's music
-model is an afterthought on a video server, and this codebase has already had to
-work around three separate instances of that: albums carry no play statistics at all
-(`SupportsPlayedStatus => false`, so `sortBy=PlayCount` on an album returns arbitrary
-rows — `mostPlayedAlbums` aggregates from tracks client-side instead), `PlayCount`
-increments at playback *start* so it honestly means "most started", and the lyrics
-endpoint silently discards `[offset:]` tags.
+Nothing here duplicates what the server does. The store began beside Jellyfin,
+whose music model was an afterthought on a video server (play counts that moved at
+playback *start*, albums with no play statistics), and the Aoide sidecar plugin
+synced it. Melete, which replaced both, keeps this design: it serves the same
+routes and stores the same op log, so the clients did not change shape.
+
+The field is still called `jellyfin_id` (`jellyfinId` in the app's tables)
+everywhere below, because the name is part of the wire format every device and
+Melete share. It holds a Melete track id now; entries written before Melete hold
+Jellyfin's hex ids.
 
 ## Principles
 
@@ -35,9 +38,9 @@ endpoint silently discards `[offset:]` tags.
 ## The identity problem
 
 **This is the highest-risk part of the whole design.** Everything below stores
-references to Jellyfin item ids, and those ids are less stable than they look: they
-are derived per-file, so moving files or re-adding a library mints new ones on the
-next scan. Every playlist entry and history row would then dangle silently — the
+references to the server's track ids, and those ids are less stable than they look:
+they belong to a file (a library and its path in it), so moving files or re-adding a
+library mints new ones on the next scan. Every playlist entry and history row would then dangle silently — the
 playlist still lists ten songs, and none of them resolve.
 
 So every reference is stored **twice**:
@@ -72,7 +75,7 @@ Every syncable table carries the same four columns:
 
 ### `tracks` — local cache, **not synced**
 
-Each device rebuilds this from its own Jellyfin connection, so it never travels.
+Each device rebuilds this from its own connection to Melete, so it never travels.
 Keeping it out of the sync payload is what keeps a full history sync small.
 
 ```sql
@@ -151,9 +154,10 @@ CREATE TABLE folders (
 
 ### `likes`
 
-Owned here, and **written through to Jellyfin when online** so the web UI and other
-clients still see them. Local ownership is what makes liking a song on a plane work;
-the write-through is what stops this becoming a private silo.
+Owned here, and synced like everything else; Melete reads them out of the log
+(`/api/v1/music/likes`) so other clients see them too. Local
+ownership is what makes liking a song on a plane work; the log is what stops this
+becoming a private silo.
 
 ```sql
 CREATE TABLE likes (
@@ -191,10 +195,11 @@ CREATE INDEX idx_events_track ON play_events(jellyfin_id);
 CREATE INDEX idx_events_time ON play_events(started_at);
 ```
 
-Note what this buys that Jellyfin cannot give: a *play* is defined here, not by the
-server. "Completed" means the track actually finished; a skip at four seconds is
-recorded as a skip rather than as a play. Jellyfin counts both identically, at the
-moment playback starts.
+Note what this buys that a server-side play count cannot give: a *play* is defined
+here, not by the server. "Completed" means the track actually finished; a skip at four
+seconds is recorded as a skip rather than as a play. A count taken at the moment
+playback starts treats both identically; Melete instead reads these events into its
+own play history, with how each one ended.
 
 ### `queue_state`
 
@@ -205,7 +210,7 @@ belonging to a *different* device.
 CREATE TABLE queue_state (
   device_id     TEXT PRIMARY KEY,
   device_name   TEXT NOT NULL,
-  track_ids     TEXT NOT NULL,       -- JSON array of jellyfin ids
+  track_ids     TEXT NOT NULL,       -- JSON array of track ids
   position      INTEGER NOT NULL,
   elapsed_ms    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
@@ -262,18 +267,17 @@ absolute date would freeze "not played in a month" to one particular month.
 
 ## Sync contract
 
-This is the part the sidecar implements. Two endpoints.
+This is the part Melete implements (the sidecar did, before it). Two endpoints.
 
 ### Auth
 
 ```
-Authorization: MediaBrowser Token="<the user's Jellyfin access token>"
+Authorization: Bearer <the user's Melete token>
 ```
 
-The sidecar validates by calling Jellyfin's `/Users/Me` with that token and caching
-the resulting user id briefly. **It must not run its own account system** — a second
-set of credentials means every friend has two logins and the sidecar owns a password
-database it has no business owning.
+The sync routes are signed in like every other Melete route. **There is no separate
+account for sync** — a second set of credentials would mean every friend has two
+logins.
 
 ### `POST /aoide/sync/push`
 
@@ -316,7 +320,7 @@ diverge permanently, and nothing afterwards notices.
 
 **Per field for `playlists` and `folders`, per row for everything else.** The
 per-field stamps live in a `fieldUpdatedAt` map *inside* the payload, so this needed
-no server change at all: the sidecar stores payloads verbatim and never parses them,
+no server change at all: Melete stores payloads verbatim and never parses them,
 which is exactly the schema evolution that opacity was preserved for. A row without
 the map falls back to its `updated_at` for every field, so ops already in the log and
 devices on older builds keep working with no migration.
@@ -335,7 +339,7 @@ narrower: two devices editing the *name* and the *description* of the same row.
 Clock skew is handled with the server's `receivedAt`, but **both** references have to
 agree before a timestamp is disbelieved: the writer must be ahead of the server *and*
 ahead of the receiving device's own clock. Testing against the server alone cannot
-tell a fast client from a slow server, and a Jellyfin box on a NAS with no RTC is a
+tell a fast client from a slow server, and a server on a NAS with no RTC is a
 slow server — every device then looks "ahead", every inbound row is dragged below the
 local copy, and every device rejects every other device's edits permanently and
 silently.
@@ -346,7 +350,7 @@ The contract above was written before either side existed. Where the running sys
 differs, the running system is right.
 
 - **Entity names are translated at the wire boundary.** The store's tables are
-  singular camelCase because the record types are; the sidecar's allow-list is plural
+  singular camelCase because the record types are; the server's allow-list is plural
   snake_case (`playlists`, `playlist_items`, `folders`, `likes`, `play_events`,
   `queue_state`) and matched strictly. Rewriting stored `op` rows to spell it the
   server's way would be a schema migration in service of a formatting preference, and
@@ -405,32 +409,23 @@ Inbound covers are fetched **lazily**, when something is about to draw one, neve
 during sync — a device joining an account would otherwise download every cover in the
 library before it finished syncing, most of which it will never show.
 
-## Jellyfin integration
+## Playlists on the server
 
-Making the sidecar a **Jellyfin plugin** rather than a standalone service is
-worthwhile mainly for auth: a plugin runs in-process and gets the authenticated user
-for free, instead of round-tripping every request to `/Users/Me`.
-
-For playlists to appear in Jellyfin's own UI, the sidecar exports them as native
-Jellyfin playlists. **Keep that export strictly one-way.** If Jellyfin becomes a
-second writer, an edit exported to Jellyfin comes back as an inbound change, which
-exports again — playlists that grow duplicates or oscillate. Mark exported playlists
-with a known prefix or provider id, and treat edits made in Jellyfin's UI as an
-explicit user-initiated import, never an automatic read-back.
-
-Smart playlists export as their *current contents*, a snapshot. Jellyfin has no
-concept of a rule.
+Melete has no playlists of its own to keep in step: `/api/v1/playlists` reads
+Aoide's playlists straight out of the log. On Jellyfin the sidecar exported them,
+one way only, as native Jellyfin playlists, so an edit could never come back round
+as an inbound change; with one writer that problem is gone.
 
 ## Phasing
 
 Ten of the fourteen features need no server at all. They are worth building first,
 because single-device means no sync, and sync is where all the difficulty lives.
 
-**Phase 1 — local only, no sidecar:** real play counts and history, skip tracking,
+**Phase 1 — local only, no server:** real play counts and history, skip tracking,
 true queue persistence, weighted shuffle, playlist editing, folders, smart playlists,
 auto-updating mixes, wrapped-style recaps, taste-based recommendations.
 
-**Phase 2 — needs the sidecar:** resume across devices, per-device downloads with
+**Phase 2 — needs the server:** resume across devices, per-device downloads with
 shared state, shared and collaborative playlists, public playlists, scrobbling.
 
 Phase 1 still writes the op log from day one. That is the whole point of designing

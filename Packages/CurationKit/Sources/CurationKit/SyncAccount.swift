@@ -41,7 +41,7 @@ public extension CurationStore {
         }
     }
 
-    /// The Jellyfin user whose library this store holds, if it has been claimed.
+    /// The account whose library this store holds, if it has been claimed.
     func accountId() throws -> String? {
         try read { db in
             try String.fetchOne(db, sql: "SELECT value FROM syncState WHERE key = 'account'")
@@ -63,7 +63,7 @@ public extension CurationStore {
     /// somebody else.
     ///
     /// The pull cursor is the sharp edge. It is a position in *one user's* log, and
-    /// the sidecar scopes its sequences per user — so carrying a cursor of 4000 into
+    /// Melete scopes its sequences per user — so carrying a cursor of 4000 into
     /// a second account skips that account's first four thousand ops permanently, and
     /// nothing ever offers them again. Erasing the rows and keeping the cursor would
     /// be the worst of both.
@@ -173,7 +173,7 @@ public extension CurationStore {
 
     /// Whether there is anything here worth asking about.
     ///
-    /// Deliberately excludes `track`, which is a rebuildable cache of what Jellyfin
+    /// Deliberately excludes `track`, which is a rebuildable cache of what the server
     /// already knows and reveals nothing about a person — a store holding only a
     /// track cache is not evidence of somebody's listening.
     private static func holdsData(_ db: Database) throws -> Bool {

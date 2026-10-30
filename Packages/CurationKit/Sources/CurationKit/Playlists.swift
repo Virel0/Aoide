@@ -3,10 +3,10 @@ import GRDB
 
 // MARK: - References
 
-/// The pair a playlist entry stores for every track: the id Jellyfin answers to
+/// The pair a playlist entry stores for every track: the id the server answers to
 /// today, and the fingerprint that outlives it.
 ///
-/// Both halves are kept because Jellyfin item ids are derived per-file — moving
+/// Both halves are kept because track ids belong to files — moving
 /// files or re-adding a library mints new ones on the next scan. An entry holding
 /// only an id would dangle with nothing left to search by; `relinkItems` is what
 /// the second half is for.
@@ -46,7 +46,7 @@ public enum PlaylistError: Error, Equatable, Sendable {
 public struct RelinkReport: Equatable, Sendable {
     /// Entries examined — every live playlist row.
     public var checked = 0
-    /// Rewritten to a new Jellyfin id found by content key.
+    /// Rewritten to a new track id found by content key.
     public var relinked = 0
     /// Previously marked unresolved and resolving again, so the mark was cleared.
     public var recovered = 0
@@ -61,12 +61,12 @@ public extension PlaylistItem {
     ///
     /// The schema has no `unresolved` column and this deliberately does not add one:
     /// the state is a property of the id — "this no longer points anywhere" — and a
-    /// migration for it would have to be agreed by every device and the sidecar
+    /// migration for it would have to be agreed by every device and the server
     /// before the flag could travel. Living inside a column that already syncs, it
     /// travels for free, and a build that has never heard of the marker simply fails
-    /// to resolve the id, which is precisely the situation the entry is in. Jellyfin
-    /// item ids are hex GUIDs, so a colon cannot occur in a real one and the marker
-    /// can never be mistaken for part of an id.
+    /// to resolve the id, which is precisely the situation the entry is in. Track
+    /// ids are integers (hex GUIDs in entries from Jellyfin), so a colon cannot
+    /// occur in a real one and the marker can never be mistaken for part of an id.
     static let unresolvedPrefix = "unresolved:"
 
     var isUnresolved: Bool { jellyfinId.hasPrefix(Self.unresolvedPrefix) }
@@ -444,7 +444,7 @@ public extension CurationStore {
 // MARK: - Relinking
 
 public extension CurationStore {
-    /// Repairs entries whose Jellyfin id stopped resolving, by content key.
+    /// Repairs entries whose track id stopped resolving, by content key.
     ///
     /// Two closures rather than one because they are two different questions and a
     /// caller may well answer them from two different places: `live` is "does this id
@@ -499,7 +499,7 @@ public extension CurationStore {
     }
 
     /// Relinks against the local track cache, which is this device's mirror of what
-    /// Jellyfin currently holds. This is the pass to run after a library scan.
+    /// the server currently holds. This is the pass to run after a library scan.
     @discardableResult
     func relinkItemsAgainstTrackCache(now: Millis = Date().millis) throws -> RelinkReport {
         let cache = try read { db in try TrackRef.fetchAll(db) }
@@ -647,10 +647,10 @@ private extension CurationStore {
     }
 }
 
-// MARK: - Importing from Jellyfin
+// MARK: - Importing server playlists
 
 public extension CurationStore {
-    /// The local copy of a Jellyfin playlist, if one has been imported.
+    /// The local copy of a server playlist, if one has been imported.
     func importedPlaylist(from sourceJellyfinId: String) throws -> Playlist? {
         try read { db in
             try Playlist
@@ -660,7 +660,7 @@ public extension CurationStore {
         }
     }
 
-    /// Which Jellyfin playlists already have a local copy.
+    /// Which server playlists already have a local copy.
     func importedSourceIds() throws -> Set<String> {
         try read { db in
             try Set(String.fetchAll(
@@ -670,9 +670,9 @@ public extension CurationStore {
         }
     }
 
-    /// Copies a Jellyfin playlist into a local one, or refreshes the copy that exists.
+    /// Copies a server playlist into a local one, or refreshes the copy that exists.
     ///
-    /// A copy rather than a link, because the two cannot stay in step: Jellyfin has no
+    /// A copy rather than a link, because the two cannot stay in step: the server has no
     /// way to tell us it changed, and a local playlist that silently drifts from a
     /// server one it claims to mirror is worse than an honest snapshot. Refreshing is
     /// therefore explicit, and replaces the contents outright — the server's order is
@@ -721,8 +721,8 @@ public extension CurationStore {
 
     /// Up to `limit` distinct albums per playlist, in playing order.
     ///
-    /// For drawing a cover from what a playlist holds, the way Jellyfin and Apple
-    /// Music both do. Distinct *albums* rather than tracks: a playlist of one album
+    /// For drawing a cover from what a playlist holds, the way Apple Music
+    /// does. Distinct *albums* rather than tracks: a playlist of one album
     /// would otherwise tile the same square four times, which reads as a rendering
     /// bug rather than as a deliberate mosaic.
     ///

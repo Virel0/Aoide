@@ -1,5 +1,9 @@
 # Stems: the voice apart from the band
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which took over the sidecar's routes. It has no `/aoide/stems`, so this would
+> now be asked of Melete.
+
 > **Shelved, 2026-10-23, before it was sent.** Auto DJ stays shelved with it.
 > The brief is kept as written so it can be sent unchanged if the plan comes
 > back.

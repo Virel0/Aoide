@@ -1,13 +1,13 @@
 import Foundation
 
-/// The rule the sidecar follows to choose what plays next — `docs/infinity.md`,
+/// The rule Melete follows to choose what plays next — `docs/infinity.md`,
 /// as arithmetic — written out here so the rule has a reference on the client
 /// and a fixture can be generated from it.
 ///
 /// Not what the app runs: the app asks the server (``NextChooser``). This is
 /// what the server is *held to*: `NextRankingFixtureTests` runs it over a
 /// hand-written library and history and compares every score and factor to
-/// the fixture file the sidecar and the desktop also read. Three
+/// the fixture file Melete and the desktop also read. Three
 /// implementations, one file, and a number that differs is a bug in whichever
 /// side is wrong.
 ///

@@ -18,7 +18,7 @@ public struct SmartRule: Codable, Hashable, Sendable {
     /// The columns a rule may talk about.
     ///
     /// The raw values are the spellings in docs/sync-design.md, which is what the
-    /// sidecar will be written against, so those are the only ones ever emitted.
+    /// server is written against, so those are the only ones ever emitted.
     public enum Field: String, Codable, Hashable, Sendable, CaseIterable {
         case title, artist, album
         case albumArtist = "album_artist"
@@ -319,7 +319,7 @@ public struct RelativeInterval: Hashable, Sendable {
 
 public extension CurationStore {
 
-    /// The Jellyfin ids matching `rules`, in the rule set's own order.
+    /// The track ids matching `rules`, in the rule set's own order.
     ///
     /// `now` is a parameter rather than a call to `Date()` inside, for two reasons
     /// that turn out to be the same one: a test cannot be deterministic otherwise,

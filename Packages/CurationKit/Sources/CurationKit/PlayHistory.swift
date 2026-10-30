@@ -316,7 +316,7 @@ enum HistorySQL {
 // MARK: - Aggregates
 
 public extension CurationStore {
-    /// Counts only events that qualify as plays — unlike Jellyfin's PlayCount, which
+    /// Counts only events that qualify as plays — unlike a server play count, which
     /// counts anything that started.
     func playCount(jellyfinId: String) throws -> Int {
         try stats(jellyfinId: jellyfinId).playCount

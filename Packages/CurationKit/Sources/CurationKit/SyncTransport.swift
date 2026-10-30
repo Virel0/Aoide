@@ -343,13 +343,13 @@ extension PullResponse: Codable {
 /// The network, held at arm's length.
 ///
 /// CurationKit has no networking in it and this protocol is what keeps that true.
-/// The app implements it over `JellyfinClient` — same host, same token, base path
+/// The app implements it over `MeleteClient` — same host, same token, base path
 /// `/aoide/sync` — and the package stays buildable and testable from the command
 /// line on macOS, with a fake server standing in for the real one. Without this
-/// seam the sync engine could only be exercised against a running Jellyfin.
+/// seam the sync engine could only be exercised against a running server.
 /// Moving cover bytes, which travel outside the op log.
 ///
-/// Separate from `SyncTransport` because it is optional: a sidecar without the image
+/// Separate from `SyncTransport` because it is optional: a server without the image
 /// endpoints still syncs everything else, and a transport that cannot do this says so
 /// by not conforming rather than by throwing at the moment somebody picks a picture.
 public protocol SyncImageTransport: Sendable {

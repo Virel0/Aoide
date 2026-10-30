@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The names differ, and translating between them at the wire boundary is cheaper
 /// than agreeing on one: GRDB's tables are singular camelCase because the record
-/// types are, and the sidecar's allow-list is plural snake_case because its author
-/// wrote SQL. Rewriting every stored `op` row to spell its entity the server's way
+/// types are, and the server's allow-list is plural snake_case because the sidecar's
+/// author wrote SQL. Rewriting every stored `op` row to spell its entity the server's way
 /// would be a schema migration in service of a formatting preference, and it would
 /// still leave ops written by an older build spelling it the old way. Matching on
 /// the server is strict and case-sensitive, so these six strings *are* the contract.
@@ -20,7 +20,7 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
 
     // `track` is absent on purpose, and its absence is the enforcement rather than a
     // rule written down somewhere. The track cache is per-device — every device
-    // rebuilds it from its own Jellyfin connection — so the server refuses the
+    // rebuilds it from its own server connection — so the server refuses the
     // entity outright. With no case to name it, an op for `track` cannot be turned
     // into a wire op at all; the only thing the push path can do with one is
     // quarantine it, which is what `WireOp.make` does.
@@ -28,7 +28,7 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
     /// The GRDB table name, which is also this enum's raw value.
     public var localTable: String { rawValue }
 
-    /// The name in the sidecar's allow-list.
+    /// The name in the server's allow-list.
     public var wireName: String {
         switch self {
         case .playlist: "playlists"
@@ -43,7 +43,7 @@ public enum SyncEntity: String, CaseIterable, Hashable, Sendable {
 
     /// Entities a server may not know yet.
     ///
-    /// The sidecar's entity list is an allow-list and an unknown name is refused,
+    /// The server's entity list is an allow-list and an unknown name is refused,
     /// which by the contract would quarantine the op — real user data lost to a
     /// deployment order. Ops for these are held locally instead until the server
     /// advertises the entity in `/aoide/sync/status`. Everything older than the

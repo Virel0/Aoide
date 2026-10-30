@@ -18,7 +18,7 @@ public extension CurationStore {
     /// `writeLocal` rather than `record`, for the same reason the recorder uses it: this
     /// table is a mirror of what the server already holds, rebuilt by each device from
     /// its own connection. Syncing it would dominate the payload and tell the other
-    /// devices nothing they couldn't ask Jellyfin themselves.
+    /// devices nothing they couldn't ask the server themselves.
     ///
     /// One transaction for the whole batch rather than one per row. An index pass over a
     /// large library is thousands of rows, and a transaction each turns a single fsync
@@ -66,7 +66,7 @@ public extension CurationStore {
     ///
     /// The counterpart to `cacheTracks`, and the only reader `lastSeenAt` has ever had.
     /// Without it this table is append-only, and two things break the first time a
-    /// Jellyfin rescan mints new ids for files that moved — the case the whole
+    /// rescan mints new ids for files that moved — the case the whole
     /// content-key apparatus exists for. `relinkItemsAgainstTrackCache` still finds the
     /// retired id sitting in the cache, concludes it is `live`, and repairs nothing. And
     /// every smart playlist, whose universe *is* this table, then evaluates against a

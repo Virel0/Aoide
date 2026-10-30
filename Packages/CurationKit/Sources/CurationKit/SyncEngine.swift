@@ -85,7 +85,7 @@ public actor SyncEngine {
     private let capabilities: (any SyncCapabilityTransport)?
     /// Local table names whose ops are being held. See `SyncEntity.needsServerSupport`.
     public private(set) var heldEntities: Set<String> = []
-    /// Both optional: a sidecar without the image endpoints still syncs everything
+    /// Both optional: a server without the image endpoints still syncs everything
     /// else, and covers simply stay on the device that chose them.
     private let images: (any SyncImageTransport)?
     private let imageBytes: (any ImageByteSource)?

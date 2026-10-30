@@ -82,7 +82,7 @@ desk counts on the phone.
 <td width="25%"><img src="docs/screenshots/album.png" alt="An album page with Play, Shuffle and Download"></td>
 <td width="25%"><img src="docs/screenshots/library.png" alt="The Library tab: playlists, mixes, Replay, artists, albums, songs and genres"></td>
 <td width="25%"><img src="docs/screenshots/discover.png" alt="This week's Discover list in the light appearance"></td>
-<td width="25%"><img src="docs/screenshots/playlists.png" alt="Playlists: the built-in smart playlists, and the playlists on the server"></td>
+<td width="25%"><img src="docs/screenshots/playlists.png" alt="Playlists: the built-in smart playlists beside two made on the phone"></td>
 </tr>
 </table>
 

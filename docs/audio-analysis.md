@@ -1,5 +1,10 @@
 # Audio analysis: loudness and tempo
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Proposed 2026-09-10 from the client side. Asks the sidecar for two numbers per
 track that neither client can compute for a file it does not hold. Same shape as
 `sound-bounds.md`, and deliberately so — it is the same decode.*

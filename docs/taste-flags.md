@@ -1,5 +1,10 @@
 # Taste flags: "not interested" and "don't count this"
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Proposed 2026-09-04 from the client side. Agreed the same day: the sidecar accepts `track_flags` as of 1.9.0.0 and advertises `acceptedEntities` in `/aoide/sync/status`. Both clients hold `track_flags` ops locally — neither pushed nor quarantined — until that list names the entity, so either deployment order is safe.*
 
 ## Why

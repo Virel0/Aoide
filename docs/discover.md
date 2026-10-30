@@ -1,5 +1,10 @@
 # Discover: the records you own and have not heard
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Asked of the sidecar on 2026-10-23 from the client side. Discover Weekly,
 for a personal library: a set of songs this listener owns but has barely or
 never played, chosen by their taste, the same all week.*

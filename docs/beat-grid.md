@@ -1,5 +1,10 @@
 # Beat grid: what Auto DJ needs
 
+> **Since 2026-10-30** Aoide runs on [Melete](https://github.com/Virel0/Melete),
+> which serves the sidecar's `/aoide/*` routes at the same paths, signed in with
+> Melete's tokens. Where this says Jellyfin ids, read Melete track ids. The
+> brief is kept as written.
+
 *Asked of the sidecar on 2026-09-10 and **shipped in 1.13.0.0** the same day; the built contract is in the sidecar's own `client-integration.md`. From the client side.*
 
 *Originally:*

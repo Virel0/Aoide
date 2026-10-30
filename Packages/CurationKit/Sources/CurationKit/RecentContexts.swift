@@ -21,7 +21,7 @@ public struct RecentContext: Codable, Hashable, Sendable, Identifiable {
     public var id: String
     public var name: String
     public var subtitle: String?
-    /// A Jellyfin item whose primary image stands for this context, if any.
+    /// An item whose cover stands for this context, if any.
     public var artworkItemId: String?
     public var lastOpened: Millis
 

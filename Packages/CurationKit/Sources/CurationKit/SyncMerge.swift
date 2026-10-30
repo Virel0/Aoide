@@ -430,7 +430,7 @@ struct InboundApplier {
     /// either.** Checking only against the server's `receivedAt` — which is what the
     /// contract suggests and what this used to do — asks "is the writer's clock ahead
     /// of the server's". That question cannot tell a fast client from a *slow server*,
-    /// and the two need opposite treatment. A Jellyfin box on a NAS with no RTC, or a
+    /// and the two need opposite treatment. A server on a NAS with no RTC, or a
     /// VM resumed from a snapshot, can sit hours behind: every device is then "ahead"
     /// of it, every inbound row gets dragged back to a receipt time older than the
     /// local copy it is being compared with, and every device rejects every other
