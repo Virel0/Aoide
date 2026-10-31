@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.2 (4)] - 2026-10-31
+
 ### Added
 - Asking for music the library doesn't have: at the foot of Search, look the
   words up on MusicBrainz through Melete and ask for an album, an artist or a
