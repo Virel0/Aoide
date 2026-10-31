@@ -150,6 +150,9 @@ struct MainTabView: View {
             Task { await store.refreshIfStale() }
         }
         .task { await SpotlightIndexer.shared.indexIfNeeded(client: client) }
+        // Downloads from the Jellyfin builds, named by Jellyfin ids, matched to
+        // Melete's songs and renamed so they show and play again.
+        .task { await LegacyDownloads.shared.bringAcross(client: client) }
         .task {
             // Joining needs no button: when someone else on the call starts a
             // session, this picks it up and adopts what they're playing.

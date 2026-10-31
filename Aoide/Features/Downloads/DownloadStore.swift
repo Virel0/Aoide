@@ -56,6 +56,8 @@ final class DownloadStore: NSObject {
     /// FLAC files replaced by a converted copy but not yet deleted, because a queue
     /// still named them. See `retire(_:)`.
     @ObservationIgnored private var retiredFiles: Set<URL> = []
+    /// The launch check, for `launchChecked()`.
+    @ObservationIgnored private var launchCheck: Task<Void, Never>?
 
     /// Tracks whose file was found unplayable and removed. See `checkFiles()`.
     private(set) var damaged: Set<String> = []
@@ -198,6 +200,35 @@ final class DownloadStore: NSObject {
         OfflineAssets.shared.remove(trackId: trackId)
     }
 
+    /// Files this phone keeps under another server's ids: Melete's are numbers, and
+    /// anything else was downloaded from Jellyfin. See `LegacyDownloads`.
+    var legacyIds: [String] {
+        files.keys.filter { Int64($0) == nil }.sorted()
+    }
+
+    /// Moves a download from one id to another for the same recording, keeping its
+    /// container. When the new id has a file already, that one stays and this goes.
+    func adopt(_ oldId: String, as newId: String) {
+        guard let url = files[oldId] else { return }
+        let target = Self.fileURL(for: newId, extension: url.pathExtension)
+        do {
+            if files[newId] != nil || FileManager.default.fileExists(atPath: target.path) {
+                try FileManager.default.removeItem(at: url)
+            } else {
+                try FileManager.default.moveItem(at: url, to: target)
+                files[newId] = target
+                states[newId] = .downloaded
+            }
+        } catch {
+            log.error("Couldn't move a download to its new id: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        files[oldId] = nil
+        states[oldId] = .absent
+        SilenceIndex.shared.remove(oldId)
+        OfflineAssets.shared.remove(trackId: oldId)
+    }
+
     func removeAll() {
         try? FileManager.default.removeItem(at: Self.directory)
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
@@ -271,14 +302,31 @@ final class DownloadStore: NSObject {
         log.info("Found \(recovered, privacy: .public) downloaded tracks on disk")
         // Every file is asked whether it will play before conversion is allowed to
         // touch anything, so a damaged file is found and disowned, not converted.
-        Task(priority: .utility) {
+        let check = Task(priority: .utility) {
             let report = await checkFiles()
             log.info("Checked \(report.checked, privacy: .public) downloads, \(report.damaged, privacy: .public) damaged")
-            for (trackId, url) in pendingFLAC where files[trackId] == url { convertIfFLAC(trackId, at: url) }
+        }
+        launchCheck = check
+        Task(priority: .utility) {
+            await check.value
+            // Files still under Jellyfin ids wait to be renamed (`LegacyDownloads`)
+            // before anything is made from them under the old name.
+            let current = { (trackId: String) in Int64(trackId) != nil }
+            for (trackId, url) in pendingFLAC where files[trackId] == url && current(trackId) {
+                convertIfFLAC(trackId, at: url)
+            }
             // Files from before silence was measured, in the same queue behind the
             // conversions.
-            for (trackId, url) in files.sorted(by: { $0.key < $1.key }) { measureSilenceIfNeeded(trackId, at: url) }
+            for (trackId, url) in files.sorted(by: { $0.key < $1.key }) where current(trackId) {
+                measureSilenceIfNeeded(trackId, at: url)
+            }
         }
+    }
+
+    /// Returns once the launch check has asked every file whether it plays, so
+    /// nothing moves a file it is reading.
+    func launchChecked() async {
+        await launchCheck?.value
     }
 
     private func adoptRunningTasks() async {
