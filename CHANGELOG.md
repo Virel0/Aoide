@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.1 (3)] - 2026-10-31
+
 Aoide now plays from [Melete](https://github.com/Virel0/Melete), the server
 that replaces Jellyfin and keeps Aoide's sync itself. Sign in again after
 updating; the local store belongs to the old server and is cleared at sign-in,
