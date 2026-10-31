@@ -11,6 +11,8 @@ struct NowPlayingView: View {
     @State private var scrubPosition: Double?
     @State private var isShowingQueue = false
     @State private var sharePlay = SharePlayCoordinator.shared
+    @State private var together = ListenTogetherCoordinator.shared
+    @State private var isShowingTogether = false
     @State private var isShowingLyrics = false
 
     @Environment(LyricsStore.self) private var lyricsStore
@@ -52,6 +54,10 @@ struct NowPlayingView: View {
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $isShowingQueue) {
             QueueView()
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $isShowingTogether) {
+            ListenTogetherSheet()
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $isShowingLyrics) {
@@ -205,6 +211,16 @@ struct NowPlayingView: View {
 
                 Spacer()
             }
+
+            Button {
+                isShowingTogether = true
+            } label: {
+                Image(systemName: "person.2.wave.2")
+                    .foregroundStyle(together.isInSession ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+            .accessibilityLabel(together.isInSession ? "Listening Together" : "Listen Together")
+
+            Spacer()
 
             Button {
                 isShowingQueue = true

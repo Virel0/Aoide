@@ -78,6 +78,8 @@ final class InfinityQueue: PlaybackReporter {
     /// Adds more songs if the queue is nearly out of them.
     func topUpIfNeeded() async {
         guard isOn, !isFetching else { return }
+        // Every device in a listening-together session would add songs of its own.
+        guard !ListenTogetherCoordinator.shared.isInSession else { return }
 
         let engine = PlaybackEngine.shared
         // A looping queue never runs out, so there is nothing to rescue — and
