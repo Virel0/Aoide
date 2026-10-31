@@ -49,6 +49,13 @@ and playlists, likes and history come back from Melete.
   counts and libraries.
 - The playback reports Jellyfin needed.
 
+### Fixed
+- Downloads from before Melete show and play again. The list that names them
+  was written in Jellyfin's format, which the Melete build couldn't read, so
+  the Downloads screen was empty while the files were still on the phone. At
+  sign-in each one is matched to Melete's song and renamed; any Melete
+  doesn't have are listed, with Remove Them.
+
 ## [1.0 (2)] - 2026-10-26
 
 The first tagged release.
