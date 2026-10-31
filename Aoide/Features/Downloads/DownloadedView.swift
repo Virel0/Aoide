@@ -18,6 +18,7 @@ struct DownloadedView: View {
     @Environment(LibraryStore.self) private var store
     @State private var downloads = DownloadStore.shared
     @State private var index = DownloadIndex.shared
+    @State private var legacy = LegacyDownloads.shared
     @State private var isConfirmingClear = false
 
     private var tracks: [MusicItem] {
@@ -47,7 +48,7 @@ struct DownloadedView: View {
         let songs = looseTracks
 
         Group {
-            if tracks.isEmpty {
+            if tracks.isEmpty && legacy.unmatched.isEmpty {
                 ContentUnavailableView {
                     Label("Nothing Downloaded", systemImage: "arrow.down.circle")
                 } description: {
@@ -55,6 +56,7 @@ struct DownloadedView: View {
                 }
             } else {
                 List {
+                    legacyBanner
                     damagedBanner
                     if !playlists.isEmpty {
                         Section("Playlists") {
@@ -120,7 +122,35 @@ struct DownloadedView: View {
         // A collection whose every file has since been removed one by one is not
         // worth remembering; pruned here so the record cannot come back as an
         // empty row after the next download.
-        .task { index.prune(keeping: presentIds) }
+        // Files still under their Jellyfin ids count as here: `LegacyDownloads`
+        // may not have brought them across yet, and their albums go with them.
+        .task { index.prune(keeping: presentIds.union(downloads.legacyIds)) }
+    }
+
+    /// Downloads from before Melete that Melete has no song for. See `LegacyDownloads`.
+    @ViewBuilder
+    private var legacyBanner: some View {
+        let count = legacy.unmatched.count
+        if count > 0 {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        "\(count) download\(count == 1 ? "" : "s") from before Melete couldn't be found on your server.",
+                        systemImage: "questionmark.folder"
+                    )
+                    .font(.footnote)
+                    Text("They're still taking up space. Remove them, then download the music again from your library.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button("Remove Them", systemImage: "trash", role: .destructive) {
+                        legacy.removeUnmatched()
+                    }
+                    .buttonStyle(.bordered)
+                    .clipShape(.capsule)
+                }
+                .listRowSeparator(.hidden)
+            }
+        }
     }
 
     /// Files the player refused, found by the launch check. Named rather than
@@ -315,6 +345,12 @@ final class DownloadIndex {
             .appendingPathComponent("downloaded-collections.json")
     }()
 
+    /// The list as the Jellyfin builds wrote it, set aside when it can't be read as
+    /// today's, for `LegacyDownloads` to bring across. Left in place, the next
+    /// download would have written over it.
+    static let legacyURL: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("downloaded-tracks-jellyfin.json")
+
     private init() { load() }
 
     func record(_ items: [MusicItem]) {
@@ -354,6 +390,25 @@ final class DownloadIndex {
         if collections.count != before { saveCollections() }
     }
 
+    /// Points collections at downloads that moved to new ids (`newIds`, old to new),
+    /// and an album's own id at its new album (`albumOf`, a new track id to its
+    /// album's). A song that didn't move is dropped from its collection.
+    func relink(_ newIds: [String: String], albumOf: [String: String]) {
+        collections = collections.compactMap { collection in
+            let moved = collection.trackIds.compactMap { newIds[$0] ?? (Int64($0) != nil ? $0 : nil) }
+            guard !moved.isEmpty else { return nil }
+            var relinked = collection
+            relinked.trackIds = moved
+            if collection.kind == .album, let album = moved.lazy.compactMap({ albumOf[$0] }).first {
+                relinked = DownloadedCollection(
+                    id: album, kind: .album, name: collection.name, subtitle: collection.subtitle, trackIds: moved
+                )
+            }
+            return relinked
+        }
+        saveCollections()
+    }
+
     func removeAll() {
         tracks = []
         collections = []
@@ -366,7 +421,11 @@ final class DownloadIndex {
         // so the keys are already exactly what `MusicItem` encodes. The Melete
         // decoder exists to absorb the server's snake_case, which never applies here.
         if let data = try? Data(contentsOf: url) {
-            tracks = (try? JSONDecoder().decode([MusicItem].self, from: data)) ?? []
+            if let decoded = try? JSONDecoder().decode([MusicItem].self, from: data) {
+                tracks = decoded
+            } else if !FileManager.default.fileExists(atPath: Self.legacyURL.path) {
+                try? FileManager.default.moveItem(at: url, to: Self.legacyURL)
+            }
         }
         if let data = try? Data(contentsOf: collectionsURL) {
             collections = (try? JSONDecoder().decode([DownloadedCollection].self, from: data)) ?? []
