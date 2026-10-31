@@ -16,6 +16,8 @@ and playlists, likes and history come back from Melete.
 
 ### Added
 - Quick Connect: sign in by approving a code in Melete's web UI.
+- Two-factor sign-in: an account with it on in Melete 0.2.0 is asked for the
+  code from its authenticator app after the password.
 - Albums can be liked again, with the heart on the album's page, and Library
   has Liked Albums. Album likes are their own sync record (`album_likes`),
   shared with Melete and Aoide for Linux; liking an album likes none of its
@@ -26,6 +28,8 @@ and playlists, likes and history come back from Melete.
   Linux too. Infinity holds back while in a session.
 
 ### Changed
+- Searching for songs matches a song's own title and artist, so an album's
+  name no longer lists every track on it (Melete 0.2.0).
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,
   streams, downloads, lyrics and likes. The `JellyfinKit` package is now
   `MeleteKit`.

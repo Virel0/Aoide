@@ -190,12 +190,24 @@ public struct MeleteClient: Sendable {
 
         switch http.statusCode {
         case 200..<300: return (data, http.statusCode)
-        case 401: throw MeleteError.unauthorized
+        case 401: throw Self.secondFactor(data) ?? MeleteError.unauthorized
         case 403: throw MeleteError.forbidden
         case 404: throw MeleteError.notFound(path: path)
         default:
             throw MeleteError.http(status: http.statusCode, path: path, detail: Self.detail(data))
         }
+    }
+
+    /// A sign-in's challenge for a two-factor code, when that's what the 401 is.
+    static func secondFactor(_ data: Data) -> MeleteError? {
+        struct Challenge: Decodable {
+            let secondFactor: String
+            let challenge: String
+        }
+        guard let found = try? JSONDecoder.melete.decode(Challenge.self, from: data),
+              found.secondFactor == "totp"
+        else { return nil }
+        return .secondFactorNeeded(challenge: found.challenge)
     }
 
     /// What went wrong: Melete's `{"error": …}` message, or else a short prefix of

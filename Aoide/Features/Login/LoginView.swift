@@ -15,11 +15,15 @@ struct LoginView: View {
     @State private var errorMessage: String?
     /// Quick Connect's code while it waits to be approved.
     @State private var quickCode: String?
+    /// The password was right and the account has two-factor sign-in on: the
+    /// challenge the authenticator app's code finishes.
+    @State private var challenge: String?
+    @State private var oneTimeCode = ""
     @State private var quickConnect: Task<Void, Never>?
 
     @FocusState private var focusedField: Field?
 
-    private enum Field { case server, username, password }
+    private enum Field { case server, username, password, code }
 
     /// How often a Quick Connect code is asked about while it waits.
     private static let pollEvery: Duration = .seconds(3)
@@ -59,7 +63,9 @@ struct LoginView: View {
                         """)
                 }
 
-                if let quickCode {
+                if challenge != nil {
+                    codeSection
+                } else if let quickCode {
                     quickConnectSection(quickCode)
                 } else {
                     accountSection
@@ -117,6 +123,44 @@ struct LoginView: View {
         }
     }
 
+    @ViewBuilder
+    private var codeSection: some View {
+        Section {
+            TextField("123456", text: $oneTimeCode)
+                .textContentType(.oneTimeCode)
+                .keyboardType(.numberPad)
+                .font(.system(.title2, design: .monospaced))
+                .focused($focusedField, equals: .code)
+                .submitLabel(.go)
+                .onSubmit(finishSignIn)
+        } header: {
+            Text("Two-Factor Sign-In")
+        } footer: {
+            Text("Enter the six-digit code your authenticator app shows for this Melete account. It changes every 30 seconds.")
+        }
+
+        Section {
+            Button(action: finishSignIn) {
+                HStack {
+                    Spacer()
+                    if isConnecting {
+                        ProgressView()
+                    } else {
+                        Text("Sign In")
+                    }
+                    Spacer()
+                }
+            }
+            .disabled(isConnecting || oneTimeCode.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            Button("Back", role: .cancel) {
+                challenge = nil
+                errorMessage = nil
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
     private func quickConnectSection(_ code: String) -> some View {
         Section {
             Text(code)
@@ -148,6 +192,38 @@ struct LoginView: View {
                     username: username,
                     password: password
                 )
+            } catch MeleteError.secondFactorNeeded(let challenge) {
+                oneTimeCode = ""
+                self.challenge = challenge
+                focusedField = .code
+            } catch {
+                errorMessage = Self.words(for: error)
+            }
+            isConnecting = false
+        }
+    }
+
+    /// The second half of a two-factor sign-in: the code finishes the challenge.
+    /// A wrong code stays on this step; a challenge that ran out, or five wrong
+    /// codes, go back to the password.
+    private func finishSignIn() {
+        guard let challenge, !isConnecting else { return }
+        let code = oneTimeCode.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty else { return }
+        isConnecting = true
+        errorMessage = nil
+        Task {
+            do {
+                try await session.finishSignIn(serverAddress: serverAddress, challenge: challenge, code: code)
+            } catch MeleteError.unauthorized {
+                oneTimeCode = ""
+                errorMessage = "That code wasn't right. Type the one your authenticator app shows now."
+            } catch MeleteError.http(status: 410, _, _) {
+                self.challenge = nil
+                errorMessage = "That took too long. Enter your password again for a new code."
+            } catch MeleteError.http(status: 429, _, _) {
+                self.challenge = nil
+                errorMessage = "Too many wrong codes. Wait 15 minutes, then sign in again."
             } catch {
                 errorMessage = Self.words(for: error)
             }

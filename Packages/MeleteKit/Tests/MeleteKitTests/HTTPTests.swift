@@ -20,6 +20,64 @@ struct HTTPTests {
         #expect(user.name == "alex")
     }
 
+    @Test("two-factor sign-in finishes with the code; a wrong one and a spent challenge are told apart")
+    func twoFactor() async throws {
+        let client = StubServer.client(host: "totp.test") { request, body in
+            let sent = (try? JSONSerialization.jsonObject(with: body)) as? [String: String]
+            switch request.url?.path() {
+            case "/api/v1/auth/login":
+                return (401, Fixture.json([
+                    "error": "a code is needed", "second_factor": "totp",
+                    "challenge": "m2f_abc", "expires_in": 300,
+                ]))
+            case "/api/v1/auth/login/second-factor":
+                switch (sent?["challenge"], sent?["code"]) {
+                case ("m2f_abc", "123456"): return (200, Fixture.session(3, "alex"))
+                case ("m2f_abc", _): return (401, Fixture.json(["error": "wrong code", "reason": "wrong_code"]))
+                default: return (410, Fixture.json(["error": "the sign-in ran out"]))
+                }
+            default:
+                return (404, Data())
+            }
+        }.signedOut()
+        await #expect(throws: MeleteError.secondFactorNeeded(challenge: "m2f_abc")) {
+            try await client.signIn(username: "alex", password: "pw")
+        }
+        await #expect(throws: MeleteError.unauthorized) {
+            try await client.finishSignIn(challenge: "m2f_abc", code: "000000")
+        }
+        let (credentials, _) = try await client.finishSignIn(challenge: "m2f_abc", code: " 123456 ")
+        #expect(credentials.accessToken == "mlt_new")
+        do {
+            _ = try await client.finishSignIn(challenge: "m2f_old", code: "123456")
+            Issue.record("a spent challenge signed in")
+        } catch MeleteError.http(status: 410, _, _) {}
+    }
+
+    @Test("a wrong password is still a wrong password")
+    func wrongPassword() async throws {
+        let client = StubServer.client(host: "wrongpw.test") { _, _ in
+            (401, Fixture.json(["error": "wrong username or password"]))
+        }.signedOut()
+        await #expect(throws: MeleteError.unauthorized) {
+            try await client.signIn(username: "alex", password: "nope")
+        }
+    }
+
+    @Test("a song search matches songs alone; an album search doesn't say so")
+    func songSearch() async throws {
+        let client = StubServer.client(host: "songsearch.test") { _, _ in
+            (200, Fixture.page([]))
+        }
+        _ = try await client.search("first")
+        _ = try await client.songs(searching: "first")
+        let asked = StubServer.requests(to: "songsearch.test").compactMap(\.url)
+        let tracks = asked.filter { $0.path().hasSuffix("/tracks") }
+        let others = asked.filter { !$0.path().hasSuffix("/tracks") }
+        #expect(tracks.count == 2 && tracks.allSatisfy { $0.query()?.contains("q_in=track") == true })
+        #expect(!others.isEmpty && others.allSatisfy { $0.query()?.contains("q_in") != true })
+    }
+
     @Test("something that isn't Melete is named as such")
     func notMelete() async throws {
         let client = StubServer.client(host: "router.test") { _, _ in (200, Data("<html>".utf8)) }

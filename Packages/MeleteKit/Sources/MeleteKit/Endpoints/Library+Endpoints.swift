@@ -146,7 +146,7 @@ extension MeleteClient {
         let words = [URLQueryItem(name: "q", value: trimmed)]
         async let artists = albumArtists(searchTerm: trimmed, limit: limit).items
         async let albums = list(WireAlbum.self, "albums", filters: words, limit: limit) { $0.item }.items
-        async let songs = list(WireTrack.self, "tracks", filters: words, limit: limit) { $0.item }.items
+        async let songs = list(WireTrack.self, "tracks", filters: Self.songWords(trimmed), limit: limit) { $0.item }.items
         return try await artists + albums + songs
     }
 
@@ -155,9 +155,16 @@ extension MeleteClient {
         guard !trimmed.isEmpty else { return [] }
         return try await list(
             WireTrack.self, "tracks",
-            filters: [URLQueryItem(name: "q", value: trimmed)],
+            filters: Self.songWords(trimmed),
             limit: limit
         ) { $0.item }.items
+    }
+
+    /// A song search: the song's own title and artist (`q_in=track`), so an
+    /// album's name doesn't bring every track on it. Servers before Melete 0.2.0
+    /// ignore `q_in`.
+    static func songWords(_ term: String) -> [URLQueryItem] {
+        [URLQueryItem(name: "q", value: term), URLQueryItem(name: "q_in", value: "track")]
     }
 
     /// About `count` songs from all over the library: small pages read at random

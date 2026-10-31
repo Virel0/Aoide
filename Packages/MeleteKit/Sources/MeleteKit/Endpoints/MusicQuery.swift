@@ -102,7 +102,9 @@ extension MeleteClient {
         let narrowsHere = !query.years.isEmpty || query.favoritesOnly || query.genres.count > 1
             || query.sort == .releaseDate || query.sort == .random
         var words: [URLQueryItem] = []
-        if let term = query.searchTerm, !term.isEmpty { words.append(URLQueryItem(name: "q", value: term)) }
+        if let term = query.searchTerm, !term.isEmpty {
+            words += list == "tracks" ? Self.songWords(term) : [URLQueryItem(name: "q", value: term)]
+        }
         let genres: [String?] = query.genres.isEmpty ? [nil] : query.genres
         var found: [MusicItem] = []
         var seen = Set<String>()
