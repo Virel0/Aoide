@@ -9,6 +9,12 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Asking for music the library doesn't have: at the foot of Search, look the
+  words up on MusicBrainz through Melete and ask for an album, an artist or a
+  song. Library → Requests lists what you've asked for and how each is
+  getting on; swipe one still waiting to withdraw it.
+
 ## [1.1 (3)] - 2026-10-31
 
 Aoide now plays from [Melete](https://github.com/Virel0/Melete), the server

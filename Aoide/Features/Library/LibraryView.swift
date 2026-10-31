@@ -32,6 +32,7 @@ struct LibraryView: View {
                         categoryRow("Liked Albums", "heart") { LikedAlbumsView() }
                         categoryRow("Songs", "music.note") { SongsListView() }
                         categoryRow("Genres", "guitars") { GenresListView() }
+                        categoryRow("Requests", "plus.magnifyingglass") { RequestsView() }
                     }
                     .pageMargin()
 

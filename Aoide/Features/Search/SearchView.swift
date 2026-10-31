@@ -37,7 +37,7 @@ struct SearchView: View {
                 } else if isSearching && results.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if results.isEmpty && smartResults.isEmpty && !isInterpreting {
-                    ContentUnavailableView.search(text: trimmed)
+                    nothingHere
                 } else {
                     resultsList
                 }
@@ -110,6 +110,18 @@ struct SearchView: View {
     }
 
     // MARK: - Results
+
+    /// Nothing in the library matches, and the one thing left to do is ask for it.
+    private var nothingHere: some View {
+        List {
+            Section {
+                ContentUnavailableView.search(text: trimmed)
+            }
+            AskForItSection(term: trimmed).id(trimmed)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
 
     private var resultsList: some View {
         List {
@@ -194,6 +206,8 @@ struct SearchView: View {
                     }
                 }
             }
+
+            AskForItSection(term: trimmed).id(trimmed)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
