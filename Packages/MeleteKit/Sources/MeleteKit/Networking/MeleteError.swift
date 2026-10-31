@@ -6,6 +6,10 @@ public enum MeleteError: Error, Equatable, Sendable {
     /// Melete server would.
     case notAMeleteServer(URL)
     case unauthorized
+    /// A right password at sign-in, from a user with two-factor sign-in on:
+    /// finish with the code from their authenticator app
+    /// (``MeleteClient/finishSignIn(challenge:code:)``), within 5 minutes.
+    case secondFactorNeeded(challenge: String)
     case forbidden
     case notFound(path: String)
     /// `detail` is a short prefix of the response body. Discarding it left a 500
@@ -27,6 +31,8 @@ extension MeleteError: LocalizedError {
             "\(url.host() ?? url.absoluteString) responded, but doesn't look like a Melete server."
         case .unauthorized:
             "Your username or password wasn't accepted."
+        case .secondFactorNeeded:
+            "This account needs the code from its authenticator app to sign in."
         case .forbidden:
             "This account isn't allowed to do that."
         case .notFound(let path):

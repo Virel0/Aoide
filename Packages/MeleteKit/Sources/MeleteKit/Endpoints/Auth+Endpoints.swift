@@ -17,11 +17,27 @@ extension MeleteClient {
 
     /// Signs in with a username and password, as this client's device. A wrong
     /// password and an unknown username are both `.unauthorized`; five wrong tries
-    /// lock the pair for 15 minutes (HTTP 429).
+    /// lock the pair for 15 minutes (HTTP 429). A right password from a user with
+    /// two-factor sign-in on is `.secondFactorNeeded`: finish with
+    /// ``finishSignIn(challenge:code:)``.
     public func signIn(username: String, password: String) async throws -> (MeleteCredentials, MeleteUser) {
         let session: Session = try await post(
             path: "api/v1/auth/login",
             body: LoginRequest(username: username, password: password, deviceName: device.signInName)
+        )
+        return credentials(for: session)
+    }
+
+    /// Finishes a two-factor sign-in with the challenge from
+    /// `.secondFactorNeeded` and the six-digit code from the user's authenticator
+    /// app. A wrong code is `.unauthorized` and leaves the challenge for another
+    /// try; HTTP 410 once it ran out or was used (sign in with the password
+    /// again); HTTP 429 after five wrong codes (locked for 15 minutes).
+    public func finishSignIn(challenge: String, code: String) async throws -> (MeleteCredentials, MeleteUser) {
+        struct Body: Encodable { let challenge: String; let code: String }
+        let session: Session = try await post(
+            path: "api/v1/auth/login/second-factor",
+            body: Body(challenge: challenge, code: code.trimmingCharacters(in: .whitespaces))
         )
         return credentials(for: session)
     }

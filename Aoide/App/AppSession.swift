@@ -132,6 +132,17 @@ final class AppSession {
         try keep(credentials, user, from: anonymous)
     }
 
+    /// Finishes a sign-in that ``signIn(serverAddress:username:password:)`` left
+    /// waiting with `.secondFactorNeeded`: the challenge, and the code from the
+    /// user's authenticator app. The challenge isn't tied to a client, so a new
+    /// one for the same server finishes it.
+    func finishSignIn(serverAddress: String, challenge: String, code: String) async throws {
+        let serverURL = try MeleteClient.normalizeServerURL(serverAddress)
+        let anonymous = MeleteClient(serverURL: serverURL, device: Self.deviceProfile)
+        let (credentials, user) = try await anonymous.finishSignIn(challenge: challenge, code: code)
+        try keep(credentials, user, from: anonymous)
+    }
+
     /// Quick Connect's first half: the address is checked and a code made for this
     /// device, to show until someone approves it in Melete's web UI.
     func startQuickConnect(serverAddress: String) async throws -> (client: MeleteClient, code: QuickConnectCode) {
