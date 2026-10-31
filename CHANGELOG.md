@@ -20,6 +20,10 @@ and playlists, likes and history come back from Melete.
   has Liked Albums. Album likes are their own sync record (`album_likes`),
   shared with Melete and Aoide for Linux; liking an album likes none of its
   songs.
+- Listen Together, from Now Playing: start a session with your queue, or join
+  one by its code, and every device in it plays in step, each streaming for
+  itself. Unlike SharePlay it needs no FaceTime call, and works with Aoide for
+  Linux too. Infinity holds back while in a session.
 
 ### Changed
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,

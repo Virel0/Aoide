@@ -27,6 +27,7 @@ enum MeletePlaybackBridge {
 
         // A streamed track's link is asked for when the player opens it.
         StreamLinkLoader.shared.use(client)
+        ListenTogetherCoordinator.shared.connect(client: client)
         engine.assetMaker = { StreamLinkLoader.shared.asset(for: $0) }
 
         let authorization = client.authorization
@@ -48,6 +49,7 @@ enum MeletePlaybackBridge {
         engine.reporter = nil
         Self.retainedReporter = nil
         StreamLinkLoader.shared.use(nil)
+        ListenTogetherCoordinator.shared.connect(client: nil)
         ArtworkCache.shared.use(nil)
 
         // None of what was queued belongs to whoever signs in next.
