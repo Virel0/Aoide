@@ -4,11 +4,13 @@ import Foundation
 
 /// `GET /api/v1/music/tracks/{id}/lyrics`: lines with their starts for synced
 /// lyrics (an `.lrc` beside the track, its tags, or LRCLIB on the server), without
-/// for plain ones. Melete has no per-word timings.
+/// for plain ones. Melete has no per-word timings. With `pronounce`, each line
+/// also carries its pronunciation in Latin letters.
 struct LyricsDocument: Decodable, Sendable {
     struct Line: Decodable, Sendable {
         let startSeconds: Double?
         let text: String
+        let pronunciation: String?
     }
     let lines: [Line]
 }
@@ -32,6 +34,10 @@ public struct LyricLine: Hashable, Sendable, Codable, Identifiable {
     public let start: Duration?
     /// Empty unless the source was enhanced LRC with per-word timestamps.
     public let words: [LyricWord]
+    /// The line in Latin letters (Japanese, Korean, Cyrillic), when the server
+    /// gave it; nil when there is nothing to romanise or it wasn't asked for.
+    /// Optional, so lyrics saved before it was asked for still decode.
+    public let pronunciation: String?
 }
 
 public struct LyricsTrack: Hashable, Sendable, Codable {
@@ -97,7 +103,8 @@ extension LyricsTrack {
                 start: wire.startSeconds.flatMap { seconds in
                     seconds.isFinite && seconds >= 0 ? .milliseconds(Int64((seconds * 1000).rounded())) : nil
                 },
-                words: []
+                words: [],
+                pronunciation: wire.pronunciation
             )
         }
     }

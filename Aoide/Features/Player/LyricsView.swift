@@ -20,6 +20,8 @@ struct LyricsView: View {
     /// whenever this changes, and asks to download the language pair the
     /// first time.
     @State private var translationRequest: TranslationSession.Configuration?
+    /// Each line's pronunciation under it, when the server gives one.
+    @AppStorage("aoide.lyricsPronunciation") private var showsPronunciation = false
 
     private var trackId: String? { engine.currentTrack?.id }
 
@@ -52,6 +54,17 @@ struct LyricsView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Timing", systemImage: "slider.horizontal.3") {
                         isShowingOffset = true
+                    }
+                }
+                if let lyrics = loadedLyrics, lyrics.lines.contains(where: { $0.pronunciation != nil }) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(
+                            showsPronunciation ? "Hide Pronunciation" : "Pronunciation",
+                            systemImage: "character.phonetic"
+                        ) {
+                            showsPronunciation.toggle()
+                        }
+                        .symbolVariant(showsPronunciation ? .fill : .none)
                     }
                 }
                 if let lyrics = loadedLyrics, LyricsTranslation.isForeign(lyrics) {
@@ -136,6 +149,11 @@ struct LyricsView: View {
                     ForEach(lyrics.lines) { line in
                         Text(line.text.isEmpty ? " " : line.text)
                             .font(.title3.weight(.medium))
+                        if showsPronunciation, let said = line.pronunciation {
+                            Text(said)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
                         if let translated = shownTranslations[line.id] {
                             Text(translated)
                                 .font(.body)
@@ -154,7 +172,12 @@ struct LyricsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(lyrics.lines) { line in
-                        LyricLineView(line: line, translation: shownTranslations[line.id], isActive: line.id == activeLine)
+                        LyricLineView(
+                            line: line,
+                            pronunciation: showsPronunciation ? line.pronunciation : nil,
+                            translation: shownTranslations[line.id],
+                            isActive: line.id == activeLine
+                        )
                             .id(line.id)
                             .contentShape(.rect)
                             .onTapGesture {
@@ -238,6 +261,8 @@ struct LyricsView: View {
 
 private struct LyricLineView: View {
     let line: LyricLine
+    /// The line in Latin letters, under the original, when asked for.
+    var pronunciation: String? = nil
     /// The line in the listener's language, under the original, when asked for.
     var translation: String? = nil
     let isActive: Bool
@@ -246,6 +271,11 @@ private struct LyricLineView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(line.text.isEmpty ? " " : line.text)
                 .font(.title2.weight(.semibold))
+            if let pronunciation {
+                Text(pronunciation)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
             if let translation {
                 Text(translation)
                     .font(.title3)
