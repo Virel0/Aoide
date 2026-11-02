@@ -146,6 +146,16 @@ extension MeleteClient {
         url(path: "api/v1/music/albums/\(albumId)/cover")
     }
 
+    /// The album a cover from ``artworkURL(itemId:tag:maxWidth:)`` belongs to:
+    /// what the player knows of a track's album is its cover's address.
+    public func albumId(fromArtworkURL url: URL) -> String? {
+        let parts = url.pathComponents
+        guard parts.count >= 3, parts[parts.count - 1] == "cover", parts[parts.count - 3] == "albums" else {
+            return nil
+        }
+        return parts[parts.count - 2]
+    }
+
     /// The cover that stands for an item: an album's own, a track's album's.
     public func artworkURL(for item: MusicItem, maxWidth: Int) -> URL? {
         item.coverAlbumId.map { artworkURL(itemId: $0) }

@@ -199,6 +199,42 @@ struct HTTPTests {
         #expect(try await client.lyrics(forItem: "3") == nil)
     }
 
+    @Test("motion covers: the album names one, it's read with the token, MP4 plays and WebM doesn't")
+    func motionCovers() async throws {
+        let mp4 = Data([0, 0, 0, 24]) + Data("ftypisom".utf8) + Data(count: 16)
+        let client = StubServer.client(host: "motion.test") { request, body in
+            switch (request.httpMethod, request.url?.path()) {
+            case ("GET", "/api/v1/music/albums/2"):
+                var album = Fixture.album(2, "First Album")
+                album["motion_cover"] = "/api/v1/music/albums/2/motion"
+                album["track_list"] = [[String: Any]]()
+                return (200, Fixture.json(album))
+            case ("GET", "/api/v1/music/albums/2/motion"):
+                guard request.value(forHTTPHeaderField: "Authorization") == "Bearer mlt_tok" else { return (401, Data()) }
+                return (200, Data([0, 0, 0, 24]) + Data("ftypisom".utf8) + Data(count: 16))
+            case ("GET", "/api/v1/music/motion-covers"):
+                return (200, Fixture.json(["show_generated": true, "on": true]))
+            case ("PUT", "/api/v1/music/motion-covers"):
+                let sent = (try? JSONSerialization.jsonObject(with: body)) as? [String: Bool]
+                guard sent == ["show_generated": false] else { return (400, Data()) }
+                return (200, Fixture.json(["show_generated": false, "on": true]))
+            default:
+                return (404, Data())
+            }
+        }
+        let album = try await client.album(id: "2").album
+        let path = try #require(album.motionCover)
+        let video = try #require(try await client.motionCoverData(servedPath: path))
+        #expect(video == mp4)
+        #expect(MeleteClient.isPlayableMotionCover(video))
+        #expect(!MeleteClient.isPlayableMotionCover(Data([0x1A, 0x45, 0xDF, 0xA3]) + Data(count: 16)), "WebM")
+        #expect(try await client.motionCoverData(servedPath: "//elsewhere.test/x") == nil)
+        #expect(try await client.motionCoverChoice() == MotionCoverChoice(showGenerated: true, on: true))
+        #expect(try await client.setShowsGeneratedMotionCovers(false).showGenerated == false)
+        #expect(client.albumId(fromArtworkURL: client.artworkURL(itemId: "7")) == "7")
+        #expect(client.albumId(fromArtworkURL: URL(string: "http://motion.test/api/v1/music/tracks/7")!) == nil)
+    }
+
     @Test("lyrics with their pronunciation, and without when the server has it off")
     func pronunciation() async throws {
         let on = StubServer.client(host: "pronounce-on.test") { request, _ in

@@ -185,6 +185,11 @@ struct TrackListView: View {
                 url: store.artworkURL(for: artworkItem, width: Design.ArtworkWidth.hero),
                 cornerRadius: Design.Radius.hero
             )
+            .overlay {
+                if case .album(let albumId) = source {
+                    MotionCoverView(albumId: albumId, cornerRadius: Design.Radius.hero)
+                }
+            }
             .frame(maxWidth: 260)
             .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
 

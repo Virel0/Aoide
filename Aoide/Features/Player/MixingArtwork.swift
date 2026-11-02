@@ -20,6 +20,8 @@ struct PlayerArtwork: View {
     let mixState: PlaybackEngine.MixState
     let outgoing: Track?
     var cornerRadius: CGFloat = 6
+    /// The album's motion cover over it: the full player, not the mini one.
+    var showsMotion = false
 
     var body: some View {
         if case .mixing(_, let progress) = mixState, let outgoing {
@@ -31,7 +33,20 @@ struct PlayerArtwork: View {
             )
         } else {
             ArtworkView(url: track.artworkURL, cornerRadius: cornerRadius)
+                .overlay {
+                    if showsMotion {
+                        MotionCoverView(albumId: albumId, cornerRadius: cornerRadius)
+                    }
+                }
         }
+    }
+}
+
+private extension PlayerArtwork {
+    /// The playing track's album, from its cover's address.
+    var albumId: String? {
+        guard let cover = track.artworkURL else { return nil }
+        return AppSession.shared.client?.albumId(fromArtworkURL: cover)
     }
 }
 
