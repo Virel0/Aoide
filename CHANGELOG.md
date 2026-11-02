@@ -9,6 +9,17 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Fixed
+- Searching for a song that isn't in the library no longer lists unrelated
+  songs. Search by description now keeps only what the words say: a genre you
+  named, years when you gave a number or a decade, liked songs when you said
+  so; a song or band name is no longer turned into a whole genre.
+
+### Changed
+- Ask for It groups what MusicBrainz finds into songs, albums and artists, the
+  best three of each with Show More for the rest, and each row says who it's by
+  and when, with Ask or where it stands (In Library, Wanted, Asked For).
+
 ### Added
 - Motion covers: an album with a looping video plays it, muted, over its cover
   on the album's page and in the player. Settings → Motion Covers turns them
