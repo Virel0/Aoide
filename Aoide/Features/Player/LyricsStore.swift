@@ -35,6 +35,8 @@ final class LyricsStore {
     }
 
     private static let offsetKey = "aoide.lyricsOffset"
+    /// The server said pronunciation is off: not asked for again this run.
+    private var pronunciationOff = false
     private let client: MeleteClient
     private let log = Logger(subsystem: AppIdentity.bundle, category: "lyrics")
 
@@ -104,7 +106,15 @@ final class LyricsStore {
         }
 
         do {
-            if let lyrics = try await client.lyrics(forItem: trackId) {
+            let lyrics: LyricsTrack?
+            if pronunciationOff {
+                lyrics = try await client.lyrics(forItem: trackId)
+            } else {
+                let answer = try await client.lyricsWithPronunciation(forItem: trackId)
+                pronunciationOff = answer.pronunciationOff
+                lyrics = answer.lyrics
+            }
+            if let lyrics {
                 entries[trackId] = .loaded(lyrics)
             } else {
                 entries[trackId] = .absent

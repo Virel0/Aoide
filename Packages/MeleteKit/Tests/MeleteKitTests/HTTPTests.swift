@@ -235,6 +235,30 @@ struct HTTPTests {
         #expect(client.albumId(fromArtworkURL: URL(string: "http://motion.test/api/v1/music/tracks/7")!) == nil)
     }
 
+    @Test("lyrics with their pronunciation, and without when the server has it off")
+    func pronunciation() async throws {
+        let on = StubServer.client(host: "pronounce-on.test") { request, _ in
+            request.query("pronounce") == "true"
+                ? (200, Fixture.json(["track_id": 2, "source": "file", "synced": true,
+                                      "lines": [["start_seconds": 1.0, "text": "夜空", "pronunciation": "yozora"]]]))
+                : (400, Data())
+        }
+        let said = try await on.lyricsWithPronunciation(forItem: "2")
+        #expect(said.lyrics?.lines.first?.pronunciation == "yozora")
+        #expect(!said.pronunciationOff)
+
+        let off = StubServer.client(host: "pronounce-off.test") { request, _ in
+            request.query("pronounce") == "true"
+                ? (409, Fixture.json(["error": "lyrics' pronunciation isn't turned on on this server"]))
+                : (200, Fixture.json(["track_id": 2, "source": "file", "synced": true,
+                                      "lines": [["start_seconds": 1.0, "text": "夜空"]]]))
+        }
+        let plain = try await off.lyricsWithPronunciation(forItem: "2")
+        #expect(plain.pronunciationOff)
+        #expect(plain.lyrics?.lines.first?.text == "夜空")
+        #expect(plain.lyrics?.lines.first?.pronunciation == nil)
+    }
+
     @Test("liking puts and unliking deletes")
     func likes() async throws {
         let client = StubServer.client(host: "like.test") { _, _ in (204, Data()) }
