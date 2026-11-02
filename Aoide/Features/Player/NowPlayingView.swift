@@ -20,39 +20,36 @@ struct NowPlayingView: View {
     private var track: Track? { engine.currentTrack }
 
     var body: some View {
-        VStack(spacing: 0) {
-            grabber
+        GeometryReader { sheet in
+            VStack(spacing: 0) {
+                if let track {
+                    FullBleedArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack)
+                        // Square when there's room; shorter phones crop it, not the controls.
+                        .frame(maxWidth: .infinity, maxHeight: sheet.size.width + sheet.safeAreaInsets.top)
+                        .overlay(alignment: .top) { grabber.padding(.top, sheet.safeAreaInsets.top) }
 
-            if let track {
-                Spacer(minLength: 8)
+                    // The controls sit at the foot, as in Apple Music; the space
+                    // between is the fade's.
+                    Spacer(minLength: 0)
 
-                PlayerArtwork(
-                    track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack,
-                    cornerRadius: 10, showsMotion: true
-                )
-                    .padding(.horizontal, 32)
-                    .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
-                    // The cover shrinks while paused, the way Apple Music does.
-                    .scaleEffect(engine.state.isPlaying ? 1.0 : 0.86)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: engine.state.isPlaying)
-
-                Spacer(minLength: 16)
-
-                titleBlock(track)
-                MixBadge(state: engine.mixState)
-                scrubber
-                transportControls
-                secondaryControls
-                PlayerModesRow()
-                    .padding(.top, 12)
-
-                Spacer(minLength: 8)
-            } else {
-                Spacer()
-                ContentUnavailableView("Nothing Playing", systemImage: "music.note")
-                Spacer()
+                    titleBlock(track)
+                    MixBadge(state: engine.mixState)
+                    scrubber
+                    transportControls
+                    secondaryControls
+                    PlayerModesRow()
+                        .padding(.top, 12)
+                } else {
+                    grabber
+                    Spacer()
+                    ContentUnavailableView("Nothing Playing", systemImage: "music.note")
+                    Spacer()
+                }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.bottom, sheet.safeAreaInsets.bottom)
         }
+        .ignoresSafeArea(edges: .top)
         .padding(.bottom, 16)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $isShowingQueue) {
@@ -383,3 +380,31 @@ extension RepeatMode {
         }
     }
 }
+
+/// The cover, still or moving, edge to edge across the top of the player,
+/// cropped to the frame it's given; its foot fades into the sheet, the way
+/// Apple Music shows full-screen art.
+private struct FullBleedArtwork: View {
+    let track: Track
+    let mixState: PlaybackEngine.MixState
+    let outgoing: Track?
+
+    var body: some View {
+        GeometryReader { frame in
+            PlayerArtwork(
+                track: track, mixState: mixState, outgoing: outgoing,
+                cornerRadius: 0, showsMotion: true,
+                aspectRatio: frame.size.width / max(frame.size.height, 1)
+            )
+            .frame(width: frame.size.width, height: frame.size.height)
+            .overlay(alignment: .bottom) {
+                // The sheet's own background, so the fade has no seam.
+                Rectangle()
+                    .fill(.background)
+                    .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
+                    .frame(height: frame.size.height * 0.3)
+            }
+        }
+    }
+}
+

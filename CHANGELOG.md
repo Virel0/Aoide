@@ -9,6 +9,10 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Changed
+- The player shows the cover, still or moving, edge to edge across the top,
+  fading into the controls below, the way Apple Music shows full-screen art.
+
 ### Added
 - Motion covers: an album with a looping video plays it, muted, over its cover
   on the album's page and in the player. Settings → Motion Covers turns them
