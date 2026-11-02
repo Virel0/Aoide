@@ -19,6 +19,9 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 - Ask for It groups what MusicBrainz finds into songs, albums and artists, the
   best three of each with Show More for the rest, and each row says who it's by
   and when, with Ask or where it stands (In Library, Wanted, Asked For).
+- The player shows the cover, still or moving, over the whole screen behind
+  its controls, the way Apple Music shows animated covers, with a dark shade
+  under the controls so they read over any cover.
 
 ### Added
 - Motion covers: an album with a looping video plays it, muted, over its cover

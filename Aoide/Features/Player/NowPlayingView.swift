@@ -16,44 +16,47 @@ struct NowPlayingView: View {
     @State private var isShowingLyrics = false
 
     @Environment(LyricsStore.self) private var lyricsStore
+    @Environment(\.colorScheme) private var colorScheme
 
     private var track: Track? { engine.currentTrack }
 
     var body: some View {
-        VStack(spacing: 0) {
-            grabber
+        GeometryReader { sheet in
+            VStack(spacing: 0) {
+                grabber.padding(.top, sheet.safeAreaInsets.top)
 
+                if let track {
+                    // The controls sit at the foot, as in Apple Music, over the
+                    // shaded foot of the cover.
+                    Spacer(minLength: 0)
+
+                    titleBlock(track)
+                    MixBadge(state: engine.mixState)
+                    scrubber
+                    transportControls
+                    secondaryControls
+                    PlayerModesRow()
+                        .padding(.top, 12)
+                } else {
+                    Spacer()
+                    ContentUnavailableView("Nothing Playing", systemImage: "music.note")
+                    Spacer()
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.bottom, sheet.safeAreaInsets.bottom)
+        }
+        .ignoresSafeArea(edges: .top)
+        .padding(.bottom, 16)
+        .background {
             if let track {
-                Spacer(minLength: 8)
-
-                PlayerArtwork(
-                    track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack,
-                    cornerRadius: 10, showsMotion: true
-                )
-                    .padding(.horizontal, 32)
-                    .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
-                    // The cover shrinks while paused, the way Apple Music does.
-                    .scaleEffect(engine.state.isPlaying ? 1.0 : 0.86)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: engine.state.isPlaying)
-
-                Spacer(minLength: 16)
-
-                titleBlock(track)
-                MixBadge(state: engine.mixState)
-                scrubber
-                transportControls
-                secondaryControls
-                PlayerModesRow()
-                    .padding(.top, 12)
-
-                Spacer(minLength: 8)
-            } else {
-                Spacer()
-                ContentUnavailableView("Nothing Playing", systemImage: "music.note")
-                Spacer()
+                FullBleedArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack)
+                    .ignoresSafeArea()
             }
         }
-        .padding(.bottom, 16)
+        // Light type over the shaded cover, light mode or dark. Inside the
+        // sheets below, so the queue and lyrics keep the phone's own.
+        .environment(\.colorScheme, track == nil ? colorScheme : .dark)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $isShowingQueue) {
             QueueView()
@@ -382,4 +385,42 @@ extension RepeatMode {
         case .one: .off
         }
     }
+}
+
+/// The cover, still or moving, filling the whole player behind its controls,
+/// cropped to the screen, the way Apple Music shows animated covers.
+private struct FullBleedArtwork: View {
+    let track: Track
+    let mixState: PlaybackEngine.MixState
+    let outgoing: Track?
+
+    var body: some View {
+        GeometryReader { frame in
+            PlayerArtwork(
+                track: track, mixState: mixState, outgoing: outgoing,
+                cornerRadius: 0, showsMotion: true,
+                aspectRatio: frame.size.width / max(frame.size.height, 1)
+            )
+            .frame(width: frame.size.width, height: frame.size.height)
+            .overlay { Self.shade }
+        }
+        // Black until the cover arrives, so the light controls never sit on white.
+        .background(.black)
+    }
+
+    /// Darkens the cover under the controls so they read over any cover, pale
+    /// ones included, and a little at the top for the grab handle. A shade
+    /// rather than the sheet's colour: the cover runs behind the controls.
+    static let shade = LinearGradient(
+        stops: [
+            .init(color: .black.opacity(0.3), location: 0),
+            .init(color: .clear, location: 0.12),
+            .init(color: .clear, location: 0.3),
+            .init(color: .black.opacity(0.6), location: 0.55),
+            .init(color: .black.opacity(0.8), location: 0.75),
+            .init(color: .black.opacity(0.85), location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
