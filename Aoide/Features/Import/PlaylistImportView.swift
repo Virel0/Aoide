@@ -6,8 +6,7 @@ import UniformTypeIdentifiers
 ///
 /// Shown as a sheet from the Playlists screen. The result is two lists rather than
 /// a playlist: what matched can be saved as a local playlist in one tap, and what
-/// didn't is the shopping list — copied out as text, since acquiring music is not
-/// this app's business.
+/// didn't is the shopping list — copied out as text, or asked of the server.
 struct PlaylistImportView: View {
     @Environment(AppSession.self) private var session
     @Environment(LocalPlaylistStore.self) private var playlists
@@ -146,6 +145,8 @@ struct PlaylistImportView: View {
                         .map { "\($0.title) — \($0.artists.joined(separator: ", "))" }
                         .joined(separator: "\n")
                 }
+                AskForMissingButton(name: importer.playlist?.name ?? "Imported playlist", missing: missing)
+                    .id(missing.map(\.id))
             } header: {
                 Text("Missing (\(missing.count))")
             }

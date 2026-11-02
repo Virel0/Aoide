@@ -65,6 +65,37 @@ public struct RequestProgress: Decodable, Equatable, Sendable {
     public let percent: Double?
     /// The latest word on it, in plain words.
     public let message: String?
+    /// Where it's coming from: `torrent` or `soulseek`.
+    public let source: String?
+    /// Unix seconds it last changed; nil for a step worked out from the library.
+    public let updatedAt: Int64?
+    /// While it's copied home: how far that has got.
+    public let copied: RequestCopying?
+}
+
+/// A download being copied home to the server.
+public struct RequestCopying: Decodable, Equatable, Sendable {
+    public let bytes: Int64
+    public let total: Int64
+    /// The copy's speed so far, once it has run a second.
+    public let bytesPerSecond: Int64?
+    /// At that speed, rounded up.
+    public let secondsLeft: Int64?
+
+    /// "120 MB of 3.4 GB, 12 MB/s, about 5 minutes left".
+    public var words: String {
+        func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+        var words = "\(size(bytes)) of \(size(total))"
+        if let bytesPerSecond { words += ", \(size(bytesPerSecond))/s" }
+        switch secondsLeft {
+        case nil: break
+        case let seconds? where seconds < 60: words += ", under a minute left"
+        case let seconds?:
+            let minutes = (seconds + 59) / 60
+            words += ", about \(minutes) minute\(minutes == 1 ? "" : "s") left"
+        }
+        return words
+    }
 }
 
 /// One of this user's requests.
@@ -86,6 +117,10 @@ public struct MusicRequest: Decodable, Equatable, Identifiable, Sendable {
     public let reason: String?
     /// Unix seconds.
     public let createdAt: Int64
+    /// Unix seconds it was approved or declined.
+    public let decidedAt: Int64?
+    /// Who decided; nil when it was approved at once.
+    public let decidedBy: String?
     /// How it's getting on, once approved; nil before, and for a whole artist.
     public let progress: RequestProgress?
 
@@ -99,13 +134,54 @@ public struct MusicRequest: Decodable, Equatable, Identifiable, Sendable {
             switch progress.step {
             case "wanted": return "Approved, waiting to be looked for"
             case "searching": return "Looking for a download"
-            case "downloading": return progress.percent.map { "Downloading, \(Int($0.rounded()))%" } ?? "Downloading"
-            case "transferring": return "Copying to your server"
+            case "downloading":
+                let from = switch progress.source {
+                case "soulseek": " from Soulseek"
+                case "torrent": " by torrent"
+                default: ""
+                }
+                return progress.percent.map { "Downloading\(from), \(Int($0.rounded()))%" } ?? "Downloading\(from)"
+            case "transferring":
+                return progress.copied.map { "Copying to your server: \($0.words)" } ?? "Copying to your server"
             case "importing": return "Adding to your library"
             case "in_library": return "In your library"
             case "failed": return progress.message.map { "Couldn't be fetched: \($0)" } ?? "Couldn't be fetched"
             default: return progress.message ?? progress.step
             }
         }
+    }
+
+    /// The finer points under where it stands: Melete's latest word when it says
+    /// more, who decided and when, and when it last changed.
+    public func detail(now: Date, locale: Locale = .current) -> String? {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
+        func when(_ seconds: Int64) -> String {
+            formatter.localizedString(for: Date(timeIntervalSince1970: TimeInterval(seconds)), relativeTo: now)
+        }
+        var parts: [String] = []
+        let step = progress?.step
+        if let message = progress?.message, step != "failed", step != "in_library",
+           !standing.localizedCaseInsensitiveContains(message) {
+            parts.append(message)
+        }
+        switch (state, decidedBy, decidedAt) {
+        case (.requested, _, _): parts.append("Asked \(when(createdAt))")
+        case (.approved, let by?, let at?): parts.append("Approved by \(by) \(when(at))")
+        case (.approved, nil, let at?): parts.append("Approved \(when(at))")
+        case (.declined, let by?, let at?): parts.append("Declined by \(by) \(when(at))")
+        default: break
+        }
+        if let updated = progress?.updatedAt, step != "in_library" {
+            parts.append("Updated \(when(updated))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The live feed's newest requests over the list read before: the feed
+    /// follows the 50 newest, so older ones stay as the list read them.
+    public static func merging(_ live: [MusicRequest], over listed: [MusicRequest]) -> [MusicRequest] {
+        guard let oldest = live.map(\.id).min() else { return listed }
+        return live + listed.filter { $0.id < oldest }
     }
 }
