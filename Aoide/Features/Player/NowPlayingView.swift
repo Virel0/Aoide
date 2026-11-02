@@ -16,20 +16,18 @@ struct NowPlayingView: View {
     @State private var isShowingLyrics = false
 
     @Environment(LyricsStore.self) private var lyricsStore
+    @Environment(\.colorScheme) private var colorScheme
 
     private var track: Track? { engine.currentTrack }
 
     var body: some View {
         GeometryReader { sheet in
             VStack(spacing: 0) {
-                if let track {
-                    FullBleedArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack)
-                        // Square when there's room; shorter phones crop it, not the controls.
-                        .frame(maxWidth: .infinity, maxHeight: sheet.size.width + sheet.safeAreaInsets.top)
-                        .overlay(alignment: .top) { grabber.padding(.top, sheet.safeAreaInsets.top) }
+                grabber.padding(.top, sheet.safeAreaInsets.top)
 
-                    // The controls sit at the foot, as in Apple Music; the space
-                    // between is the fade's.
+                if let track {
+                    // The controls sit at the foot, as in Apple Music, over the
+                    // shaded foot of the cover.
                     Spacer(minLength: 0)
 
                     titleBlock(track)
@@ -40,7 +38,6 @@ struct NowPlayingView: View {
                     PlayerModesRow()
                         .padding(.top, 12)
                 } else {
-                    grabber
                     Spacer()
                     ContentUnavailableView("Nothing Playing", systemImage: "music.note")
                     Spacer()
@@ -51,6 +48,15 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea(edges: .top)
         .padding(.bottom, 16)
+        .background {
+            if let track {
+                FullBleedArtwork(track: track, mixState: engine.mixState, outgoing: engine.outgoingTrack)
+                    .ignoresSafeArea()
+            }
+        }
+        // Light type over the shaded cover, light mode or dark. Inside the
+        // sheets below, so the queue and lyrics keep the phone's own.
+        .environment(\.colorScheme, track == nil ? colorScheme : .dark)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $isShowingQueue) {
             QueueView()
@@ -381,9 +387,8 @@ extension RepeatMode {
     }
 }
 
-/// The cover, still or moving, edge to edge across the top of the player,
-/// cropped to the frame it's given; its foot fades into the sheet, the way
-/// Apple Music shows full-screen art.
+/// The cover, still or moving, filling the whole player behind its controls,
+/// cropped to the screen, the way Apple Music shows animated covers.
 private struct FullBleedArtwork: View {
     let track: Track
     let mixState: PlaybackEngine.MixState
@@ -397,13 +402,25 @@ private struct FullBleedArtwork: View {
                 aspectRatio: frame.size.width / max(frame.size.height, 1)
             )
             .frame(width: frame.size.width, height: frame.size.height)
-            .overlay(alignment: .bottom) {
-                // The sheet's own background, so the fade has no seam.
-                Rectangle()
-                    .fill(.background)
-                    .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
-                    .frame(height: frame.size.height * 0.3)
-            }
+            .overlay { Self.shade }
         }
+        // Black until the cover arrives, so the light controls never sit on white.
+        .background(.black)
     }
+
+    /// Darkens the cover under the controls so they read over any cover, pale
+    /// ones included, and a little at the top for the grab handle. A shade
+    /// rather than the sheet's colour: the cover runs behind the controls.
+    static let shade = LinearGradient(
+        stops: [
+            .init(color: .black.opacity(0.3), location: 0),
+            .init(color: .clear, location: 0.12),
+            .init(color: .clear, location: 0.3),
+            .init(color: .black.opacity(0.6), location: 0.55),
+            .init(color: .black.opacity(0.8), location: 0.75),
+            .init(color: .black.opacity(0.85), location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
