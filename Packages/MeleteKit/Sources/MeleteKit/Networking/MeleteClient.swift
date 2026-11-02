@@ -19,7 +19,7 @@ public struct MeleteClient: Sendable {
     public let device: DeviceProfile
     public let credentials: MeleteCredentials?
 
-    private let session: URLSession
+    let session: URLSession
 
     public init(
         serverURL: URL,
@@ -188,13 +188,19 @@ public struct MeleteClient: Sendable {
             throw MeleteError.transport("The server sent a malformed response.")
         }
 
-        switch http.statusCode {
-        case 200..<300: return (data, http.statusCode)
-        case 401: throw Self.secondFactor(data) ?? MeleteError.unauthorized
+        try Self.check(status: http.statusCode, data: data, path: path)
+        return (data, http.statusCode)
+    }
+
+    /// Throws what a status outside 2xx means, read with its body.
+    static func check(status: Int, data: Data, path: String) throws {
+        switch status {
+        case 200..<300: return
+        case 401: throw secondFactor(data) ?? MeleteError.unauthorized
         case 403: throw MeleteError.forbidden
         case 404: throw MeleteError.notFound(path: path)
         default:
-            throw MeleteError.http(status: http.statusCode, path: path, detail: Self.detail(data))
+            throw MeleteError.http(status: status, path: path, detail: detail(data))
         }
     }
 

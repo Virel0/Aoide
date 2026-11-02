@@ -46,4 +46,20 @@ extension MeleteClient {
     public func withdrawRequest(id: Int64) async throws {
         try await sendIgnoringResponse("DELETE", path: "api/v1/requests/\(id)")
     }
+
+    #if !canImport(FoundationNetworking)
+    /// Follows this user's music requests live: their newest (50 at most, music
+    /// only) each time one changes, handed to `each` until the server ends the
+    /// stream, which it does after 10 minutes: follow again. Cancelling the
+    /// calling task stops it.
+    public func followRequests(_ each: @escaping @MainActor ([MusicRequest]) -> Void) async throws {
+        let path = "api/v1/requests/events"
+        try await followEvents(path: path) { event in
+            guard event.name == "requests" else { return }
+            let requests = try decode([MusicRequest].self, from: Data(event.data.utf8), path: path)
+            let music = requests.filter { $0.kind != .other }
+            await each(music)
+        }
+    }
+    #endif
 }

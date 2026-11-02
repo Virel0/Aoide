@@ -9,6 +9,19 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Requests keeps itself up to date while it's open, from Melete's request
+  feed: no need to pull to refresh to see a download move along.
+- Each request says more: where a download comes from (torrent or Soulseek),
+  how the copy to the server is going (size, speed and time left), Melete's
+  latest word on it, who approved or declined it and when, and when it last
+  changed.
+- Importing a playlist can ask your server for the songs your library doesn't
+  have. They go to Melete, which matches each on MusicBrainz and asks for it.
+- Requests lists those playlists with how many songs were asked for, asked
+  already or not found. Open one to see what became of each song, or to
+  remove it, which takes back the songs still waiting for approval.
+
 ## [1.2 (4)] - 2026-10-31
 
 ### Added
