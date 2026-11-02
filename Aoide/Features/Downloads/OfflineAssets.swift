@@ -111,7 +111,7 @@ final class OfflineAssets {
 
     private func storeLyrics(for trackId: String, client: MeleteClient) async {
         guard !Self.hasLyrics(for: trackId) else { return }
-        guard let lyrics = try? await client.lyrics(forItem: trackId) else { return }
+        guard let lyrics = try? await client.lyricsWithPronunciation(forItem: trackId).lyrics else { return }
         guard let data = try? JSONEncoder().encode(lyrics) else { return }
         try? data.write(to: Self.lyricsFile(for: trackId), options: .atomic)
     }

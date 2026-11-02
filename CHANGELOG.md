@@ -10,6 +10,9 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 ## [Unreleased]
 
 ### Added
+- Lyrics can show each line's pronunciation in Latin letters (Japanese,
+  Korean, Cyrillic), from Melete while the server has it on: the Pronunciation
+  button over the lyrics. Downloaded songs keep it for offline listening.
 - Requests keeps itself up to date while it's open, from Melete's request
   feed: no need to pull to refresh to see a download move along.
 - Each request says more: where a download comes from (torrent or Soulseek),
