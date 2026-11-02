@@ -256,6 +256,23 @@ struct MusicQueryTests {
         #expect(MusicQuery.years(from: from, to: to).isEmpty)
     }
 
+    @Test("a parse keeps only what the words say: a song name is not a genre")
+    func grounded() {
+        let guessed = MusicQuery(genres: ["Alternative"])
+        #expect(guessed.grounded(in: "Karma Police Radiohead").isEmpty)
+
+        let described = MusicQuery(genres: ["Rock"], years: Array(1990...1999))
+        #expect(described.grounded(in: "upbeat rock from the nineties") == described)
+        #expect(MusicQuery(years: [1994]).grounded(in: "songs from 1994").years == [1994])
+        #expect(MusicQuery(genres: ["Hip-Hop"]).grounded(in: "old school hip hop").genres == ["Hip-Hop"])
+        #expect(MusicQuery(genres: ["Électronique"]).grounded(in: "electronique").genres == ["Électronique"])
+
+        let invented = MusicQuery(searchTerm: "Paranoid Android", favoritesOnly: true)
+        #expect(invented.grounded(in: "something sad by radiohead").isEmpty)
+        #expect(MusicQuery(favoritesOnly: true).grounded(in: "my favourite chill songs").favoritesOnly)
+        #expect(MusicQuery(genres: ["Rock"]).grounded(in: "rockstar vibes").genres.isEmpty, "a word, not a substring")
+    }
+
     @Test("an unconstrained query is recognised as empty, not as everything")
     func emptyMeansEmpty() {
         #expect(MusicQuery().isEmpty)

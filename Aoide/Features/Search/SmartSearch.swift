@@ -80,7 +80,7 @@ final class SmartSearch {
             let session = LanguageModelSession(instructions: instructions(genreLimit: genreLimit))
             do {
                 let response = try await session.respond(to: text, generating: ParsedQuery.self)
-                return resolve(response.content)
+                return resolve(response.content, phrase: text)
             } catch let error as LanguageModelSession.GenerationError {
                 if case .exceededContextWindowSize = error {
                     log.warning("Search prompt too long with \(genreLimit) genres; retrying smaller")
@@ -123,8 +123,9 @@ final class SmartSearch {
         return text
     }
 
-    /// Validates the model's output against reality before it becomes a query.
-    private func resolve(_ parsed: ParsedQuery) -> MusicQuery? {
+    /// Validates the model's output against reality, and against what was typed,
+    /// before it becomes a query.
+    private func resolve(_ parsed: ParsedQuery, phrase: String) -> MusicQuery? {
         // Genres are matched case-insensitively against the library's own list, and
         // anything unrecognised is dropped rather than passed through: an invented
         // genre doesn't narrow a search, it empties it.
@@ -137,7 +138,7 @@ final class SmartSearch {
             favoritesOnly: parsed.favoritesOnly,
             sort: parsed.ordering.sort,
             direction: parsed.ordering.direction
-        )
+        ).grounded(in: phrase)
         // An empty query means the phrase was understood as nothing at all. Running
         // it would return the library in alphabetical order dressed up as an answer.
         return query.isEmpty ? nil : query
