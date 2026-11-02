@@ -19,6 +19,12 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 - Ask for It groups what MusicBrainz finds into songs, albums and artists, the
   best three of each with Show More for the rest, and each row says who it's by
   and when, with Ask or where it stands (In Library, Wanted, Asked For).
+- Smart and automatic playlists (Heavy Rotation, Rediscover Mix, mixes and
+  your own smart playlists) show a cover made from what they hold: the covers
+  of their first four albums in a grid, or the first album's cover when there
+  are fewer, updated as their songs change. In the Playlists list, at the top
+  of the playlist, on Home and in CarPlay. A picture chosen for a playlist
+  still wins, and a playlist's own header now shows it too.
 
 ### Added
 - Motion covers: an album with a looping video plays it, muted, over its cover

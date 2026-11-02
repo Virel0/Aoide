@@ -528,4 +528,33 @@ struct SmartPlaylistTests {
             try store.matchCount(playlist: plain, asOf: now, calendar: utc)
         }
     }
+
+    // MARK: - Covers
+
+    /// Distinct albums in the rules' own order, stopping at the limit: what the
+    /// playlist's mosaic is drawn from, with no stored rows to read it off.
+    @Test("a smart playlist's cover albums are its first distinct albums, in order")
+    func coverAlbums() throws {
+        let store = try CurationStore.inMemory(deviceId: "phone")
+        for (track, album) in [("a", "x1"), ("b", "x1"), ("c", nil), ("d", "x2"), ("e", "x3"), ("f", "x4"), ("g", "x5")] {
+            try seed(store, TrackRef(
+                jellyfinId: track, contentKey: track, title: track, artist: "Artist",
+                album: album ?? "", albumId: album, lastSeenAt: now
+            ))
+        }
+        let byTitle = try rules(.all, [], sort: .init(field: .title, dir: .asc))
+        let playlist = try store.record(try Playlist(
+            name: "Everything", sortIndex: FractionalIndex.initial, updatedAt: now, originDevice: ""
+        ).settingSmartRules(byTitle))
+
+        // A track with no album is passed over, and a repeated album counted once.
+        #expect(try store.coverAlbums(playlist: playlist, asOf: now, calendar: utc) == ["x1", "x2", "x3", "x4"])
+        #expect(try store.coverAlbums(playlist: playlist, limit: 2, asOf: now, calendar: utc) == ["x1", "x2"])
+
+        // Reversed, so the order is the rules' and not the table's.
+        let reversed = try store.record(try playlist.settingSmartRules(
+            rules(.all, [], sort: .init(field: .title, dir: .desc))
+        ))
+        #expect(try store.coverAlbums(playlist: reversed, asOf: now, calendar: utc) == ["x5", "x4", "x3", "x2"])
+    }
 }

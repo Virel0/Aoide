@@ -161,6 +161,8 @@ final class LocalPlaylistStore {
             let playlists = try store.playlists()
 
             var counts: [String: Int] = [:]
+            // One query for the whole screen. Per tile it would be one per row.
+            var covers = try store.coverAlbums(for: playlists.map(\.id))
             for list in playlists {
                 if list.isSmart {
                     // A smart playlist has no stored rows, so its count is whatever the
@@ -175,6 +177,9 @@ final class LocalPlaylistStore {
                     // set matching a large library means a five-figure array assembled
                     // and dropped on the floor, every time any playlist changes.
                     counts[list.id] = try? store.matchCount(playlist: list)
+                    // Its albums the same way, here rather than per tile: rules
+                    // re-run when a playlist changes, not when a row is drawn.
+                    covers[list.id] = try? store.coverAlbums(playlist: list)
                 } else {
                     counts[list.id] = try store.itemCount(in: list.id)
                 }
@@ -183,8 +188,7 @@ final class LocalPlaylistStore {
                 folders: folders,
                 playlists: playlists,
                 counts: counts,
-                // One query for the whole screen. Per tile it would be one per row.
-                coverAlbums: try store.coverAlbums(for: playlists.map(\.id))
+                coverAlbums: covers
             )
         }
 

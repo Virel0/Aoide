@@ -384,6 +384,30 @@ public extension CurationStore {
         try matchCount(rules(of: playlist), asOf: now, calendar: calendar)
     }
 
+    /// The first `limit` distinct albums a smart playlist's songs come from, in its
+    /// own order, for drawing a cover from what it holds.
+    ///
+    /// Album ids straight from the same statement, read row by row and stopped at the
+    /// last one needed, rather than `resolve` and a lookup per id: a rule set matching
+    /// a large library would otherwise build a five-figure list to keep four albums.
+    func coverAlbums(
+        playlist: Playlist,
+        limit: Int = 4,
+        asOf now: Millis = Date().millis,
+        calendar: Calendar = .current
+    ) throws -> [String] {
+        let query = try SmartQuery(rules: rules(of: playlist), now: now, calendar: calendar, selecting: "t.albumId")
+        return try read { db in
+            var albums: [String] = []
+            let cursor = try String?.fetchCursor(db, sql: query.sql, arguments: query.arguments)
+            while albums.count < limit, let albumId = try cursor.next() {
+                guard let albumId, !albums.contains(albumId) else { continue }
+                albums.append(albumId)
+            }
+            return albums
+        }
+    }
+
     private func rules(of playlist: Playlist) throws -> SmartRules {
         guard playlist.isSmart, let json = playlist.smartRules, !json.isEmpty else {
             throw SmartPlaylistError.notSmart(playlistId: playlist.id)
@@ -427,7 +451,9 @@ struct SmartQuery: Sendable {
     let sql: String
     let arguments: StatementArguments
 
-    init(rules: SmartRules, now: Millis, calendar: Calendar) throws {
+    /// `selecting` is the one column read per matching track, from this file and
+    /// never from a rule: the track's id, or its album's for a cover.
+    init(rules: SmartRules, now: Millis, calendar: Calendar, selecting selected: String = "t.jellyfinId") throws {
         var predicates: [String] = []
         var values: [DatabaseValue] = []
 
@@ -478,7 +504,7 @@ struct SmartQuery: Sendable {
             LEFT JOIN track d ON d.jellyfinId = e.jellyfinId
             GROUP BY e.jellyfinId
         )
-        SELECT t.jellyfinId
+        SELECT \(selected)
         FROM track t
         LEFT JOIN history h ON h.jellyfinId = t.jellyfinId
         LEFT JOIN "like" l ON l.jellyfinId = t.jellyfinId AND l.deleted = 0
