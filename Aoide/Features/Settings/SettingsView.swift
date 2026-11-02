@@ -42,6 +42,8 @@ struct SettingsView: View {
                 Text("Dark by default — album artwork carries the page better against a dark ground.")
             }
 
+            MotionCoverSettings()
+
             Section {
                 NavigationLink("Hidden from Mixes") { TasteFlagsView() }
             } header: {

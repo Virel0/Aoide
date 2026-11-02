@@ -10,6 +10,10 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 ## [Unreleased]
 
 ### Added
+- Motion covers: an album with a looping video plays it, muted, over its cover
+  on the album's page and in the player. Settings → Motion Covers turns them
+  off, and chooses whether to see the ones your server made from still covers.
+  Off with Reduce Motion or Low Power Mode. WebM loops show the still cover.
 - Requests keeps itself up to date while it's open, from Melete's request
   feed: no need to pull to refresh to see a download move along.
 - Each request says more: where a download comes from (torrent or Soulseek),

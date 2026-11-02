@@ -49,6 +49,10 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
     /// Whether the signed-in user likes the track, as their sync log says.
     public var liked: Bool
     public var isrc: String?
+    /// An album's looping video, as the path the server gave (`/api/v1/music/
+    /// albums/{id}/motion`); nil when it has none. Optional, so the downloads'
+    /// list saved before it was read still decodes.
+    public var motionCover: String?
 
     public init(
         id: String,
@@ -68,7 +72,8 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         duration: Duration? = nil,
         hasCover: Bool = false,
         liked: Bool = false,
-        isrc: String? = nil
+        isrc: String? = nil,
+        motionCover: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -88,6 +93,7 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         self.hasCover = hasCover
         self.liked = liked
         self.isrc = isrc
+        self.motionCover = motionCover
     }
 
     /// The length in whole milliseconds, as the local store keeps it.
@@ -215,6 +221,7 @@ struct WireAlbum: Decodable {
     let genres: [String]?
     /// On an album's own page only, from servers that have album likes.
     let liked: Bool?
+    let motionCover: String?
 
     var item: MusicItem {
         MusicItem(
@@ -229,7 +236,8 @@ struct WireAlbum: Decodable {
             childCount: tracks,
             duration: seconds(durationSeconds),
             hasCover: cover != nil,
-            liked: liked ?? false
+            liked: liked ?? false,
+            motionCover: motionCover
         )
     }
 }
