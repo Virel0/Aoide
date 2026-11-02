@@ -229,18 +229,24 @@ struct SearchView: View {
         }
     }
 
-    /// Runs the phrase through Apple Intelligence, then asks the server.
+    /// Has Melete's AI turn the phrase into filters, then asks for the songs.
     ///
     /// Deliberately after the plain search rather than alongside it: this takes a
-    /// second or so on device, and the exact matches should never wait behind a
-    /// guess. Skipped entirely for short queries and on devices without Apple
-    /// Intelligence, where the plain search is the whole feature.
+    /// second or two, and the exact matches should never wait behind a guess.
+    /// Skipped entirely for short queries and when the server has AI off, where
+    /// the plain search is the whole feature.
     private func interpret(_ term: String) async {
-        guard SmartSearch.looksLikeAPhrase(term), smart.readiness == .ready else {
+        guard SmartSearch.looksLikeAPhrase(term), await smart.isAvailable() else {
             smartResults = []
             smartQuery = nil
             return
         }
+
+        // Each phrase is one of the 30 AI requests an hour the server allows a
+        // user, mixes included, so it waits for the typing to settle instead of
+        // asking at every pause.
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
 
         let mine = generation
         isInterpreting = true

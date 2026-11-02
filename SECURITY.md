@@ -37,9 +37,10 @@ phone. Data synced to your server lives there, under your Melete account.
 The README's [Privacy](README.md#privacy) section and
 [docs/privacy-policy.md](docs/privacy-policy.md) list it: your Melete server; Spotify's public playlist page only when you import one;
 Apple for Siri requests if you allow Siri, and for the one-time download of a
-translation language. Mixes, sentence search and lyric translation run on the
-phone. Settings → Diagnostics writes the app's own log from the last half hour
-to a file you share yourself; nothing is sent otherwise.
+translation language. Lyric translation runs on the phone. Sentence searches
+and mix descriptions go to your Melete server, which sends the words and your
+library's genre names to OpenRouter when it has AI features on.
+Settings → Diagnostics writes the app's own log from the last half hour to a file you share yourself; nothing is sent otherwise.
 
 ## Secrets in the repository
 

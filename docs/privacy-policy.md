@@ -10,8 +10,10 @@ kept on the phone, and synced to *your* server, under your Melete account. Nothi
 **What leaves the phone.** Requests to the Melete server you signed in to, and
 only that server: playback, library browsing, sync. Importing a Spotify playlist
 by link fetches that public page from Spotify; nothing about you is sent with it.
-Mixes and sentence search run on the phone with Apple Intelligence; your
-descriptions do not leave the device.
+Mixes and sentence search go through your server's AI features, when its admin
+has turned them on: your server sends the words you typed, and the names of your
+library's genres, to OpenRouter, which passes them to the AI model that answers.
+Nothing else about your library or you goes with them.
 
 **What we collect.** Nothing. We cannot see your server, your library, or how
 you listen.

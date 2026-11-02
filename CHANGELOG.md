@@ -16,6 +16,13 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   so; a song or band name is no longer turned into a whole genre.
 
 ### Changed
+- Search by description and Mixes use your Melete server's AI instead of Apple
+  Intelligence, so they work on any iPhone. Your server sends the words you
+  type, with your library's genre names, to OpenRouter; they no longer stay on
+  the phone. With the server's AI features off, or on a Melete without music
+  AI yet, search is the plain search and Mixes says so; both turn on once the
+  server has them. A sentence search waits a second after you stop typing, since
+  each one counts against the server's hourly limit.
 - Ask for It groups what MusicBrainz finds into songs, albums and artists, the
   best three of each with Show More for the rest, and each row says who it's by
   and when, with Ask or where it stands (In Library, Wanted, Asked For).
