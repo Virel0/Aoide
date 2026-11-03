@@ -23,7 +23,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("Account") {
-                LabeledContent("Signed in as", value: store.accountSummary.username)
+                SignedInRow(username: store.accountSummary.username)
                 LabeledContent("Server", value: store.accountSummary.server)
             }
 
@@ -202,6 +202,25 @@ struct SettingsView: View {
         } message: {
             Text("You'll need your server address and password to sign back in.")
         }
+    }
+}
+
+/// Who is signed in, with their profile picture. Asked of `/me` each time
+/// Settings opens; until it answers, or on a server without pictures, the
+/// name's initial stands in.
+private struct SignedInRow: View {
+    let username: String
+    @Environment(AppSession.self) private var session
+    @State private var me: MeleteUser?
+
+    var body: some View {
+        LabeledContent("Signed in as") {
+            HStack(spacing: 8) {
+                AvatarView(name: username, url: session.client?.avatarURL(me?.avatarUrl))
+                Text(username)
+            }
+        }
+        .task { me = try? await session.client?.me() }
     }
 }
 

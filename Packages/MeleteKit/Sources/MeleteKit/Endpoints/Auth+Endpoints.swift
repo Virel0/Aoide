@@ -67,10 +67,27 @@ extension MeleteClient {
         try await sendIgnoringResponse("POST", path: "api/v1/auth/logout")
     }
 
+    /// Who is signed in, with their profile picture.
+    public func me() async throws -> MeleteUser {
+        try await get(path: "api/v1/me")
+    }
+
     /// Every user's name on the server, for choosing whom to share with. Any
     /// signed-in user may list them.
     public func userDirectory() async throws -> [MeleteUser] {
         try await get(path: "api/v1/users/directory")
+    }
+
+    /// Where a profile picture is fetched from: `avatar_url`'s path beneath the
+    /// server address, with its `?v=` version kept, so the address changes with
+    /// the picture. `nil` without one, or for anything but a path on this server.
+    public func avatarURL(_ servedPath: String?) -> URL? {
+        guard let servedPath, !servedPath.contains("#") else { return nil }
+        let parts = servedPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let base = url(servedPath: String(parts[0])) else { return nil }
+        guard parts.count == 2 else { return base }
+        guard let query = URLComponents(string: "?" + parts[1])?.queryItems, !query.isEmpty else { return nil }
+        return base.appending(queryItems: query)
     }
 
     private func credentials(for session: Session) -> (MeleteCredentials, MeleteUser) {

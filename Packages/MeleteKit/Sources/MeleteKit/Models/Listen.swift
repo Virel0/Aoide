@@ -51,6 +51,9 @@ public struct ListenMember: Decodable, Equatable, Sendable {
     public let device: String
     /// The device asking.
     public let you: Bool
+    /// Their profile picture's path, for ``MeleteClient/avatarURL(_:)``; `nil`
+    /// without one, and from a server that doesn't send it.
+    public let avatarUrl: String?
 }
 
 /// A session with the server's clock when it answered, to set this device's by.

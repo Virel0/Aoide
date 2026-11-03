@@ -37,6 +37,10 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   under the controls so they read over any cover.
 
 ### Added
+- Profile pictures from Melete: yours in Settings beside Signed in as, and each
+  person's in Listen Together once the server sends them. Without a picture, or
+  on a Melete without profile pictures, the first letter of the name shows in a
+  round tile.
 - Motion covers: an album with a looping video plays it, muted, over its cover
   on the album's page and in the player. Settings → Motion Covers turns them
   off, and chooses whether to see the ones your server made from still covers.
