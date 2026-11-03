@@ -60,6 +60,10 @@ public struct PlayQueue: Sendable {
 
     public var repeatMode: RepeatMode = .off
 
+    /// The entry playing started from: the song tapped, or the first of a list.
+    /// With songs queued by hand, repeat-all loops it and them; see ``isLooped(_:)``.
+    private var startEntryId: UUID?
+
     public var isShuffled: Bool { unshuffledEntries != nil }
 
     public init() {}
@@ -160,12 +164,14 @@ public struct PlayQueue: Sendable {
             entries = kept
             position = 0
         }
+        startEntryId = current?.id
     }
 
     public mutating func clear() {
         entries = []
         unshuffledEntries = nil
         position = nil
+        startEntryId = nil
     }
 
     /// Drops everything after the current track, which keeps playing.
@@ -203,6 +209,13 @@ public struct PlayQueue: Sendable {
     /// track depends on elapsed time, which is the player's business, not the queue's.
     public mutating func skipToPrevious() -> AdvanceOutcome {
         guard let position else { return .ended }
+        if loopsPicks {
+            let previous = entries.indices.last { $0 < position && isLooped(entries[$0]) }
+                ?? entries.indices.last { isLooped(entries[$0]) }
+            guard let previous else { return .ended }
+            self.position = previous
+            return .moved
+        }
         if position > 0 {
             self.position = position - 1
             return .moved
@@ -214,8 +227,29 @@ public struct PlayQueue: Sendable {
         return .ended
     }
 
+    /// Whether repeat-all loops only what was picked: the song the queue started
+    /// from and the songs queued by hand. Someone who taps a song on an album and
+    /// then lines up others means to hear those again, not the rest of the album,
+    /// which stays in Up Next for when repeat is off. An album with nothing
+    /// queued by hand repeats whole.
+    private var loopsPicks: Bool {
+        repeatMode == .all && entries.contains(where: \.isManual)
+    }
+
+    /// One of the picks repeat-all loops while ``loopsPicks``.
+    private func isLooped(_ entry: QueueEntry) -> Bool {
+        entry.isManual || entry.id == startEntryId
+    }
+
     private mutating func moveForward(wrapping: Bool) -> AdvanceOutcome {
         guard let position else { return .ended }
+        if wrapping, loopsPicks {
+            let next = entries.indices.first { $0 > position && isLooped(entries[$0]) }
+                ?? entries.indices.first { isLooped(entries[$0]) }
+            guard let next else { return .ended }
+            self.position = next
+            return .moved
+        }
         if position + 1 < entries.count {
             self.position = position + 1
             return .moved

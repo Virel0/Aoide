@@ -622,3 +622,72 @@ struct QueueExtensionTests {
         #expect(queue.entries.count == 1)
     }
 }
+
+@Suite("Repeating what was picked")
+struct RepeatPicksTests {
+    /// An album started from its second song, with two songs queued by hand.
+    private func picked() -> PlayQueue {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a1", "a2", "a3", "a4"), startingAt: 1)
+        queue.append(makeTracks("x", "y"))
+        queue.repeatMode = .all
+        return queue
+    }
+
+    @Test("repeat-all loops the song started from and the songs queued by hand, not the rest of the album")
+    func loopsPicks() {
+        var queue = picked()
+        var heard = [queue.currentTitle]
+        for _ in 0..<6 {
+            #expect(queue.advanceAutomatically() == .moved)
+            heard.append(queue.currentTitle)
+        }
+        #expect(heard == ["a2", "x", "y", "a2", "x", "y", "a2"])
+        #expect(queue.titles == ["a1", "a2", "x", "y", "a3", "a4"], "the album stays queued")
+    }
+
+    @Test("next and previous move through the picks too, wrapping both ways")
+    func skipsThroughPicks() {
+        var queue = picked()
+        #expect(queue.skipToPrevious() == .moved)
+        #expect(queue.currentTitle == "y")
+        #expect(queue.skipToNext() == .moved)
+        #expect(queue.currentTitle == "a2")
+    }
+
+    @Test("with repeat off the album carries on after the picks")
+    func repeatOffPlaysTheAlbum() {
+        var queue = picked()
+        queue.repeatMode = .off
+        var heard = [queue.currentTitle]
+        while queue.advanceAutomatically() == .moved { heard.append(queue.currentTitle) }
+        #expect(heard == ["a2", "x", "y", "a3", "a4"])
+    }
+
+    @Test("an album with nothing queued by hand still repeats whole")
+    func albumAloneRepeatsWhole() {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a1", "a2", "a3"), startingAt: 1)
+        queue.repeatMode = .all
+        _ = queue.advanceAutomatically()
+        #expect(queue.advanceAutomatically() == .moved)
+        #expect(queue.currentTitle == "a1")
+    }
+
+    @Test("turned on while an album song plays, the next song is the next pick")
+    func fromAnAlbumSong() {
+        var queue = picked()
+        queue.repeatMode = .off
+        for _ in 0..<3 { _ = queue.advanceAutomatically() }
+        #expect(queue.currentTitle == "a3")
+        queue.repeatMode = .all
+        #expect(queue.advanceAutomatically() == .moved)
+        #expect(queue.currentTitle == "a2")
+    }
+
+    @Test("the gapless look-ahead follows the same loop")
+    func renderWindowFollows() {
+        let queue = picked()
+        #expect(queue.renderWindow(count: 4).map(\.track.title) == ["a2", "x", "y", "a2"])
+    }
+}
