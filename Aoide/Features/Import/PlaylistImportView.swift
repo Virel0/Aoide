@@ -1,12 +1,14 @@
+import CurationKit
 import MeleteKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// Paste a Spotify playlist link, see what your server has and what it doesn't.
 ///
-/// Shown as a sheet from the Playlists screen. The result is two lists rather than
-/// a playlist: what matched can be saved as a local playlist in one tap, and what
-/// didn't is the shopping list — copied out as text, or asked of the server.
+/// Shown as a sheet from the Playlists screen. Saving hands the whole playlist to
+/// the server, which makes it with every song: the ones it has, and the rest
+/// waiting until they arrive, asked for on the way. A server too old for that gets
+/// the two steps instead: what matched saved as a playlist, what didn't asked for.
 struct PlaylistImportView: View {
     @Environment(AppSession.self) private var session
     @Environment(LocalPlaylistStore.self) private var playlists
@@ -16,6 +18,9 @@ struct PlaylistImportView: View {
     @State private var link = ""
     @State private var isChoosingFile = false
     @State private var saved: String?
+    /// The whole playlist on its way through the server, once Save is tapped.
+    @State private var serverImport: ServerPlaylistImport?
+    @State private var following: Task<Void, Never>?
     @FocusState private var isTyping: Bool
 
     var body: some View {
@@ -53,7 +58,11 @@ struct PlaylistImportView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
-                if let importer, importer.phase == .finished, !importer.found.isEmpty {
+                if let importer, importer.phase == .finished, serverImport == nil, !importer.matches.isEmpty {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save \(importer.matches.count)") { saveWhole(importer) }
+                    }
+                } else if let importer, importer.phase == .finished, isTwoStep, !importer.found.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save \(importer.found.count)") { save(importer) }
                     }
@@ -63,12 +72,14 @@ struct PlaylistImportView: View {
                 guard importer == nil, let client = session.client else { return }
                 importer = PlaylistImporter(client: client)
             }
+            .onDisappear { following?.cancel() }
             .fileImporter(
                 isPresented: $isChoosingFile,
                 allowedContentTypes: [.commaSeparatedText, .plainText, .text]
             ) { result in
                 guard let importer, case .success(let url) = result else { return }
                 let name = url.deletingPathExtension().lastPathComponent
+                startOver()
                 Task { await importer.importCSV(at: url, name: name) }
             }
             .alert(
@@ -122,6 +133,9 @@ struct PlaylistImportView: View {
     private func results(_ importer: PlaylistImporter) -> some View {
         let found = importer.found
         let missing = importer.missing
+        if let serverImport {
+            ServerImportSection(serverImport: serverImport)
+        }
         Section {
             LabeledContent("Found on your server", value: "\(found.count) of \(importer.matches.count)")
             if importer.playlist?.isTruncated == true {
@@ -145,10 +159,16 @@ struct PlaylistImportView: View {
                         .map { "\($0.title) — \($0.artists.joined(separator: ", "))" }
                         .joined(separator: "\n")
                 }
-                AskForMissingButton(name: importer.playlist?.name ?? "Imported playlist", missing: missing)
-                    .id(missing.map(\.id))
+                if isTwoStep {
+                    AskForMissingButton(name: importer.playlist?.name ?? "Imported playlist", missing: missing)
+                        .id(missing.map(\.id))
+                }
             } header: {
                 Text("Missing (\(missing.count))")
+            } footer: {
+                if !isTwoStep {
+                    Text("Saving puts these in the playlist too, greyed out until they arrive. Your server asks for them.")
+                }
             }
         }
         if !found.isEmpty {
@@ -167,10 +187,36 @@ struct PlaylistImportView: View {
         }
     }
 
+    /// Whether this server needs the two steps: save what was found, ask for the rest.
+    private var isTwoStep: Bool { serverImport?.phase == .unsupported }
+
     private func lookUp() {
         guard let importer else { return }
         isTyping = false
+        startOver()
         Task { await importer.importSpotify(link: link) }
+    }
+
+    /// A new playlist read in starts a new save.
+    private func startOver() {
+        following?.cancel()
+        following = nil
+        serverImport = nil
+    }
+
+    /// Hands every song to the server to make the playlist, and on a server too
+    /// old for that, saves what was found as before.
+    private func saveWhole(_ importer: PlaylistImporter) {
+        guard let client = session.client else { return }
+        let name = importer.playlist?.name ?? "Imported playlist"
+        let tracks = importer.matches.map(\.track)
+        let started = ServerPlaylistImport()
+        serverImport = started
+        following = Task {
+            await started.run(name: name, tracks: tracks, client: client)
+            if started.phase == .unsupported, !importer.found.isEmpty { save(importer) }
+            await playlists.reload()
+        }
     }
 
     private func save(_ importer: PlaylistImporter) {

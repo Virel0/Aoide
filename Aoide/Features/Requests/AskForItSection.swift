@@ -1,3 +1,4 @@
+import CurationKit
 import MeleteKit
 import SwiftUI
 
@@ -5,7 +6,8 @@ import SwiftUI
 /// words looked up on MusicBrainz through Melete, in groups (songs, albums,
 /// artists), each showing its best few with the rest a tap away. A row says what
 /// it is and who by, and is marked in the library, wanted or asked for already,
-/// else has Ask.
+/// else has Ask. A song not in the library can go in a playlist straight away,
+/// waiting there until it arrives.
 ///
 /// Looked up only when asked: MusicBrainz is slow and the server paces it, and a
 /// lookup at every pause in typing would be both. Give it `.id(term)` so a new
@@ -21,6 +23,12 @@ struct AskForItSection: View {
     /// What asking said, by candidate: where it stands now, or why not.
     @State private var answers: [RequestCandidate: String] = [:]
     @State private var asking: RequestCandidate?
+    /// Requests made here, by candidate, so adding one to a playlist after asking
+    /// for it doesn't ask again.
+    @State private var asked: [RequestCandidate: Int64] = [:]
+    /// The song on its way into a playlist.
+    @State private var adding: WaitingPick?
+    @Environment(LocalPlaylistStore.self) private var playlists
 
     /// Rows a group shows before "Show More".
     private static let shown = 3
@@ -48,6 +56,13 @@ struct AskForItSection: View {
             }
         } header: {
             Text("Ask for It")
+        }
+        // Explicit: a sheet is an environment boundary.
+        .sheet(item: $adding) { pick in
+            AddToPlaylistSheet(title: pick.candidate.title) { store, list in
+                await addWaiting(pick.candidate, to: list, in: store)
+            }
+            .environment(playlists)
         }
         if let found {
             ForEach(Self.order, id: \.self) { kind in
@@ -97,8 +112,28 @@ struct AskForItSection: View {
             }
             Spacer(minLength: 8)
             trailing(candidate)
+            if Self.canWait(candidate) {
+                Button("Add to Playlist…", systemImage: "text.badge.plus") {
+                    adding = WaitingPick(candidate: candidate)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+            }
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            if Self.canWait(candidate) {
+                Button("Add to Playlist…", systemImage: "text.badge.plus") {
+                    adding = WaitingPick(candidate: candidate)
+                }
+            }
+        }
+    }
+
+    /// A song the library lacks that can be asked for, or has been.
+    private static func canWait(_ candidate: RequestCandidate) -> Bool {
+        candidate.kind == .song && !candidate.inLibrary
+            && (candidate.mbRecordingId != nil || candidate.requested != nil)
     }
 
     @ViewBuilder
@@ -180,11 +215,52 @@ struct AskForItSection: View {
         asking = candidate
         defer { asking = nil }
         do {
-            answers[candidate] = try await client.askFor(candidate).standing
+            let request = try await client.askFor(candidate)
+            asked[candidate] = request.id
+            answers[candidate] = request.standing
         } catch MeleteError.http(status: 409, _, let detail) {
             answers[candidate] = detail ?? "Asked for already"
         } catch {
             answers[candidate] = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
     }
+
+    /// Asks for the song unless it has been, then puts it in `list` waiting on that
+    /// request. Says why in the store's message when it can't.
+    private func addWaiting(_ candidate: RequestCandidate, to list: Playlist, in store: LocalPlaylistStore) async -> Bool {
+        guard let requestId = await requestId(for: candidate, store: store) else { return false }
+        let song = PendingSong(requestId: requestId, title: candidate.title, artist: candidate.artist)
+        guard await store.addWaiting(song, to: list) else { return false }
+        answers[candidate] = "Added to “\(list.name)”"
+        return true
+    }
+
+    /// This user's request for the song: the open one the search found, one made
+    /// here, or a new one.
+    private func requestId(for candidate: RequestCandidate, store: LocalPlaylistStore) async -> Int64? {
+        if let id = candidate.requested ?? asked[candidate] { return id }
+        guard let client = AppSession.shared.client else { return nil }
+        do {
+            let request = try await client.askFor(candidate)
+            asked[candidate] = request.id
+            return request.id
+        } catch MeleteError.http(status: 409, _, let detail) {
+            // Asked for since the search: looking again finds the request.
+            let again = try? await client.requestSearch(.song, words: term)
+            if let id = again?.first(where: { $0.mbRecordingId == candidate.mbRecordingId })?.requested {
+                asked[candidate] = id
+                return id
+            }
+            store.lastErrorMessage = detail ?? "It couldn't be asked for."
+        } catch {
+            store.lastErrorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
+        }
+        return nil
+    }
+}
+
+/// A search result on its way into a playlist, for `.sheet(item:)`.
+private struct WaitingPick: Identifiable {
+    let id = UUID()
+    let candidate: RequestCandidate
 }

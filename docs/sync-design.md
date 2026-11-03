@@ -119,8 +119,9 @@ CREATE TABLE playlists (
 CREATE TABLE playlist_items (
   id            TEXT PRIMARY KEY,
   playlist_id   TEXT NOT NULL,
-  jellyfin_id   TEXT NOT NULL,
-  content_key   TEXT NOT NULL,
+  jellyfin_id   TEXT,                -- null while pending
+  content_key   TEXT,                -- null while pending
+  pending       TEXT,                -- JSON, see below; null for a track
   position      TEXT NOT NULL,       -- fractional index
   updated_at    INTEGER NOT NULL,
   deleted       INTEGER NOT NULL DEFAULT 0,
@@ -128,6 +129,17 @@ CREATE TABLE playlist_items (
 );
 CREATE INDEX idx_items_playlist ON playlist_items(playlist_id, position);
 ```
+
+**An item holds a track or a song not in the library yet.** A pending item has no
+`jellyfinId` or `contentKey` in its payload; in their place is `pending`:
+`{"requestId", "title", "artist", "album", "durationMs", "why"}`, every field
+written and null when unknown. `requestId` is the song request that will bring it;
+null when nothing could be asked for, and `why` then says why. When the song
+arrives, Melete writes the same item again from device `melete`, with the track's
+id and content key and without `pending`, timed just after the item's own last
+write. Devices only sync. Melete 0.4.0 and later (its decision 264); a build that
+predates this quarantines a pending item, and the next build applies it from
+quarantine.
 
 **`position` is a fractional index, not an integer.** This is not a detail. With
 integer positions, inserting a track at row 3 renumbers every row below it, so two

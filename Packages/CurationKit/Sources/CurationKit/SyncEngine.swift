@@ -142,8 +142,11 @@ public actor SyncEngine {
             // afterwards notices — the playlist row is perfectly valid.
             let uploaded = try await uploadPendingImages()
             heldEntities = await entitiesToHold()
+            // Only what it applied counts: what it sets aside again was set aside before.
+            let replayed = try store.replayQuarantinedPendingItems(now: clock()).applied
             var report = try await pushPending()
             report.imagesUploaded = uploaded
+            report.applied += replayed
             report.absorb(try await pullAndApply())
             lastReport = report
             transition(to: .idle)

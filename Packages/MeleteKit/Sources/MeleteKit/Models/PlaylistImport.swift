@@ -20,6 +20,14 @@ public struct PlaylistImportSummary: Decodable, Equatable, Identifiable, Sendabl
     public let unmatched: Int
     /// Of those asked for, the ones still waiting for an admin.
     public let waiting: Int
+    /// Songs the library has already, put in the import's playlist as they are.
+    /// `nil` from a server before playlists were made by imports.
+    public let inLibrary: Int?
+    /// The Aoide playlist the import makes and fills, when it makes one.
+    public let playlistId: String?
+
+    /// Songs worked through so far.
+    public var handled: Int { asked + already + unmatched + (inLibrary ?? 0) }
 
     /// Still working through its songs.
     public var isRunning: Bool { state == "queued" || state == "running" }
@@ -33,6 +41,7 @@ public struct PlaylistImportSummary: Decodable, Equatable, Identifiable, Sendabl
         default: "Done"
         }
         var words = "\(word): \(asked) of \(tracks) songs asked for, \(already) asked already, \(unmatched) not found."
+        if let inLibrary, inLibrary > 0 { words += " \(inLibrary) in your library already." }
         if waiting > 0 { words += " \(waiting) wait for approval." }
         if let message { words += " \(message)" }
         return words
@@ -46,7 +55,7 @@ public struct PlaylistImportTrack: Decodable, Equatable, Identifiable, Sendable 
     public let title: String
     /// As the playlist names them.
     public let artist: String?
-    /// `pending`, `asked`, `already` or `unmatched`.
+    /// `pending`, `asked`, `already`, `unmatched` or `in_library`.
     public let state: String
     /// Why it wasn't asked for, when unmatched.
     public let why: String?
@@ -61,6 +70,7 @@ public struct PlaylistImportTrack: Decodable, Equatable, Identifiable, Sendable 
         case "asked": "Asked for"
         case "already": "Asked for already"
         case "unmatched": why.map { "Not found: \($0)" } ?? "Not found"
+        case "in_library": "In your library"
         default: "Not looked up yet"
         }
     }

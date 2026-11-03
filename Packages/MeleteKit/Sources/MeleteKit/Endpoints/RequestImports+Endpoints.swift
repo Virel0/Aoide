@@ -6,9 +6,21 @@ extension MeleteClient {
     /// Asks for every song of a playlist: Melete matches each to a MusicBrainz
     /// recording and asks for it as this user, in the background. HTTP 400 for a
     /// file that isn't a playlist, 409 when MusicBrainz is off, 413 past 8 MB.
-    public func importPlaylist(name: String, csv: String) async throws -> PlaylistImportSummary {
-        struct Body: Encodable { let name: String; let csv: String }
-        return try await post(path: "api/v1/requests/imports", body: Body(name: name, csv: csv))
+    ///
+    /// With `makePlaylist`, Melete also makes an Aoide playlist of it, named as the
+    /// import is (`playlistId`), holding every song in the file's order: the ones
+    /// the library has as they are, the rest waiting until they arrive. Melete 0.4.0
+    /// and later; an older one refuses the field (HTTP 400 or 422), and one serving
+    /// a user who may see only some music libraries answers 403.
+    public func importPlaylist(name: String, csv: String, makePlaylist: Bool = false) async throws -> PlaylistImportSummary {
+        struct Body: Encodable {
+            let name: String
+            let csv: String
+            /// Left out unless asked for, so an older server still takes the import.
+            let makePlaylist: Bool?
+        }
+        let body = Body(name: name, csv: csv, makePlaylist: makePlaylist ? true : nil)
+        return try await post(path: "api/v1/requests/imports", body: body)
     }
 
     /// This user's playlist imports, newest first (100 at most).
