@@ -130,6 +130,7 @@ final class CarPlayBrowser: NSObject {
             for built in BuiltInPlaylist.allCases {
                 guard let list = playlists.playlists.first(where: { $0.id == built.id }) else { continue }
                 let item = CPListItem(text: list.name, detailText: "Mix", image: UIImage(systemName: "wand.and.stars"))
+                loadCover(of: list, into: item)
                 item.handler = { [weak self] _, completion in
                     Task { await self?.play(localPlaylist: list); completion() }
                 }
@@ -214,7 +215,7 @@ final class CarPlayBrowser: NSObject {
                             detailText: list.isSmart ? "Smart playlist" : nil,
                             image: UIImage(systemName: list.isSmart ? "wand.and.stars" : "music.note.list")
                         )
-                        if let artworkId = list.artworkItemId { self.loadArtwork(itemId: artworkId, into: item) }
+                        self.loadCover(of: list, into: item)
                         item.handler = { [weak self] _, completion in
                             Task { await self?.play(localPlaylist: list); completion() }
                         }
@@ -468,6 +469,12 @@ final class CarPlayBrowser: NSObject {
     private func loadArtwork(itemId: String, into row: CPListItem) {
         guard let client else { return }
         load(client.artworkURL(itemId: itemId, tag: nil, maxWidth: artworkWidth), into: row)
+    }
+
+    private func loadCover(of list: Playlist, into row: CPListItem) {
+        guard let client else { return }
+        let albums = playlists?.coverAlbums[list.id] ?? []
+        CarPlayPlaylistCover.load(list, albumIds: albums, client: client, width: artworkWidth, into: row)
     }
 
     private func load(_ url: URL, into row: CPListItem) {

@@ -36,7 +36,10 @@ struct ResumeGrid: View {
                         ) { Task { await pickUp(handoff) } }
                     }
                     ForEach(contexts) { context in
-                        tile(name: context.name, detail: context.subtitle ?? kindLabel(context.kind), artworkId: context.artworkItemId, symbol: symbol(for: context.kind)) {
+                        tile(
+                            name: context.name, detail: context.subtitle ?? kindLabel(context.kind),
+                            artworkId: context.artworkItemId, playlist: playlist(for: context), symbol: symbol(for: context.kind)
+                        ) {
                             Task { await resume(context) }
                         }
                         .contextMenu {
@@ -51,13 +54,24 @@ struct ResumeGrid: View {
         }
     }
 
-    private func tile(name: String, detail: String, artworkId: String?, symbol: String, action: @escaping () -> Void) -> some View {
+    private func tile(
+        name: String, detail: String, artworkId: String?, playlist: Playlist? = nil, symbol: String,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                ArtworkView(
-                    url: artworkId.flatMap { store.artworkURL(itemId: $0, maxWidth: Design.ArtworkWidth.thumbnail) },
-                    cornerRadius: Design.Radius.thumbnail
-                )
+                Group {
+                    // A playlist of this device's shows its own cover, as in the
+                    // Playlists list, rather than the first song's album.
+                    if let playlist {
+                        PlaylistArtwork(playlist: playlist, albumIds: playlists.coverAlbums[playlist.id] ?? [])
+                    } else {
+                        ArtworkView(
+                            url: artworkId.flatMap { store.artworkURL(itemId: $0, maxWidth: Design.ArtworkWidth.thumbnail) },
+                            cornerRadius: Design.Radius.thumbnail
+                        )
+                    }
+                }
                 .frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
@@ -77,6 +91,11 @@ struct ResumeGrid: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Resume \(name)")
+    }
+
+    private func playlist(for context: RecentContext) -> Playlist? {
+        guard context.kind == .localPlaylist else { return nil }
+        return playlists.playlists.first { $0.id == context.id }
     }
 
     private func kindLabel(_ kind: RecentContext.Kind) -> String {

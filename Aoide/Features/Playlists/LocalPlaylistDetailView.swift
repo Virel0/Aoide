@@ -198,7 +198,8 @@ struct LocalPlaylistDetailView: View {
                 name: current.name,
                 isSmart: current.isSmart,
                 covers: coverURLs,
-                chosen: chosenCoverURL
+                chosen: chosenCoverURL,
+                photo: playlist.imageHash
             )
             .frame(maxWidth: 260)
             .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
@@ -278,11 +279,11 @@ struct LocalPlaylistDetailView: View {
         return library.artworkURL(itemId: itemId, maxWidth: Design.ArtworkWidth.hero)
     }
 
-    /// The first few covers, for the mosaic. Only playable rows have one.
+    /// The covers of the first four different albums, for the mosaic, so one album
+    /// is one square. Only playable rows have one.
     private var coverURLs: [URL] {
-        contents.tracks
-            .prefix(12)
-            .compactMap(\.item)
+        albumChoices
+            .prefix(4)
             .compactMap { library.artworkURL(for: $0, width: Design.ArtworkWidth.card) }
     }
 
@@ -568,8 +569,8 @@ private extension LabelStyle where Self == PlayCountLabelStyle {
 
 /// A local playlist has no cover of its own, so it gets one built from what's in it.
 ///
-/// A mosaic of the first four covers where there are four, one cover where there is one,
-/// and the generated tile where there is nothing yet — so an empty playlist still looks
+/// A mosaic of the first four albums' covers where there are four, the first one's where
+/// there are fewer, and the generated tile where there is nothing yet — so an empty playlist still looks
 /// like a playlist rather than a blank rectangle.
 struct PlaylistHeroArtwork: View {
     let name: String
@@ -579,10 +580,14 @@ struct PlaylistHeroArtwork: View {
     /// the mosaic: a mosaic describes what a playlist holds, and a chosen cover is
     /// somebody saying what it *is*.
     var chosen: URL?
+    /// A picked photo, which beats a chosen album as it does in the list.
+    var photo: String?
 
     var body: some View {
         Group {
-            if let chosen {
+            if let photo {
+                SyncedImage(hash: photo, cornerRadius: Design.Radius.hero)
+            } else if let chosen {
                 ArtworkView(url: chosen, cornerRadius: Design.Radius.hero)
             } else if covers.count >= 4 {
                 Grid(horizontalSpacing: 0, verticalSpacing: 0) {
