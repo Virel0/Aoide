@@ -280,6 +280,34 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v11") { db in
+            // Songs waiting to arrive. A playlist entry holds a track or a pending
+            // song (`PendingSong`, kept as JSON), so the track's columns become
+            // nullable. SQLite can't loosen NOT NULL in place, so the table is
+            // copied into a new one, every row as it was.
+            try db.create(table: "playlistItemNew") { t in
+                t.primaryKey("id", .text)
+                t.column("playlistId", .text).notNull()
+                t.column("jellyfinId", .text)
+                t.column("contentKey", .text)
+                t.column("pending", .text)
+                t.column("position", .text).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("deleted", .boolean).notNull().defaults(to: false)
+                t.column("originDevice", .text).notNull()
+                t.check(sql: "jellyfinId IS NOT NULL OR pending IS NOT NULL")
+            }
+            try db.execute(sql: """
+                INSERT INTO playlistItemNew
+                    (id, playlistId, jellyfinId, contentKey, position, updatedAt, deleted, originDevice)
+                SELECT id, playlistId, jellyfinId, contentKey, position, updatedAt, deleted, originDevice
+                FROM playlistItem
+                """)
+            try db.drop(table: "playlistItem")
+            try db.rename(table: "playlistItemNew", to: "playlistItem")
+            try db.create(index: "idx_item_playlist", on: "playlistItem", columns: ["playlistId", "position"])
+        }
+
         return migrator
     }
 }

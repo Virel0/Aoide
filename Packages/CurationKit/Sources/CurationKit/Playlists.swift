@@ -69,15 +69,16 @@ public extension PlaylistItem {
     /// occur in a real one and the marker can never be mistaken for part of an id.
     static let unresolvedPrefix = "unresolved:"
 
-    var isUnresolved: Bool { jellyfinId.hasPrefix(Self.unresolvedPrefix) }
+    var isUnresolved: Bool { jellyfinId?.hasPrefix(Self.unresolvedPrefix) ?? false }
 
-    /// The id to actually play or look up, marker stripped.
+    /// The id to actually play or look up, marker stripped; `nil` while pending.
     ///
     /// The last id that did resolve is kept rather than blanked, because the usual
     /// cause of a miss is an unmounted drive or a paused server, and those come back
     /// under the same id.
-    var linkedJellyfinId: String {
-        isUnresolved ? String(jellyfinId.dropFirst(Self.unresolvedPrefix.count)) : jellyfinId
+    var linkedJellyfinId: String? {
+        guard let jellyfinId else { return nil }
+        return isUnresolved ? String(jellyfinId.dropFirst(Self.unresolvedPrefix.count)) : jellyfinId
     }
 }
 
@@ -461,15 +462,16 @@ public extension CurationStore {
         resolving resolve: (_ contentKey: String) -> String?,
         now: Millis = Date().millis
     ) throws -> RelinkReport {
+        // A waiting song has no track to relink; Melete swaps one in when it arrives.
         let items = try read { db in
-            try PlaylistItem.filter(Column("deleted") == false).fetchAll(db)
+            try PlaylistItem.filter(Column("deleted") == false && Column("jellyfinId") != nil).fetchAll(db)
         }
 
         var report = RelinkReport()
         report.checked = items.count
 
         for var item in items {
-            let current = item.linkedJellyfinId
+            guard let current = item.linkedJellyfinId, let contentKey = item.contentKey else { continue }
 
             if live(current) {
                 guard item.isUnresolved else { continue }
@@ -479,7 +481,7 @@ public extension CurationStore {
                 continue
             }
 
-            if let replacement = resolve(item.contentKey) {
+            if let replacement = resolve(contentKey) {
                 // The resolver handing back the id already stored contradicts `live`;
                 // trust `live` and leave the row alone rather than writing an op that
                 // changes nothing.

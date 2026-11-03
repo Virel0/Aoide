@@ -18,7 +18,8 @@ struct PlaylistTrack: Identifiable {
     let id: String
     /// `nil` for a smart playlist — there is no stored row to remove or reorder.
     let itemId: String?
-    let jellyfinId: String
+    /// `nil` for a song waiting to arrive.
+    let jellyfinId: String?
     /// What can actually be played. `nil` when neither the server nor the downloads
     /// folder could produce it.
     let item: MusicItem?
@@ -28,18 +29,22 @@ struct PlaylistTrack: Identifiable {
     /// nothing. Distinct from "the server didn't answer just now".
     let isUnresolved: Bool
     let playCount: Int
+    /// A song the library doesn't have yet, and where its request stands. Never
+    /// playable: Melete swaps the track in once it arrives, and a sync brings that.
+    var pending: PendingSong?
+    var waiting: String?
 
-    var title: String { item?.name ?? cached?.title ?? "Unavailable Song" }
+    var title: String { item?.name ?? cached?.title ?? pending?.title ?? "Unavailable Song" }
 
     var subtitle: String {
         if let item, !item.subtitle.isEmpty { return item.subtitle }
         if let cached { return cached.artist }
-        return ""
+        return pending?.artist ?? ""
     }
 
     var duration: Duration? {
         if let duration = item?.duration { return duration }
-        return cached?.durationMs.map { .milliseconds($0) }
+        return (cached?.durationMs ?? pending?.durationMs).map { .milliseconds($0) }
     }
 
     var isPlayable: Bool { item != nil }
@@ -86,7 +91,10 @@ struct PlaylistContents {
         return nil
     }
 
-    var unplayableCount: Int { tracks.filter { !$0.isPlayable }.count }
+    /// Songs that should play and can't; songs still to arrive are `waitingCount`.
+    var unplayableCount: Int { tracks.filter { !$0.isPlayable && $0.pending == nil }.count }
+
+    var waitingCount: Int { tracks.filter { $0.pending != nil }.count }
 
     var totalDuration: Duration {
         tracks.compactMap(\.duration).reduce(Duration.zero, +)
@@ -97,8 +105,9 @@ struct PlaylistContents {
 private struct PlaylistEntry: Sendable {
     let rowId: String
     let itemId: String?
-    let jellyfinId: String
+    let jellyfinId: String?
     let isUnresolved: Bool
+    var pending: PendingSong?
 }
 
 /// The app's view of the local curation store's playlists.
@@ -353,11 +362,12 @@ final class LocalPlaylistStore {
         // survived being played anyway.
         let total = entries.count
         let resolved = Array(entries.prefix(Self.maxResolvedTracks))
-        let ids = resolved.map(\.jellyfinId)
+        let ids = resolved.compactMap(\.jellyfinId)
 
         // 2. The server, for everything a row needs that the store doesn't keep — the
         //    artwork and the stream URL above all.
         let (byId, offlineMessage) = await fetchServerItems(ids: ids)
+        let requests = await WaitingSongs.requests(for: resolved.compactMap(\.pending), client: client)
 
         // 3. Downloads fill the gap. A downloaded track carries its own full metadata on
         //    disk, so it is playable with no signal at all — which is the entire point of
@@ -377,7 +387,7 @@ final class LocalPlaylistStore {
         }
 
         return PlaylistContents(
-            tracks: Self.rows(for: resolved, server: byId, downloaded: downloaded, local: local),
+            tracks: Self.rows(for: resolved, server: byId, downloaded: downloaded, local: local, requests: requests),
             isLoading: false,
             errorMessage: nil,
             offlineMessage: offlineMessage,
@@ -400,7 +410,8 @@ final class LocalPlaylistStore {
                     rowId: $0.id,
                     itemId: $0.id,
                     jellyfinId: $0.linkedJellyfinId,
-                    isUnresolved: $0.isUnresolved
+                    isUnresolved: $0.isUnresolved,
+                    pending: $0.pending
                 )
             }
         }.value
@@ -425,19 +436,28 @@ final class LocalPlaylistStore {
         for entries: [PlaylistEntry],
         server: [String: MusicItem],
         downloaded: [String: MusicItem],
-        local: LocalDetail?
+        local: LocalDetail?,
+        requests: [Int64: MusicRequest]?
     ) -> [PlaylistTrack] {
         var rows: [PlaylistTrack] = []
         rows.reserveCapacity(entries.count)
         for entry in entries {
+            guard let id = entry.jellyfinId else {
+                rows.append(PlaylistTrack(
+                    id: entry.rowId, itemId: entry.itemId, jellyfinId: nil, item: nil, cached: nil,
+                    isUnresolved: false, playCount: 0,
+                    pending: entry.pending, waiting: entry.pending.map { WaitingSongs.standing(of: $0, in: requests) }
+                ))
+                continue
+            }
             rows.append(PlaylistTrack(
                 id: entry.rowId,
                 itemId: entry.itemId,
-                jellyfinId: entry.jellyfinId,
-                item: server[entry.jellyfinId] ?? downloaded[entry.jellyfinId],
-                cached: local?.cached[entry.jellyfinId],
+                jellyfinId: id,
+                item: server[id] ?? downloaded[id],
+                cached: local?.cached[id],
                 isUnresolved: entry.isUnresolved,
-                playCount: local?.stats[entry.jellyfinId]?.playCount ?? 0
+                playCount: local?.stats[id]?.playCount ?? 0
             ))
         }
         return rows
@@ -472,6 +492,17 @@ final class LocalPlaylistStore {
         }
         await reload()
         return added ?? 0
+    }
+
+    /// Adds a song the library doesn't have yet to the end of a playlist, waiting on
+    /// the request that will bring it.
+    func addWaiting(_ song: PendingSong, to playlist: Playlist) async -> Bool {
+        let added: Bool? = await run("add that song") { store in
+            try store.addPendingSong(song, to: playlist.id)
+            return true
+        }
+        await reload()
+        return added ?? false
     }
 
     /// Albums each playlist holds, for drawing a cover from its contents.

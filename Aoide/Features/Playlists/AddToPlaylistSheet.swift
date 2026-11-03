@@ -19,7 +19,10 @@ struct TrackSelection: Identifiable {
 
 /// Pick a playlist, or make one on the spot.
 struct AddToPlaylistSheet: View {
-    let selection: TrackSelection
+    /// What's being added, for the heading.
+    private let title: String
+    /// Puts it in the playlist picked; `false` when nothing landed.
+    private let addTo: @MainActor (LocalPlaylistStore, Playlist) async -> Bool
 
     @Environment(LocalPlaylistStore.self) private var playlists
     @Environment(\.dismiss) private var dismiss
@@ -33,10 +36,15 @@ struct AddToPlaylistSheet: View {
     /// out why on their own.
     private var targets: [Playlist] { playlists.playlists.filter { !$0.isSmart } }
 
-    private var title: String {
-        selection.tracks.count == 1
-            ? selection.tracks[0].name
-            : "\(selection.tracks.count) songs"
+    init(selection: TrackSelection) {
+        title = selection.tracks.count == 1 ? selection.tracks[0].name : "\(selection.tracks.count) songs"
+        addTo = { store, list in await store.add(selection.tracks, to: list) > 0 }
+    }
+
+    /// Something other than library songs: a song still to arrive, say.
+    init(title: String, addTo: @escaping @MainActor (LocalPlaylistStore, Playlist) async -> Bool) {
+        self.title = title
+        self.addTo = addTo
     }
 
     var body: some View {
@@ -126,8 +134,7 @@ struct AddToPlaylistSheet: View {
     }
 
     private func add(to list: Playlist) async {
-        let added = await playlists.add(selection.tracks, to: list)
-        guard added > 0 else {
+        guard await addTo(playlists, list) else {
             errorMessage = playlists.lastErrorMessage ?? "Nothing was added."
             playlists.lastErrorMessage = nil
             return

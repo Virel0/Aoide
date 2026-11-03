@@ -9,6 +9,24 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Playlists hold songs your library doesn't have yet. They show in place,
+  greyed, with where their request stands, or "Not found" and why when nothing
+  could be asked for. They can't be played: Play, Shuffle and CarPlay skip
+  them. Once a song arrives, Melete puts the real track in its place and it
+  plays like any other. Swipe to remove one as usual. Needs Melete 0.4.0.
+- Ask for It: a song not in your library has Add to Playlist…, which asks for
+  it if it hasn't been and puts it in the playlist you pick, waiting.
+
+### Changed
+- Importing a playlist saves all of it: your server makes the playlist with
+  every song, the ones it has and the rest waiting, and asks for the missing
+  ones itself. The playlist appears as it fills, with a link to open it. On a
+  Melete before 0.4.0, saving keeps the songs found and the missing ones can
+  still be asked for, as before.
+- Waiting songs a build before this one set aside as unreadable are put back
+  in their playlists on the next sync.
+
 ## [1.3 (5)] - 2026-11-02
 
 ### Added

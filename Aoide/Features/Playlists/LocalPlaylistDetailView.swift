@@ -135,7 +135,7 @@ struct LocalPlaylistDetailView: View {
             artworkURL: track.item.flatMap {
                 library.artworkURL(for: $0, width: Design.ArtworkWidth.thumbnail)
             },
-            isCurrent: engine.currentTrack?.id == track.jellyfinId
+            isCurrent: track.jellyfinId != nil && engine.currentTrack?.id == track.jellyfinId
         )
         .contentShape(.rect)
         .onTapGesture { play(from: track) }
@@ -304,6 +304,9 @@ struct LocalPlaylistDetailView: View {
         }
         if contents.unplayableCount > 0 {
             parts.append("\(contents.unplayableCount) missing")
+        }
+        if contents.waitingCount > 0 {
+            parts.append("\(contents.waitingCount) waiting")
         }
         return parts.joined(separator: " · ")
     }
@@ -503,6 +506,15 @@ struct PlaylistRowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                // A song still to arrive says where its request stands.
+                if let waiting = track.waiting {
+                    HStack(spacing: 4) {
+                        Image(systemName: track.pending?.requestId == nil ? "questionmark.circle" : "clock")
+                        Text(waiting).lineLimit(1)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
             }
 
             Spacer(minLength: 8)
@@ -540,6 +552,7 @@ struct PlaylistRowView: View {
     }
 
     private var subtitle: String {
+        if track.pending != nil { return track.subtitle }
         if !track.isPlayable {
             // Two different failures, and the difference is worth a word: one is a file
             // the relink pass has already looked for and not found, the other is a server

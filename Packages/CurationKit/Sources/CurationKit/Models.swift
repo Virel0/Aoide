@@ -199,13 +199,21 @@ public struct PlaylistItem: Codable, FetchableRecord, PersistableRecord, Syncabl
 
     public var id: String
     public var playlistId: String
-    public var jellyfinId: String
-    public var contentKey: String
+    /// The track, or `nil` while the entry is a ``PendingSong`` waiting to arrive.
+    public var jellyfinId: String?
+    /// The track's fingerprint; `nil` exactly when `jellyfinId` is.
+    public var contentKey: String?
+    /// A song not in the library yet. Melete writes the same item again with a track
+    /// once it arrives, so nothing here ever turns one into the other.
+    public var pending: PendingSong?
     /// A `FractionalIndex`, not an integer — see that type for why.
     public var position: String
     public var updatedAt: Millis
     public var deleted: Bool
     public var originDevice: String
+
+    /// Whether this entry waits for its song rather than naming a track.
+    public var isPending: Bool { jellyfinId == nil }
 
     public init(
         id: String = UUID().uuidString,
@@ -225,6 +233,30 @@ public struct PlaylistItem: Codable, FetchableRecord, PersistableRecord, Syncabl
         self.updatedAt = updatedAt
         self.deleted = deleted
         self.originDevice = originDevice
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, playlistId, jellyfinId, contentKey, pending, position, updatedAt, deleted, originDevice
+    }
+
+    /// A track's id and fingerprint are required unless the entry is pending: an
+    /// entry with neither names nothing, and is refused as it always was.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        playlistId = try container.decode(String.self, forKey: .playlistId)
+        pending = try container.decodeIfPresent(PendingSong.self, forKey: .pending)
+        if pending == nil {
+            jellyfinId = try container.decode(String.self, forKey: .jellyfinId)
+            contentKey = try container.decode(String.self, forKey: .contentKey)
+        } else {
+            jellyfinId = try container.decodeIfPresent(String.self, forKey: .jellyfinId)
+            contentKey = try container.decodeIfPresent(String.self, forKey: .contentKey)
+        }
+        position = try container.decode(String.self, forKey: .position)
+        updatedAt = try container.decode(Millis.self, forKey: .updatedAt)
+        deleted = try container.decode(Bool.self, forKey: .deleted)
+        originDevice = try container.decode(String.self, forKey: .originDevice)
     }
 }
 
