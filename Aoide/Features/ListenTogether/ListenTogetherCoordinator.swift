@@ -54,6 +54,11 @@ final class ListenTogetherCoordinator {
 
     private var engine: PlaybackEngine { .shared }
 
+    /// Where a member's profile picture is fetched from, on this server.
+    func avatarURL(_ servedPath: String?) -> URL? {
+        client?.avatarURL(servedPath)
+    }
+
     /// Who to ask, from sign-in until sign-out. A new sign-in starts outside
     /// any session: the server drops a signed-out device from its sessions.
     func connect(client: MeleteClient?) {

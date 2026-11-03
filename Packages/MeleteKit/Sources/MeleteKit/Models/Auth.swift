@@ -13,15 +13,21 @@ public struct ServerInfo: Codable, Sendable {
 public struct MeleteUser: Codable, Hashable, Sendable, Identifiable {
     public let id: String
     public let name: String
+    /// Their profile picture's path on the server (`/api/v1/users/{id}/avatar?v=…`),
+    /// for ``MeleteClient/avatarURL(_:)``. `nil` without one, and from a server
+    /// older than profile pictures.
+    public let avatarUrl: String?
 
-    public init(id: String, name: String) {
+    public init(id: String, name: String, avatarUrl: String? = nil) {
         self.id = id
         self.name = name
+        self.avatarUrl = avatarUrl
     }
 
     enum CodingKeys: String, CodingKey {
         case id
         case name = "username"
+        case avatarUrl
     }
 
     /// Melete's ids are numbers; the app keeps every id as text.
@@ -29,6 +35,7 @@ public struct MeleteUser: Codable, Hashable, Sendable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = String(try c.decode(Int64.self, forKey: .id))
         name = try c.decode(String.self, forKey: .name)
+        avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
     }
 }
 

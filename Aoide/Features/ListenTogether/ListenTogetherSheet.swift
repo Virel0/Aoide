@@ -71,7 +71,15 @@ struct ListenTogetherSheet: View {
 
         Section("Who's Here") {
             ForEach(Array(session.members.enumerated()), id: \.offset) { _, member in
-                LabeledContent(member.username, value: member.you ? "\(member.device) (this device)" : member.device)
+                LabeledContent {
+                    Text(member.you ? "\(member.device) (this device)" : member.device)
+                } label: {
+                    Label {
+                        Text(member.username)
+                    } icon: {
+                        AvatarView(name: member.username, url: together.avatarURL(member.avatarUrl))
+                    }
+                }
             }
         }
 
