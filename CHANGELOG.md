@@ -57,6 +57,10 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   under the controls so they read over any cover.
 
 ### Fixed
+- Repeat now repeats the queue you made. Once you've added songs with Play
+  Next or Play Last, repeat loops the song you started from and the songs you
+  added, instead of going back through the rest of the album; that stays in Up
+  Next for when repeat is off. An album with nothing added still repeats whole.
 - Searching for a song that isn't in the library no longer lists unrelated
   songs. Search by description now keeps only what the words say: a genre you
   named, years when you gave a number or a decade, liked songs when you said
