@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.4 (6)] - 2026-11-03
+
 ### Added
 - Playlists hold songs your library doesn't have yet. They show in place,
   greyed, with where their request stands, or "Not found" and why when nothing
