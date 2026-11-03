@@ -9,32 +9,7 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
-### Fixed
-- Searching for a song that isn't in the library no longer lists unrelated
-  songs. Search by description now keeps only what the words say: a genre you
-  named, years when you gave a number or a decade, liked songs when you said
-  so; a song or band name is no longer turned into a whole genre.
-
-### Changed
-- Search by description and Mixes use your Melete server's AI instead of Apple
-  Intelligence, so they work on any iPhone. Your server sends the words you
-  type, with your library's genre names, to OpenRouter; they no longer stay on
-  the phone. With the server's AI features off, or on a Melete without music
-  AI yet, search is the plain search and Mixes says so; both turn on once the
-  server has them. A sentence search waits a second after you stop typing, since
-  each one counts against the server's hourly limit.
-- Ask for It groups what MusicBrainz finds into songs, albums and artists, the
-  best three of each with Show More for the rest, and each row says who it's by
-  and when, with Ask or where it stands (In Library, Wanted, Asked For).
-- Smart and automatic playlists (Heavy Rotation, Rediscover Mix, mixes and
-  your own smart playlists) show a cover made from what they hold: the covers
-  of their first four albums in a grid, or the first album's cover when there
-  are fewer, updated as their songs change. In the Playlists list, at the top
-  of the playlist, on Home and in CarPlay. A picture chosen for a playlist
-  still wins, and a playlist's own header now shows it too.
-- The player shows the cover, still or moving, over the whole screen behind
-  its controls, the way Apple Music shows animated covers, with a dark shade
-  under the controls so they read over any cover.
+## [1.3 (5)] - 2026-11-02
 
 ### Added
 - Profile pictures from Melete: yours in Settings beside Signed in as, and each
@@ -59,6 +34,33 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 - Requests lists those playlists with how many songs were asked for, asked
   already or not found. Open one to see what became of each song, or to
   remove it, which takes back the songs still waiting for approval.
+
+### Changed
+- Search by description and Mixes use your Melete server's AI instead of Apple
+  Intelligence, so they work on any iPhone. Your server sends the words you
+  type, with your library's genre names, to OpenRouter; they no longer stay on
+  the phone. With the server's AI features off, or on a Melete without music
+  AI yet, search is the plain search and Mixes says so; both turn on once the
+  server has them. A sentence search waits a second after you stop typing, since
+  each one counts against the server's hourly limit.
+- Ask for It groups what MusicBrainz finds into songs, albums and artists, the
+  best three of each with Show More for the rest, and each row says who it's by
+  and when, with Ask or where it stands (In Library, Wanted, Asked For).
+- Smart and automatic playlists (Heavy Rotation, Rediscover Mix, mixes and
+  your own smart playlists) show a cover made from what they hold: the covers
+  of their first four albums in a grid, or the first album's cover when there
+  are fewer, updated as their songs change. In the Playlists list, at the top
+  of the playlist, on Home and in CarPlay. A picture chosen for a playlist
+  still wins, and a playlist's own header now shows it too.
+- The player shows the cover, still or moving, over the whole screen behind
+  its controls, the way Apple Music shows animated covers, with a dark shade
+  under the controls so they read over any cover.
+
+### Fixed
+- Searching for a song that isn't in the library no longer lists unrelated
+  songs. Search by description now keeps only what the words say: a genre you
+  named, years when you gave a number or a decade, liked songs when you said
+  so; a song or band name is no longer turned into a whole genre.
 
 ## [1.2 (4)] - 2026-10-31
 
