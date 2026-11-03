@@ -56,7 +56,9 @@ struct MixView: View {
             .navigationTitle("Mixes")
             .task {
                 guard composer == nil, let client = session.client else { return }
-                composer = MixComposer(client: client)
+                let made = MixComposer(client: client)
+                composer = made
+                await made.checkServer()
             }
         }
     }
@@ -148,6 +150,8 @@ struct MixView: View {
             defer { isBuilding = false }
 
             guard let plan = await composer.compose(description) else {
+                // AI off is said where the button was.
+                if case .unavailable = composer.readiness { return }
                 // The reason, verbatim: "try another way" without saying what went
                 // wrong is what a broken feature says.
                 message = "Couldn't turn that into a mix. \(composer.lastProblem ?? "Try describing it another way.")"

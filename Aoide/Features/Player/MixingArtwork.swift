@@ -22,6 +22,8 @@ struct PlayerArtwork: View {
     var cornerRadius: CGFloat = 6
     /// The album's motion cover over it: the full player, not the mini one.
     var showsMotion = false
+    /// Width over height of the frame it fills; a cover is cropped to it.
+    var aspectRatio: CGFloat = 1
 
     var body: some View {
         if case .mixing(_, let progress) = mixState, let outgoing {
@@ -29,10 +31,11 @@ struct PlayerArtwork: View {
                 incoming: track.artworkURL,
                 outgoing: outgoing.artworkURL,
                 progress: progress,
-                cornerRadius: cornerRadius
+                cornerRadius: cornerRadius,
+                aspectRatio: aspectRatio
             )
         } else {
-            ArtworkView(url: track.artworkURL, cornerRadius: cornerRadius)
+            ArtworkView(url: track.artworkURL, cornerRadius: cornerRadius, aspectRatio: aspectRatio)
                 .overlay {
                     if showsMotion {
                         MotionCoverView(albumId: albumId, cornerRadius: cornerRadius)
@@ -57,6 +60,7 @@ struct MixingArtwork: View {
     /// 0 is all outgoing, 1 is all incoming.
     let progress: Double
     var cornerRadius: CGFloat = 6
+    var aspectRatio: CGFloat = 1
 
     /// How wide the soft edge of the wipe is, as a fraction of the cover. Wide
     /// enough that a step of the fade never reads as a line moving; narrow
@@ -64,9 +68,9 @@ struct MixingArtwork: View {
     static let edge = 0.08
 
     var body: some View {
-        ArtworkView(url: outgoing, cornerRadius: cornerRadius)
+        ArtworkView(url: outgoing, cornerRadius: cornerRadius, aspectRatio: aspectRatio)
             .overlay {
-                ArtworkView(url: incoming, cornerRadius: cornerRadius)
+                ArtworkView(url: incoming, cornerRadius: cornerRadius, aspectRatio: aspectRatio)
                     .mask { Self.wipe(progress: progress) }
             }
             .accessibilityHidden(true)

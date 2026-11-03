@@ -52,7 +52,7 @@ desk counts on the phone.
 - **Home** opens on the last things you were in, each one tap from playing, and a tile to pick up where another device was playing more recently
 - **Discover** on Home: 30 songs you own and haven't heard through, chosen by your taste and the same all week
 - Artists, albums, songs, genres, playlists, mixes and Replay
-- **Search** that understands a sentence, on the phone
+- **Search** that understands a sentence, through your server's AI
 - **Downloads** shown as what you downloaded: playlists, albums, then songs
 
 </td>
@@ -61,7 +61,7 @@ desk counts on the phone.
 ### Playlists
 - Kept on the device and synced, with **folders**, chosen covers, and drag-to-reorder that survives two devices reordering at once
 - **Smart playlists** whose rules re-run every time they are opened; *Rediscover Mix* and *Heavy Rotation* are built in
-- **Mixes**: describe a mood and get a queue, built on the phone with Apple Intelligence. The model writes rules; the rules pick the songs
+- **Mixes**: describe a mood and get a queue. Your server's AI writes rules; the rules pick the songs
 - **Import a Spotify playlist** and see what your server has and what it lacks
 
 ### History and taste
@@ -99,8 +99,9 @@ Aoide was one of the three original Muses in Greek myth; the name means "song".
 
 ## Requirements
 
-- An iPhone on iOS 26 or later. Mixes and sentence search need Apple Intelligence.
-- A Melete server. Developed against 0.1.
+- An iPhone on iOS 26 or later.
+- A Melete server. Developed against 0.1. Mixes and sentence search need its AI
+  features on (an OpenRouter key, set by an admin).
 
 ## Building
 
@@ -151,11 +152,13 @@ Aoide has no account of its own, no analytics, and no servers run for it.
 | Your Melete server | Sign-in, library requests, streams and downloads, the sync log (playlists, likes, taste flags, plays), Discover, Infinity, import matching, measurements | Always |
 | Spotify | A request for the public playlist page you paste; nothing about you | Only when you import a playlist |
 | Apple | Siri requests, if you allow Siri; the system downloads a translation language once, the first time it is needed | Only for those features |
+| OpenRouter, from your Melete server | The words of a sentence search or a mix description, and your library's genre names | Only when your server has AI features on |
 
-Mixes, sentence search and lyric translation run on the phone; your
-descriptions and the lyrics do not leave the device. The sign-in token is kept
-in the keychain. Playlists, likes, taste flags, the play history and downloads
-are kept on the phone, and synced to your own server.
+Lyric translation runs on the phone; the lyrics do not leave the device.
+Sentence searches and mix descriptions go to your Melete server, which sends
+the words to OpenRouter as above; never a title, an artist or your history.
+The sign-in token is kept in the keychain. Playlists, likes, taste flags, the
+play history and downloads are kept on the phone, and synced to your own server.
 The full policy is [docs/privacy-policy.md](docs/privacy-policy.md).
 
 ## Licence
