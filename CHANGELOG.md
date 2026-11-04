@@ -9,6 +9,11 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Changed
+- The full-screen player no longer crops the album cover to the screen. The
+  cover, or its motion cover, shows square and whole across the top, over the
+  same cover blurred to fill the rest of the screen.
+
 ## [1.4 (6)] - 2026-11-03
 
 ### Added
