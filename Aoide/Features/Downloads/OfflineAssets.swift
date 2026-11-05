@@ -44,9 +44,14 @@ final class OfflineAssets {
 
     /// Artwork is keyed by a hash of its URL rather than by track, because a
     /// Melete cover URL names the album — so the same key means the same bytes, and an album's twelve tracks share one
-    /// file instead of storing the cover twelve times.
+    /// file instead of storing the cover twelve times. The size asked for is left
+    /// out of the key: the one copy kept, the whole cover, stands in for every
+    /// size the app draws it at.
     nonisolated private static func artworkFile(for url: URL) -> URL {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        let key = components?.url ?? url
+        let digest = SHA256.hash(data: Data(key.absoluteString.utf8))
         let name = digest.compactMap { String(format: "%02x", $0) }.joined()
         return artworkDirectory.appendingPathComponent(name, isDirectory: false)
     }
@@ -75,11 +80,11 @@ final class OfflineAssets {
 
     /// Fetches everything a track needs to be usable with no connection.
     ///
-    /// Melete serves a cover at its own size, so one file serves every size the
-    /// app draws it at.
+    /// The whole cover is kept, so one file serves every size the app draws it
+    /// at, the full player's included.
     func cache(_ items: [MusicItem], client: MeleteClient) async {
         for item in items where item.type == .audio {
-            if let url = client.artworkURL(for: item, maxWidth: Design.ArtworkWidth.player) {
+            if let url = client.artworkURL(for: item, maxWidth: Design.ArtworkWidth.whole) {
                 await storeArtwork(from: url, authorization: client.authorization)
             }
             await storeLyrics(for: item.id, client: client)

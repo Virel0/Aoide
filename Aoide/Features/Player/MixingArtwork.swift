@@ -24,18 +24,21 @@ struct PlayerArtwork: View {
     var showsMotion = false
     /// Width over height of the frame it fills; a cover is cropped to it.
     var aspectRatio: CGFloat = 1
+    /// The width to ask for the cover at, when not the track's own (the mini
+    /// player's and the lock screen's): the full player asks for it whole.
+    var width: Int?
 
     var body: some View {
         if case .mixing(_, let progress) = mixState, let outgoing {
             MixingArtwork(
-                incoming: track.artworkURL,
-                outgoing: outgoing.artworkURL,
+                incoming: Self.cover(of: track, width: width),
+                outgoing: Self.cover(of: outgoing, width: width),
                 progress: progress,
                 cornerRadius: cornerRadius,
                 aspectRatio: aspectRatio
             )
         } else {
-            ArtworkView(url: track.artworkURL, cornerRadius: cornerRadius, aspectRatio: aspectRatio)
+            ArtworkView(url: Self.cover(of: track, width: width), cornerRadius: cornerRadius, aspectRatio: aspectRatio)
                 .overlay {
                     if showsMotion {
                         MotionCoverView(albumId: albumId, cornerRadius: cornerRadius)
@@ -45,11 +48,25 @@ struct PlayerArtwork: View {
     }
 }
 
-private extension PlayerArtwork {
+extension PlayerArtwork {
     /// The playing track's album, from its cover's address.
     var albumId: String? {
+        Self.albumId(of: track)
+    }
+
+    /// A track's album, from its cover's address.
+    static func albumId(of track: Track) -> String? {
         guard let cover = track.artworkURL else { return nil }
         return AppSession.shared.client?.albumId(fromArtworkURL: cover)
+    }
+
+    /// A track's cover at `width` (``Design/ArtworkWidth``), or the address the
+    /// track gives when there's no width or it isn't a Melete album's cover.
+    static func cover(of track: Track, width: Int?) -> URL? {
+        guard let width, let albumId = albumId(of: track), let client = AppSession.shared.client else {
+            return track.artworkURL
+        }
+        return client.artworkURL(itemId: albumId, maxWidth: width)
     }
 }
 

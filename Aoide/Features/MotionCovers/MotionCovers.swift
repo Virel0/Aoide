@@ -68,10 +68,4 @@ actor MotionCovers {
             return nil
         }
     }
-
-    /// Forgets every motion cover, read or kept: after a change to which are shown.
-    func removeAll() {
-        known = [:]
-        try? FileManager.default.removeItem(at: Self.directory)
-    }
 }

@@ -442,7 +442,7 @@ final class LibraryStore {
     /// The cover of an album we hold only the id of — a playlist's or a resume
     /// tile's, where nothing but ids are kept.
     func artworkURL(itemId albumId: String, maxWidth: Int) -> URL? {
-        client.artworkURL(itemId: albumId)
+        client.artworkURL(itemId: albumId, maxWidth: maxWidth)
     }
 
     func artworkURL(for item: MusicItem, width: Int) -> URL? {

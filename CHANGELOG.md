@@ -11,8 +11,20 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ### Changed
 - The full-screen player no longer crops the album cover to the screen. The
-  cover, or its motion cover, shows square and whole across the top, over the
-  same cover blurred to fill the rest of the screen.
+  cover, or its motion cover, shows square and whole across the top, over a
+  soft gradient of the cover's main colours (its palette, from Melete 0.5.0).
+  With an older Melete, or until the palette comes, the ground is the cover
+  blurred.
+- Covers are downloaded at the size they're shown (160, 400, 600 or 800 pixels
+  wide), not whole, so a song row no longer fetches a large folder image. The
+  full-screen player still shows the whole cover, and a downloaded song keeps
+  the whole cover for every size. Needs Melete 0.5.0; an older Melete sends the
+  whole cover as before.
+
+### Removed
+- Settings → Motion Covers no longer has "Ones Your Server Made": Melete 0.5.0
+  stopped making motion covers from still covers. Motion covers in an album's
+  own folder still play.
 
 ## [1.4 (6)] - 2026-11-03
 

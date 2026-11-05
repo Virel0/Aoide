@@ -45,10 +45,11 @@ enum Design {
         static let card = 400
         static let hero = 800
         static let nowPlaying = 1000
-        /// What the player, lock screen and CarPlay ask for. Offline copies are
-        /// stored at exactly this width and at `thumbnail`; a downloaded track
-        /// that asked for any other size would come back blank with no signal.
+        /// What the mini player, lock screen and CarPlay ask for.
         static let player = 600
+        /// The whole cover, at whatever size it is: the full player's, where it
+        /// fills a phone's width, and the copy kept for a downloaded track.
+        static let whole = 0
     }
 }
 

@@ -2,14 +2,17 @@ import PlaybackKit
 import SwiftUI
 
 /// The cover behind the player's controls, never at a shape it isn't: square
-/// and sharp across the top at full width (still or moving), over the same
-/// cover blurred to fill the rest of the screen, the way Apple Music shows an
-/// album without full-screen art. Cropping a square cover to a tall screen
-/// threw most of it away and blew up the middle.
+/// and sharp across the top at full width (still or moving), whole rather than
+/// a size made for a tile, over a ground of the cover's own colours (Melete's
+/// palette) filling the rest of the screen. Until the palette comes, or from a
+/// server without one, the ground is the cover blurred. Cropping a square cover
+/// to a tall screen threw most of it away and blew up the middle.
 struct FullBleedArtwork: View {
     let track: Track
     let mixState: PlaybackEngine.MixState
     let outgoing: Track?
+
+    @State private var palette: [Color] = []
 
     /// How far the blurred ground spreads, in points.
     static let blur: CGFloat = 60
@@ -21,20 +24,13 @@ struct FullBleedArtwork: View {
         GeometryReader { frame in
             let side = min(frame.size.width, frame.size.height)
             ZStack(alignment: .top) {
-                // Blurred, the crop doesn't show: it's a ground, not the cover.
-                ArtworkView(
-                    url: track.artworkURL, cornerRadius: 0,
-                    aspectRatio: frame.size.width / max(frame.size.height, 1)
-                )
-                .frame(width: frame.size.width, height: frame.size.height)
-                .blur(radius: Self.blur)
-                // A blur fades at its edges; grown a little, they're off screen.
-                .scaleEffect(1.3)
-                .overlay(Color.black.opacity(0.2))
+                ground(in: frame.size)
+                    .frame(width: frame.size.width, height: frame.size.height)
 
                 PlayerArtwork(
                     track: track, mixState: mixState, outgoing: outgoing,
-                    cornerRadius: 0, showsMotion: true, aspectRatio: 1
+                    cornerRadius: 0, showsMotion: true, aspectRatio: 1,
+                    width: Design.ArtworkWidth.whole
                 )
                 .frame(width: side, height: side)
                 .mask { Self.fade }
@@ -45,6 +41,33 @@ struct FullBleedArtwork: View {
         }
         // Black until the cover arrives, so the light controls never sit on white.
         .background(.black)
+        .animation(.easeOut(duration: 0.6), value: palette)
+        .task(id: PlayerArtwork.albumId(of: track)) {
+            guard let albumId = PlayerArtwork.albumId(of: track), let client = AppSession.shared.client else {
+                palette = []
+                return
+            }
+            palette = await CoverPalettes.shared.palette(forAlbum: albumId, client: client)
+        }
+    }
+
+    /// The cover's palette, else the cover blurred: blurred, a small copy does,
+    /// and its crop doesn't show, since it's a ground, not the cover.
+    @ViewBuilder
+    private func ground(in size: CGSize) -> some View {
+        if palette.isEmpty {
+            ArtworkView(
+                url: PlayerArtwork.cover(of: track, width: Design.ArtworkWidth.thumbnail), cornerRadius: 0,
+                aspectRatio: size.width / max(size.height, 1)
+            )
+            .blur(radius: Self.blur)
+            // A blur fades at its edges; grown a little, they're off screen.
+            .scaleEffect(1.3)
+            .overlay(Color.black.opacity(0.2))
+        } else {
+            PaletteGround(palette: palette)
+                .overlay(Color.black.opacity(0.2))
+        }
     }
 
     /// Opaque down the square, clear at its very foot.

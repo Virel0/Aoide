@@ -202,7 +202,7 @@ struct HTTPTests {
     @Test("motion covers: the album names one, it's read with the token, MP4 plays and WebM doesn't")
     func motionCovers() async throws {
         let mp4 = Data([0, 0, 0, 24]) + Data("ftypisom".utf8) + Data(count: 16)
-        let client = StubServer.client(host: "motion.test") { request, body in
+        let client = StubServer.client(host: "motion.test") { request, _ in
             switch (request.httpMethod, request.url?.path()) {
             case ("GET", "/api/v1/music/albums/2"):
                 var album = Fixture.album(2, "First Album")
@@ -212,12 +212,6 @@ struct HTTPTests {
             case ("GET", "/api/v1/music/albums/2/motion"):
                 guard request.value(forHTTPHeaderField: "Authorization") == "Bearer mlt_tok" else { return (401, Data()) }
                 return (200, Data([0, 0, 0, 24]) + Data("ftypisom".utf8) + Data(count: 16))
-            case ("GET", "/api/v1/music/motion-covers"):
-                return (200, Fixture.json(["show_generated": true, "on": true]))
-            case ("PUT", "/api/v1/music/motion-covers"):
-                let sent = (try? JSONSerialization.jsonObject(with: body)) as? [String: Bool]
-                guard sent == ["show_generated": false] else { return (400, Data()) }
-                return (200, Fixture.json(["show_generated": false, "on": true]))
             default:
                 return (404, Data())
             }
@@ -229,10 +223,41 @@ struct HTTPTests {
         #expect(MeleteClient.isPlayableMotionCover(video))
         #expect(!MeleteClient.isPlayableMotionCover(Data([0x1A, 0x45, 0xDF, 0xA3]) + Data(count: 16)), "WebM")
         #expect(try await client.motionCoverData(servedPath: "//elsewhere.test/x") == nil)
-        #expect(try await client.motionCoverChoice() == MotionCoverChoice(showGenerated: true, on: true))
-        #expect(try await client.setShowsGeneratedMotionCovers(false).showGenerated == false)
         #expect(client.albumId(fromArtworkURL: client.artworkURL(itemId: "7")) == "7")
+        #expect(client.albumId(fromArtworkURL: client.artworkURL(itemId: "7", maxWidth: 160)) == "7")
         #expect(client.albumId(fromArtworkURL: URL(string: "http://motion.test/api/v1/music/tracks/7")!) == nil)
+    }
+
+    @Test("a cover is asked for at the smallest size Melete makes that's wide enough, else whole")
+    func coverSizes() throws {
+        let client = StubServer.client(host: "covers.test") { _, _ in (404, Data()) }
+        func size(_ width: Int) -> String? {
+            URLComponents(url: client.artworkURL(itemId: "7", maxWidth: width), resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "size" }?.value
+        }
+        #expect(size(0) == nil)
+        #expect(size(52) == "160")
+        #expect(size(160) == "160")
+        #expect(size(161) == "400")
+        #expect(size(600) == "600")
+        #expect(size(800) == "800")
+        #expect(size(1000) == nil, "wider than Melete makes: the whole cover")
+        #expect(client.artworkURL(itemId: "7").path() == "/api/v1/music/albums/7/cover")
+    }
+
+    @Test("an album's palette is read from its colours; an older server's album has none")
+    func palette() async throws {
+        let client = StubServer.client(host: "palette.test") { request, _ in
+            var album = Fixture.album(2, "First Album")
+            album["track_list"] = [[String: Any]]()
+            if request.url?.path() == "/api/v1/music/albums/2" {
+                album["colours"] = ["background": "#000000", "text1": "#ffffff", "text2": "#ffffff",
+                                    "text3": "#cccccc", "text4": "#cccccc", "palette": ["#ff0000", "#00ff00"]]
+            }
+            return (200, Fixture.json(album))
+        }
+        #expect(try await client.album(id: "2").album.palette == ["#ff0000", "#00ff00"])
+        #expect(try await client.album(id: "3").album.palette == nil)
     }
 
     @Test("lyrics with their pronunciation, and without when the server has it off")
