@@ -22,11 +22,21 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   full-screen player still shows the whole cover, and a downloaded song keeps
   the whole cover for every size. Needs Melete 0.5.0; an older Melete sends the
   whole cover as before.
+- Home's Added Recently banner shows the album's cover whole in its middle,
+  over the cover's own colours, instead of cropping the top and bottom off a
+  square cover to fill the banner.
 
 ### Removed
-- Settings → Motion Covers no longer has "Ones Your Server Made": Melete 0.5.0
-  stopped making motion covers from still covers. Motion covers in an album's
-  own folder still play.
+- Settings → Motion Covers, with its "Ones Your Server Made": Melete 0.5.0
+  stopped making motion covers from still covers. An album's own motion
+  cover, from its folder, always plays, except with Reduce Motion or Low
+  Power Mode on.
+
+### Fixed
+- A motion cover kept on the phone stops playing once the server no longer
+  has it, at the next launch. Before, a kept copy played for up to a week,
+  so motion covers Melete made from still covers went on showing after
+  Melete 0.5.0 removed them.
 
 ## [1.4 (6)] - 2026-11-03
 

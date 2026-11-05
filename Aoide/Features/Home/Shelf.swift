@@ -96,13 +96,14 @@ struct HeroCard: View {
                     .foregroundStyle(.tint)
                     .tracking(0.6)
 
-                // Cropped to a banner rather than left square: a full-width square
-                // cover is roughly a whole screen tall on a phone, so nothing else
-                // on the page is visible until you scroll past it.
-                ArtworkView(
+                // A banner rather than a full-width square: a square cover is
+                // roughly a whole screen tall on a phone, so nothing else on the
+                // page would be visible until you scroll past it. The cover sits
+                // whole in its middle, never cropped.
+                CoverBanner(
                     url: store.artworkURL(for: album, width: Design.ArtworkWidth.hero),
-                    cornerRadius: Design.Radius.hero,
-                    aspectRatio: 16 / 10
+                    palette: album.palette,
+                    cornerRadius: Design.Radius.hero
                 )
                 .frame(maxWidth: .infinity)
 
