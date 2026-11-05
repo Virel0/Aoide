@@ -4,13 +4,12 @@ import SwiftUI
 import UIKit
 
 /// An album's motion cover over its still cover: muted, looping, faded in once
-/// it's ready. Nothing shows while it's off in Settings, with Reduce Motion or
-/// Low Power Mode on, or when the album has none.
+/// it's ready. Nothing shows with Reduce Motion or Low Power Mode on, or when
+/// the album has none.
 struct MotionCoverView: View {
     let albumId: String?
     var cornerRadius: CGFloat = 6
 
-    @AppStorage(MotionCovers.enabledKey) private var isEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var file: URL?
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -19,7 +18,7 @@ struct MotionCoverView: View {
         // A clear base, not an empty group: `.task` never runs on a view with nothing in it.
         ZStack {
             Color.clear
-            if let file, isEnabled, !reduceMotion, !lowPower {
+            if let file, !reduceMotion, !lowPower {
                 LoopingVideo(file: file)
                     .clipShape(.rect(cornerRadius: cornerRadius))
                     .transition(.opacity)
@@ -30,7 +29,7 @@ struct MotionCoverView: View {
         .accessibilityHidden(true)
         .task(id: albumId) {
             file = nil
-            guard let albumId, isEnabled, let client = AppSession.shared.client else { return }
+            guard let albumId, let client = AppSession.shared.client else { return }
             file = await MotionCovers.shared.file(forAlbum: albumId, client: client)
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
