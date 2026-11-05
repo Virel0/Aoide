@@ -8,8 +8,6 @@ import os
 actor MotionCovers {
     static let shared = MotionCovers()
 
-    /// The switch in Settings; on until turned off.
-    static let enabledKey = "aoide.motionCovers"
     private static let keepFor: TimeInterval = 7 * 24 * 60 * 60
 
     /// What each album was found to have: the path its album gave, or nil for
