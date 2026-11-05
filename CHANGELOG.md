@@ -26,6 +26,12 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   stopped making motion covers from still covers. Motion covers in an album's
   own folder still play.
 
+### Fixed
+- A motion cover kept on the phone stops playing once the server no longer
+  has it, at the next launch. Before, a kept copy played for up to a week,
+  so motion covers Melete made from still covers went on showing after
+  Melete 0.5.0 removed them.
+
 ## [1.4 (6)] - 2026-11-03
 
 ### Added
