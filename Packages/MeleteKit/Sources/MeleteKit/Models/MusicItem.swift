@@ -53,6 +53,11 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
     /// albums/{id}/motion`); nil when it has none. Optional, so the downloads'
     /// list saved before it was read still decodes.
     public var motionCover: String?
+    /// An album's cover's main colours as `#rrggbb`, the most of the cover
+    /// first (up to five), for what's drawn around the cover on a screen of
+    /// another shape. Nil from a server older than the palette, and for what
+    /// isn't an album; empty until the server has worked them out.
+    public var palette: [String]?
 
     public init(
         id: String,
@@ -73,7 +78,8 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         hasCover: Bool = false,
         liked: Bool = false,
         isrc: String? = nil,
-        motionCover: String? = nil
+        motionCover: String? = nil,
+        palette: [String]? = nil
     ) {
         self.id = id
         self.name = name
@@ -94,6 +100,7 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         self.liked = liked
         self.isrc = isrc
         self.motionCover = motionCover
+        self.palette = palette
     }
 
     /// The length in whole milliseconds, as the local store keeps it.
@@ -222,6 +229,7 @@ struct WireAlbum: Decodable {
     /// On an album's own page only, from servers that have album likes.
     let liked: Bool?
     let motionCover: String?
+    let colours: WireColours?
 
     var item: MusicItem {
         MusicItem(
@@ -237,9 +245,15 @@ struct WireAlbum: Decodable {
             duration: seconds(durationSeconds),
             hasCover: cover != nil,
             liked: liked ?? false,
-            motionCover: motionCover
+            motionCover: motionCover,
+            palette: colours?.palette
         )
     }
+}
+
+/// `CoverColours`, the part read: the palette.
+struct WireColours: Decodable {
+    let palette: [String]?
 }
 
 /// `MusicArtist`, trimmed.

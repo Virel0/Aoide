@@ -140,10 +140,23 @@ extension MeleteClient {
         return try await streamLink(for: id, quality: quality, canPlay: canPlay)
     }
 
-    /// An album's cover. Fetching it needs ``authorization``; clients may keep a
-    /// cover a day. Melete serves it at its own size, so `maxWidth` is unused.
+    /// The widths Melete makes covers at, in pixels.
+    public static let coverSizes = [160, 400, 600, 800]
+
+    /// The smallest of ``coverSizes`` at least `width` wide; nil for no width
+    /// (0) or one wider than the largest, which take the whole cover.
+    public static func coverSize(forWidth width: Int) -> Int? {
+        guard width > 0 else { return nil }
+        return coverSizes.first { $0 >= width }
+    }
+
+    /// An album's cover, at least `maxWidth` pixels wide where Melete makes one
+    /// that size (``coverSize(forWidth:)``), else whole. Fetching it needs
+    /// ``authorization``; clients may keep a cover a day. A server older than
+    /// sized covers ignores the size and sends the whole cover.
     public func artworkURL(itemId albumId: String, tag: String? = nil, maxWidth: Int = 0) -> URL {
-        url(path: "api/v1/music/albums/\(albumId)/cover")
+        let size = Self.coverSize(forWidth: maxWidth).map { [URLQueryItem(name: "size", value: String($0))] }
+        return url(path: "api/v1/music/albums/\(albumId)/cover", query: size ?? [])
     }
 
     /// The album a cover from ``artworkURL(itemId:tag:maxWidth:)`` belongs to:
@@ -158,7 +171,7 @@ extension MeleteClient {
 
     /// The cover that stands for an item: an album's own, a track's album's.
     public func artworkURL(for item: MusicItem, maxWidth: Int) -> URL? {
-        item.coverAlbumId.map { artworkURL(itemId: $0) }
+        item.coverAlbumId.map { artworkURL(itemId: $0, maxWidth: maxWidth) }
     }
 
     /// Whether `url` is one of this server's, so a request to it may carry the
