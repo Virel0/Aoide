@@ -61,17 +61,21 @@ public enum PlaylistCSVParser {
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            var lengthIsSong = true
+            var (lengthIsSong, artistFromChannel) = (true, false)
             if let channel {
                 let video = YouTubeVideo.song(title: name, channel: cell(channel) ?? "")
-                (name, artists, lengthIsSong) = (video.title, video.artists, video.isMusicTrack)
+                (name, artists) = (video.title, video.artists)
+                (lengthIsSong, artistFromChannel) = (video.isMusicTrack, video.artistFromChannel)
             }
             let ms = lengthIsSong
                 ? cell(duration).flatMap { Int($0) }
                     ?? cell(seconds).flatMap { Int($0) }.map { $0 * 1000 }
                     ?? cell(length).flatMap(milliseconds)
                 : nil
-            return ImportedTrack(title: name, artists: artists, album: cell(album), durationMs: ms, isrc: cell(isrc))
+            return ImportedTrack(
+                title: name, artists: artists, album: cell(album), durationMs: ms, isrc: cell(isrc),
+                artistFromChannel: artistFromChannel
+            )
         }
 
         return ImportedPlaylist(name: name, tracks: tracks)

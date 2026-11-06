@@ -22,6 +22,8 @@ public enum YouTubeVideo {
         public let artists: [String]
         /// A YouTube Music track, whose length is the song's.
         public let isMusicTrack: Bool
+        /// The artist is the channel's name, which may be a label's, not the title's.
+        public var artistFromChannel = false
     }
 
     /// The song a video's `title` and `channel` stand for.
@@ -29,24 +31,26 @@ public enum YouTubeVideo {
         if let artist = topicArtist(channel) {
             return Song(title: songTitle(title), artists: [artist], isMusicTrack: true)
         }
-        let (song, artists) = videoSong(title: title, channel: channel)
-        return Song(title: song, artists: artists, isMusicTrack: false)
+        return videoSong(title: title, channel: channel)
     }
 
-    private static func videoSong(title: String, channel: String) -> (String, [String]) {
+    private static func videoSong(title: String, channel: String) -> Song {
         let named = channelArtist(channel)
         let cleaned = songTitle(title)
         if let (left, right) = artistDash(cleaned) {
             let song = songTitle(right)
             if !named.isEmpty, plain(song) == plain(named), plain(left) != plain(named) {
-                return (songTitle(left), [named])
+                return Song(title: songTitle(left), artists: [named], isMusicTrack: false)
             }
-            return (song, artists(withoutGroups(left)))
+            return Song(title: song, artists: artists(withoutGroups(left)), isMusicTrack: false)
         }
         if let (left, song) = quotedSong(cleaned) {
-            return (song, artists(withoutGroups(left)))
+            return Song(title: song, artists: artists(withoutGroups(left)), isMusicTrack: false)
         }
-        return (cleaned, named.isEmpty ? [] : [named])
+        return Song(
+            title: cleaned, artists: named.isEmpty ? [] : [named], isMusicTrack: false,
+            artistFromChannel: !named.isEmpty
+        )
     }
 
     /// The artist of a YouTube Music "Artist - Topic" channel.

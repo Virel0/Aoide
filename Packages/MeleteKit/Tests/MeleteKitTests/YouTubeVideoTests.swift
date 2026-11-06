@@ -24,9 +24,16 @@ struct YouTubeVideoTests {
     ])
     func song(_ given: Case) {
         #expect(YouTubeVideo.song(title: given.title, channel: given.channel) == YouTubeVideo.Song(
-            title: given.song, artists: given.artists, isMusicTrack: given.channel.hasSuffix(" - Topic")
+            title: given.song, artists: given.artists, isMusicTrack: given.channel.hasSuffix(" - Topic"),
+            artistFromChannel: Self.guessed.contains(given.title)
         ))
     }
+
+    /// The cases above whose artist is nothing but the channel's name.
+    static let guessed: Set<String> = [
+        "Alfaaz | Hamza Malik x Zain Zohaib | Official Visualiser", "Music", "Official Video",
+        "Ala Bolelo - Lyric Video | Jailer 2 | Anirudh", "#1 Crush", "Don't Stop Believin'",
+    ]
 
     /// A video's title and channel, and the song and artists it should be read as.
     struct Case: Sendable, CustomTestStringConvertible {
