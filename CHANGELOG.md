@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.6 (8)] - 2026-11-06
+
 ### Added
 - Importing a YouTube playlist from a CSV export. A file with the video's
   title and channel, and no artist column, is read video by video: the artist
