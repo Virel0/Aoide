@@ -17,6 +17,16 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   its title alone, and taken when every song there with exactly that title is
   by one artist; your server then puts your copy in the playlist instead of
   asking for it again.
+- Heavy Rotation and Rediscover Mix fill themselves again. Aoide for Linux
+  made them anew on 2 November, as two writes at one instant, and on the
+  other devices the rules lost the tie: they became plain, empty playlists.
+  The app now puts their rules back. It also makes the built-ins only after
+  it has synced, so a new device doesn't replace the ones you have, and makes
+  a smart playlist in one write with its rules.
+
+### Changed
+- Heavy Rotation and Rediscover Mix aren't listed, in Playlists or CarPlay,
+  until their rules match a song.
 
 ## [1.6 (8)] - 2026-11-06
 

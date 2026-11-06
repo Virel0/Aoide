@@ -120,29 +120,30 @@ public extension CurationStore {
         try read { db in try Playlist.fetchOne(db, key: id) } != nil
     }
 
+    /// With `smartRules`, a smart playlist, made in the same write as its rules.
     @discardableResult
     func createPlaylist(
         name: String,
         folderId: String? = nil,
         notes: String? = nil,
         id: String? = nil,
+        smartRules: SmartRules? = nil,
         now: Millis = Date().millis
     ) throws -> Playlist {
         if let folderId { try requireFolder(folderId) }
-        return try record(
-            Playlist(
-                // A caller-chosen id is for the built-ins, which every device
-                // creates under the same id so they merge rather than duplicate.
-                id: id ?? UUID().uuidString,
-                name: name,
-                notes: notes,
-                folderId: folderId,
-                sortIndex: try nextPlaylistSortIndex(),
-                updatedAt: now,
-                originDevice: deviceId
-            ),
-            at: now
+        var row = Playlist(
+            // A caller-chosen id is for the built-ins, which every device
+            // creates under the same id so they merge rather than duplicate.
+            id: id ?? UUID().uuidString,
+            name: name,
+            notes: notes,
+            folderId: folderId,
+            sortIndex: try nextPlaylistSortIndex(),
+            updatedAt: now,
+            originDevice: deviceId
         )
+        if let smartRules { row = try row.settingSmartRules(smartRules) }
+        return try record(row, at: now)
     }
 
     /// Renames in place, leaving every other field as it was.

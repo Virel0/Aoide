@@ -128,7 +128,8 @@ final class CarPlayBrowser: NSObject {
         if let playlists {
             await playlists.reload()
             for built in BuiltInPlaylist.allCases {
-                guard let list = playlists.playlists.first(where: { $0.id == built.id }) else { continue }
+                guard let list = playlists.playlists.first(where: { $0.id == built.id }),
+                      playlists.isListed(list) else { continue }
                 let item = CPListItem(text: list.name, detailText: "Mix", image: UIImage(systemName: "wand.and.stars"))
                 loadCover(of: list, into: item)
                 item.handler = { [weak self] _, completion in
