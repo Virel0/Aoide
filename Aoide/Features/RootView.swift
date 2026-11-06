@@ -139,7 +139,13 @@ struct MainTabView: View {
         // Before the shelves load: coming back to a queue that is already
         // there is the difference between resuming and starting over.
         .task { await QueueRestorer.restore(client: client) }
-        .task { await playlists.ensureBuiltIns() }
+        // After each sync that succeeds, never before the first: until then a built-in
+        // the server already has isn't on this device, and making it again would
+        // replace it everywhere.
+        .task(id: SyncCoordinator.shared.lastSuccess) {
+            guard SyncCoordinator.shared.lastSuccess != nil else { return }
+            await playlists.ensureBuiltIns()
+        }
         .task { await SongIndexer.shared.indexIfStale(library: store) }
         // The op log already syncs on return (see RootView); the library caches
         // did not, so an album added from the desk stayed invisible on the phone

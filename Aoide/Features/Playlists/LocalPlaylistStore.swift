@@ -156,7 +156,14 @@ final class LocalPlaylistStore {
     }
 
     func playlists(in folderId: String?) -> [Playlist] {
-        playlists.filter { $0.folderId == folderId }
+        playlists.filter { $0.folderId == folderId && isListed($0) }
+    }
+
+    /// Whether a playlist is shown in the lists. A built-in (Heavy Rotation,
+    /// Rediscover Mix) is left out while its rules match nothing: it appears once
+    /// there's something in it, rather than sitting there empty.
+    func isListed(_ playlist: Playlist) -> Bool {
+        BuiltInPlaylist(rawValue: playlist.id) == nil || (trackCounts[playlist.id] ?? 0) > 0
     }
 
     /// Re-reads the whole tree.
@@ -228,33 +235,28 @@ final class LocalPlaylistStore {
         return created
     }
 
-    /// Creates a smart playlist. Two writes, because that is what the store's API is:
-    /// `createPlaylist` mints the row and `settingSmartRules` deliberately returns a copy
-    /// without writing, so the rules reach disk only through `record` — the one path that
-    /// also writes the op a rule change has to sync as.
-    @discardableResult
-    /// Creates the built-in smart playlists this library does not have yet.
+    /// Creates the built-in smart playlists this library does not have yet, and puts
+    /// the rules back on one that lost them (`CurationStore.ensureBuiltInPlaylists`).
     ///
     /// Under fixed ids, so the desk creating the same ones ends in one row each, not
     /// two; and only where no row has ever existed, so one that was deleted stays
-    /// deleted everywhere. Safe to call at every launch.
+    /// deleted everywhere. Called after each sync that succeeds, never before the
+    /// first: until then a built-in the server has isn't here, and making it again
+    /// would replace it on every device.
     func ensureBuiltIns() async {
         await run("set up the built-in playlists") { store in
-            for built in BuiltInPlaylist.allCases where !(try store.playlistRowExists(built.id)) {
-                // Rules first: a playlist row made before its rules failed would
-                // stay empty, because a row that exists is never created again.
-                let rules = try built.rules
-                let list = try store.createPlaylist(name: built.name, notes: built.notes, id: built.id)
-                try store.record(list.settingSmartRules(rules))
-            }
+            try store.ensureBuiltInPlaylists()
         }
         await reload()
     }
 
+    /// Creates a smart playlist, in one write with its rules. Made as two (the row,
+    /// then its rules) at the same instant, the rules could lose the merge's tie on
+    /// the other devices and leave them a plain, empty playlist.
+    @discardableResult
     func createSmartPlaylist(name: String, rules: SmartRules, folderId: String? = nil) async -> Playlist? {
         let created: Playlist? = await run("create that playlist") { store in
-            let list = try store.createPlaylist(name: name, folderId: folderId)
-            return try store.record(list.settingSmartRules(rules))
+            try store.createPlaylist(name: name, folderId: folderId, smartRules: rules)
         }
         await reload()
         return created
