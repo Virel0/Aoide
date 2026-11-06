@@ -226,7 +226,8 @@ struct PlaylistCSVTests {
             // A video's length isn't the song's; a YouTube Music track's is.
             ImportedTrack(title: "Karma Police", artists: ["Radiohead"], durationMs: nil),
             ImportedTrack(title: "Paranoid Android", artists: ["Radiohead"], durationMs: 387_000),
-            ImportedTrack(title: "Creep", artists: ["Radiohead"], durationMs: nil),
+            // No artist in the title: the channel's name stands for it, marked a guess.
+            ImportedTrack(title: "Creep", artists: ["Radiohead"], durationMs: nil, artistFromChannel: true),
         ])
     }
 

@@ -99,7 +99,7 @@ final class PlaylistImporter {
         // fails, falls through to the lookups below without a word — the result is
         // the same either way, only slower.
         if let served = await matchOnServer(imported.tracks) {
-            matches = served
+            matches = await rescued(served)
             phase = .finished
             return
         }
@@ -124,8 +124,25 @@ final class PlaylistImporter {
             phase = .matching(done: results.count, total: total)
         }
 
-        matches = results
+        matches = await rescued(results)
         phase = .finished
+    }
+
+    /// Each unmatched song whose artist is only a video's channel, looked up again
+    /// by its title alone (`TrackMatcher.findByTitleAlone`). One found takes the
+    /// library's artists, so the server's match finds it too when it's saved.
+    private func rescued(_ matches: [Match]) async -> [Match] {
+        var result = matches
+        let client = client
+        for (index, match) in matches.enumerated() where match.song == nil && match.track.artistFromChannel {
+            let found = await TrackMatcher.findByTitleAlone(
+                match.track,
+                search: { try? await client.songs(searching: $0, limit: 40) },
+                candidate: { TrackMatcher.Candidate(title: $0.name, artists: $0.artists, durationMs: nil) }
+            )
+            if let found { result[index] = Match(track: found.track, song: found.item) }
+        }
+        return result
     }
 
     private func matchOnServer(_ tracks: [ImportedTrack]) async -> [Match]? {

@@ -29,12 +29,20 @@ public struct ImportedTrack: Equatable, Hashable, Sendable, Identifiable {
     /// Present only in CSV exports. Kept because it is the one exact key that
     /// exists, should the library ever carry it too.
     public var isrc: String?
+    /// The artist is only a guess: a YouTube video's channel, which may be a
+    /// label ("Ubisoft Music"). Such a track the library has under another artist
+    /// is found by its title alone (`TrackMatcher.byTitleAlone`). Never sent.
+    public var artistFromChannel: Bool
 
-    public init(title: String, artists: [String], album: String? = nil, durationMs: Int? = nil, isrc: String? = nil) {
+    public init(
+        title: String, artists: [String], album: String? = nil, durationMs: Int? = nil,
+        isrc: String? = nil, artistFromChannel: Bool = false
+    ) {
         self.title = title
         self.artists = artists
         self.album = album
         self.durationMs = durationMs
         self.isrc = isrc
+        self.artistFromChannel = artistFromChannel
     }
 }
