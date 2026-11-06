@@ -16,16 +16,21 @@ import Foundation
 /// " | " and what follows) is taken off first, so Melete looks the song up by its
 /// own name. Aoide for Linux's `import/youtube.rs` follows the same rules.
 public enum YouTubeVideo {
-    /// The song title and artists a video's `title` and `channel` stand for, and
-    /// whether it's a YouTube Music track, whose length is the song's.
-    public static func song(
-        title: String, channel: String
-    ) -> (title: String, artists: [String], isMusicTrack: Bool) {
+    /// A video read as a song.
+    public struct Song: Equatable, Sendable {
+        public let title: String
+        public let artists: [String]
+        /// A YouTube Music track, whose length is the song's.
+        public let isMusicTrack: Bool
+    }
+
+    /// The song a video's `title` and `channel` stand for.
+    public static func song(title: String, channel: String) -> Song {
         if let artist = topicArtist(channel) {
-            return (songTitle(title), [artist], true)
+            return Song(title: songTitle(title), artists: [artist], isMusicTrack: true)
         }
         let (song, artists) = videoSong(title: title, channel: channel)
-        return (song, artists, false)
+        return Song(title: song, artists: artists, isMusicTrack: false)
     }
 
     private static func videoSong(title: String, channel: String) -> (String, [String]) {
