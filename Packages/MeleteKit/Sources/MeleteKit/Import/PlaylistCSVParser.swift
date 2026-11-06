@@ -1,7 +1,9 @@
 import Foundation
 
 /// Reads a playlist out of a CSV export — Exportify's by default, with enough
-/// tolerance for the other tools' column names.
+/// tolerance for the other tools' column names. An export of a YouTube playlist,
+/// with a channel column and no artist column, is read video by video as
+/// ``YouTubeVideo`` says, a music video without its length.
 ///
 /// The one route that carries a *whole* playlist plus ISRC and album, which the
 /// embed page does not. Exportify's headers are matched exactly first; the
@@ -16,7 +18,12 @@ public enum PlaylistCSVParser {
     private static let titleHeaders = ["track name", "title", "track", "name", "song"]
     private static let artistHeaders = ["artist name(s)", "artist name", "artist", "artists", "artist(s)"]
     private static let albumHeaders = ["album name", "album"]
-    private static let durationHeaders = ["track duration (ms)", "duration (ms)", "duration_ms", "duration"]
+    /// A YouTube export's channel, read as the artist when there's no artist column.
+    private static let channelHeaders = ["channel name", "channel", "channel title", "uploader"]
+    private static let durationHeaders = ["track duration (ms)", "duration (ms)", "duration_ms"]
+    private static let secondsHeaders = ["duration in seconds", "duration (seconds)", "duration (s)"]
+    /// Milliseconds, `m:ss` or `h:mm:ss`.
+    private static let lengthHeaders = ["duration in timestamp", "duration"]
     private static let isrcHeaders = ["isrc"]
 
     public static func parse(_ text: String, name: String) throws -> ImportedPlaylist {
@@ -36,8 +43,11 @@ public enum PlaylistCSVParser {
 
         guard let title = index(of: titleHeaders) else { throw Failure.noTitleColumn }
         let artist = index(of: artistHeaders)
+        let channel = artist == nil ? index(of: channelHeaders) : nil
         let album = index(of: albumHeaders)
         let duration = index(of: durationHeaders)
+        let seconds = index(of: secondsHeaders)
+        let length = index(of: lengthHeaders)
         let isrc = index(of: isrcHeaders)
 
         let tracks = rows.dropFirst().compactMap { row -> ImportedTrack? in
@@ -46,22 +56,34 @@ public enum PlaylistCSVParser {
                 let value = row[column].trimmingCharacters(in: .whitespaces)
                 return value.isEmpty ? nil : value
             }
-            guard let name = cell(title) else { return nil }
-            let artists = (cell(artist) ?? "")
+            guard var name = cell(title) else { return nil }
+            var artists = (cell(artist) ?? "")
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            let ms = cell(duration).flatMap { value -> Int? in
-                // Exportify writes milliseconds; a hand-made sheet may write mm:ss.
-                if let number = Int(value) { return number }
-                let parts = value.split(separator: ":").compactMap { Int($0) }
-                guard parts.count == 2 else { return nil }
-                return (parts[0] * 60 + parts[1]) * 1000
+            var lengthIsSong = true
+            if let channel {
+                let video = YouTubeVideo.song(title: name, channel: cell(channel) ?? "")
+                (name, artists, lengthIsSong) = (video.title, video.artists, video.isMusicTrack)
             }
+            let ms = lengthIsSong
+                ? cell(duration).flatMap { Int($0) }
+                    ?? cell(seconds).flatMap { Int($0) }.map { $0 * 1000 }
+                    ?? cell(length).flatMap(milliseconds)
+                : nil
             return ImportedTrack(title: name, artists: artists, album: cell(album), durationMs: ms, isrc: cell(isrc))
         }
 
         return ImportedPlaylist(name: name, tracks: tracks)
+    }
+
+    /// A length as milliseconds (Exportify's), `m:ss` or `h:mm:ss` (a hand-made
+    /// sheet's, a YouTube export's).
+    static func milliseconds(_ value: String) -> Int? {
+        if let number = Int(value) { return number }
+        let parts = value.split(separator: ":", omittingEmptySubsequences: false).map { Int($0) }
+        guard (2...3).contains(parts.count), !parts.contains(nil) else { return nil }
+        return parts.compactMap { $0 }.reduce(0) { $0 * 60 + $1 } * 1000
     }
 }
 

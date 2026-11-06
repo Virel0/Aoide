@@ -209,6 +209,40 @@ struct PlaylistCSVTests {
             try PlaylistCSVParser.parse("a,b\n1,2\n", name: "x")
         }
     }
+
+    @Test("reads a YouTube playlist export: artist from the title or channel, a track's length")
+    func youTube() throws {
+        // The columns and values a YouTube playlist exporter writes, with a
+        // description over two lines.
+        let csv = """
+        \u{FEFF}Title,Description,Channel name,Duration in seconds,Duration in timestamp,Duration,Video url
+        Radiohead - Karma Police (Official Music Video),"Taken from OK Computer
+        Out now",RadioheadVEVO,264,4:24,"4 Minutes, 24 Seconds",https://www.youtube.com/watch?v=1
+        Paranoid Android,,Radiohead - Topic,,6:27,,https://www.youtube.com/watch?v=2
+        Creep [Lyrics],,RadioheadOfficialVEVO,,,"3 Minutes, 58 Seconds",https://www.youtube.com/watch?v=3
+        """
+        let playlist = try PlaylistCSVParser.parse(csv, name: "x")
+        #expect(playlist.tracks == [
+            // A video's length isn't the song's; a YouTube Music track's is.
+            ImportedTrack(title: "Karma Police", artists: ["Radiohead"], durationMs: nil),
+            ImportedTrack(title: "Paranoid Android", artists: ["Radiohead"], durationMs: 387_000),
+            ImportedTrack(title: "Creep", artists: ["Radiohead"], durationMs: nil),
+        ])
+    }
+
+    @Test("an artist column wins over the channel")
+    func artistOverChannel() throws {
+        let csv = "Title,Artist,Channel name\nKarma Police - Live,Radiohead,Someone Else\n"
+        let playlist = try PlaylistCSVParser.parse(csv, name: "x")
+        #expect(playlist.tracks == [ImportedTrack(title: "Karma Police - Live", artists: ["Radiohead"])])
+    }
+
+    @Test("lengths as milliseconds, m:ss or h:mm:ss", arguments: [
+        ("236000", 236_000), ("4:24", 264_000), ("1:02:03", 3_723_000), ("4:", nil), ("4 Minutes", nil),
+    ] as [(String, Int?)])
+    func lengths(_ value: String, _ expected: Int?) {
+        #expect(PlaylistCSVParser.milliseconds(value) == expected)
+    }
 }
 
 @Suite("Sidecar match wire form")
