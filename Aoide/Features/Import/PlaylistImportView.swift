@@ -124,7 +124,8 @@ struct PlaylistImportView: View {
                 A link reads the playlist's first 100 tracks straight from Spotify — no \
                 account needed. For a longer playlist, or your own private ones, Exportify \
                 (open source) signs in to Spotify and exports it: save the file to Files, \
-                then choose it here.
+                then choose it here. A YouTube playlist exported to CSV works too: each \
+                video's artist is read from its title or its channel.
                 """)
         }
     }
