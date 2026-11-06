@@ -19,11 +19,16 @@ struct SettingsView: View {
     @State private var silence = SilenceIndex.shared
     @State private var siri = SiriAuthorization.shared
     @State private var downloads = DownloadStore.shared
+    @State private var account = AccountStore()
 
     var body: some View {
         List {
             Section("Account") {
-                SignedInRow(username: store.accountSummary.username)
+                NavigationLink {
+                    AccountView().environment(account)
+                } label: {
+                    SignedInRow(username: store.accountSummary.username)
+                }
                 LabeledContent("Server", value: store.accountSummary.server)
             }
 
@@ -186,6 +191,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .environment(account)
         .task { siri.refresh() }
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
@@ -204,21 +210,21 @@ struct SettingsView: View {
 }
 
 /// Who is signed in, with their profile picture. Asked of `/me` each time
-/// Settings opens; until it answers, or on a server without pictures, the
-/// name's initial stands in.
+/// Settings opens, and changed at once by the Account screen; until it
+/// answers, or on a server without pictures, the name's initial stands in.
 private struct SignedInRow: View {
     let username: String
     @Environment(AppSession.self) private var session
-    @State private var me: MeleteUser?
+    @Environment(AccountStore.self) private var account
 
     var body: some View {
         LabeledContent("Signed in as") {
             HStack(spacing: 8) {
-                AvatarView(name: username, url: session.client?.avatarURL(me?.avatarUrl))
+                AvatarView(name: username, url: session.client?.avatarURL(account.me?.avatarUrl))
                 Text(username)
             }
         }
-        .task { me = try? await session.client?.me() }
+        .task { await account.refresh(session.client) }
     }
 }
 

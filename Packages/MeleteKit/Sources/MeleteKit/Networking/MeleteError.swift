@@ -11,6 +11,9 @@ public enum MeleteError: Error, Equatable, Sendable {
     /// (``MeleteClient/finishSignIn(challenge:code:)``), within 5 minutes.
     case secondFactorNeeded(challenge: String)
     case forbidden
+    /// A 403 that names which secret in the request was wrong (Melete's
+    /// `Refusal`), so the app can point at that field.
+    case wrong(MeleteSecret)
     case notFound(path: String)
     /// `detail` is a short prefix of the response body. Discarding it left a 500
     /// reading only "the server returned an error", which says nothing a person or a
@@ -35,6 +38,10 @@ extension MeleteError: LocalizedError {
             "This account needs the code from its authenticator app to sign in."
         case .forbidden:
             "This account isn't allowed to do that."
+        case .wrong(.password):
+            "That password isn't right."
+        case .wrong(.code):
+            "That code isn't right. Type the one your authenticator app shows now."
         case .notFound(let path):
             "The server has no \(path)."
         case .http(let status, let path, let detail):
@@ -52,4 +59,10 @@ extension MeleteError: LocalizedError {
             "You're not signed in."
         }
     }
+}
+
+/// Which secret a request carried that the server turned down.
+public enum MeleteSecret: String, Sendable {
+    case password = "wrong_password"
+    case code = "wrong_code"
 }

@@ -17,17 +17,22 @@ public struct MeleteUser: Codable, Hashable, Sendable, Identifiable {
     /// for ``MeleteClient/avatarURL(_:)``. `nil` without one, and from a server
     /// older than profile pictures.
     public let avatarUrl: String?
+    /// Whether they run the server: `/me` and the admins' user list say; the
+    /// directory and sign-in don't, and leave it `false`.
+    public let isAdmin: Bool
 
-    public init(id: String, name: String, avatarUrl: String? = nil) {
+    public init(id: String, name: String, avatarUrl: String? = nil, isAdmin: Bool = false) {
         self.id = id
         self.name = name
         self.avatarUrl = avatarUrl
+        self.isAdmin = isAdmin
     }
 
     enum CodingKeys: String, CodingKey {
         case id
         case name = "username"
         case avatarUrl
+        case isAdmin
     }
 
     /// Melete's ids are numbers; the app keeps every id as text.
@@ -36,6 +41,12 @@ public struct MeleteUser: Codable, Hashable, Sendable, Identifiable {
         id = String(try c.decode(Int64.self, forKey: .id))
         name = try c.decode(String.self, forKey: .name)
         avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
+        isAdmin = try c.decodeIfPresent(Bool.self, forKey: .isAdmin) ?? false
+    }
+
+    /// The same user with another profile picture, as setting one answers.
+    public func with(avatarUrl: String?) -> MeleteUser {
+        MeleteUser(id: id, name: name, avatarUrl: avatarUrl, isAdmin: isAdmin)
     }
 }
 
