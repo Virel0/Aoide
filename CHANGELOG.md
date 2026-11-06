@@ -9,6 +9,17 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Your Melete account in Settings: tap "Signed in as". Choose a profile
+  picture from your photos (cropped square and made small on the phone) or
+  from your server's gallery, or remove it; Settings shows the new one at
+  once. Change your password, which signs out your other devices and API
+  keys. Turn two-factor sign-in on with an authenticator app (a link that
+  hands the secret to Passwords, a QR code drawn on the phone, or the secret
+  to type), turn it off, or reset it for a new device, and see its recent
+  changes, with a warning when wrong codes were typed at sign-in. An admin
+  can give another user a new password, shown once to pass on.
+
 ### Fixed
 - A song from a YouTube playlist export that your library has under another
   artist is found instead of reported missing. When a video's title doesn't

@@ -197,7 +197,7 @@ public struct MeleteClient: Sendable {
         switch status {
         case 200..<300: return
         case 401: throw secondFactor(data) ?? MeleteError.unauthorized
-        case 403: throw MeleteError.forbidden
+        case 403: throw refusal(data) ?? MeleteError.forbidden
         case 404: throw MeleteError.notFound(path: path)
         default:
             throw MeleteError.http(status: status, path: path, detail: detail(data))
@@ -214,6 +214,15 @@ public struct MeleteClient: Sendable {
               found.secondFactor == "totp"
         else { return nil }
         return .secondFactorNeeded(challenge: found.challenge)
+    }
+
+    /// Which secret a 403 says was wrong, when it says (`{"reason": …}`).
+    static func refusal(_ data: Data) -> MeleteError? {
+        struct Refusal: Decodable { let reason: String }
+        guard let found = try? JSONDecoder.melete.decode(Refusal.self, from: data),
+              let secret = MeleteSecret(rawValue: found.reason)
+        else { return nil }
+        return .wrong(secret)
     }
 
     /// What went wrong: Melete's `{"error": …}` message, or else a short prefix of
