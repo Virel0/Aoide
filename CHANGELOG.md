@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.7 (9)] - 2026-11-06
+
 ### Added
 - Your Melete account in Settings: tap "Signed in as". Choose a profile
   picture from your photos (cropped square and made small on the phone) or
