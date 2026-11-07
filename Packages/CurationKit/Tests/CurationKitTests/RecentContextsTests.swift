@@ -48,7 +48,7 @@ struct RecentContextsTests {
 struct BuiltInPlaylistTests {
     @Test("ids are fixed and never collide")
     func ids() {
-        let ids = BuiltInPlaylist.allCases.map(\.id)
+        let ids = BuiltInPlaylist.allCases.map { $0.id(forUser: "1") }
         #expect(Set(ids).count == ids.count)
         #expect(ids.allSatisfy { $0.hasPrefix("builtin:") })
     }
@@ -80,13 +80,14 @@ struct BuiltInPlaylistTests {
     @Test("created under its own id, once, and not again after deletion")
     func creation() throws {
         let store = try CurationStore.inMemory(deviceId: "phone")
+        let id = BuiltInPlaylist.rediscover.id(forUser: "1")
         let built = BuiltInPlaylist.rediscover
-        #expect(try store.playlistRowExists(built.id) == false)
-        let created = try store.createPlaylist(name: built.name, notes: built.notes, id: built.id)
-        #expect(created.id == built.id)
-        #expect(try store.playlistRowExists(built.id))
-        try store.deletePlaylist(built.id)
-        #expect(try store.playlist(built.id) == nil)
-        #expect(try store.playlistRowExists(built.id), "a deleted built-in must not be recreated")
+        #expect(try store.playlistRowExists(id) == false)
+        let created = try store.createPlaylist(name: built.name, notes: built.notes, id: id)
+        #expect(created.id == id)
+        #expect(try store.playlistRowExists(id))
+        try store.deletePlaylist(id)
+        #expect(try store.playlist(id) == nil)
+        #expect(try store.playlistRowExists(id), "a deleted built-in must not be recreated")
     }
 }

@@ -143,8 +143,9 @@ struct MainTabView: View {
         // the server already has isn't on this device, and making it again would
         // replace it everywhere.
         .task(id: SyncCoordinator.shared.lastSuccess) {
-            guard SyncCoordinator.shared.lastSuccess != nil else { return }
-            await playlists.ensureBuiltIns()
+            guard SyncCoordinator.shared.lastSuccess != nil,
+                  let userId = client.credentials?.userId else { return }
+            await playlists.ensureBuiltIns(userId: userId)
         }
         .task { await SongIndexer.shared.indexIfStale(library: store) }
         // The op log already syncs on return (see RootView); the library caches
