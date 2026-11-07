@@ -163,7 +163,7 @@ final class LocalPlaylistStore {
     /// Rediscover Mix) is left out while its rules match nothing: it appears once
     /// there's something in it, rather than sitting there empty.
     func isListed(_ playlist: Playlist) -> Bool {
-        BuiltInPlaylist(rawValue: playlist.id) == nil || (trackCounts[playlist.id] ?? 0) > 0
+        BuiltInPlaylist(playlistId: playlist.id) == nil || (trackCounts[playlist.id] ?? 0) > 0
     }
 
     /// Re-reads the whole tree.
@@ -238,14 +238,14 @@ final class LocalPlaylistStore {
     /// Creates the built-in smart playlists this library does not have yet, and puts
     /// the rules back on one that lost them (`CurationStore.ensureBuiltInPlaylists`).
     ///
-    /// Under fixed ids, so the desk creating the same ones ends in one row each, not
-    /// two; and only where no row has ever existed, so one that was deleted stays
-    /// deleted everywhere. Called after each sync that succeeds, never before the
-    /// first: until then a built-in the server has isn't here, and making it again
-    /// would replace it on every device.
-    func ensureBuiltIns() async {
+    /// Under the ids `userId`'s devices all work out, so the desk creating the same
+    /// ones ends in one row each, not two; and only where no row has ever existed, so
+    /// one that was deleted stays deleted everywhere. Called after each sync that
+    /// succeeds, never before the first: until then a built-in the server has isn't
+    /// here, and making it again would replace it on every device.
+    func ensureBuiltIns(userId: String) async {
         await run("set up the built-in playlists") { store in
-            try store.ensureBuiltInPlaylists()
+            try store.ensureBuiltInPlaylists(userId: userId)
         }
         await reload()
     }

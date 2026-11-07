@@ -6,14 +6,33 @@ import Foundation
 /// The brief's point about Discover Weekly is the noun: giving the algorithm a
 /// name makes it a feature rather than a black box. These are ordinary smart
 /// playlists — rules, not tracks — so they re-run every time they are opened and
-/// sync like any other. Their ids are fixed rather than minted, which is what lets
-/// the phone and the desk each create them on first run and end up with one row,
-/// not two: the sync layer merges rows by id.
+/// sync like any other.
+///
+/// Each user's are made under an id worked out from the built-in and the user
+/// (`id(forUser:)`), not minted, which is what lets the phone and the desk each
+/// create them on first run and end up with one row, not two: the sync layer
+/// merges rows by id. Per user, because Melete gives each playlist id one owner:
+/// under one id for everybody (`legacyId`, as before), the first user to sync
+/// owned it and every other user's were refused (Melete#324). Aoide for Linux's
+/// `built_in.rs` makes the same ids.
 public enum BuiltInPlaylist: String, CaseIterable, Sendable {
     case rediscover = "builtin:rediscover"
     case heavyRotation = "builtin:heavy-rotation"
 
-    public var id: String { rawValue }
+    /// The id this built-in has for the Melete user `userId`.
+    public func id(forUser userId: String) -> String { "\(rawValue):\(userId)" }
+
+    /// The id every user's devices once shared. A row under it is moved to the
+    /// user's own id (`CurationStore.ensureBuiltInPlaylists`).
+    public var legacyId: String { rawValue }
+
+    /// The built-in a playlist is, under its user's id or the old shared one.
+    public init?(playlistId: String) {
+        guard let built = Self.allCases.first(where: {
+            playlistId == $0.rawValue || playlistId.hasPrefix($0.rawValue + ":")
+        }) else { return nil }
+        self = built
+    }
 
     public var name: String {
         switch self {
