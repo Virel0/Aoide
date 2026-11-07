@@ -9,6 +9,11 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Fixed
+- The Play button on album, playlist and artist pages is centred again, with
+  its play icon. In those pages' lists the icon took the button's own colour,
+  so it vanished but kept its space and pushed "Play" to the right.
+
 ## [1.7 (9)] - 2026-11-06
 
 ### Added
