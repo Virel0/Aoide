@@ -9,7 +9,21 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Collections under Library: the songs you saved on Melete's web as a
+  collection (genres, a span of years, liked songs only), with Play and
+  Shuffle. Shuffle mixes the whole collection, not only its first page.
+  Delete one with a swipe; it's made on the web. Needs Melete 0.8.
+- Pictures in Search's Ask for It: an album's or song's cover, and an
+  artist's portrait with its photographer and licence, linking to its page
+  on Wikimedia Commons. Melete shows them while its server has search covers
+  and artist portraits switched on (Melete 0.8, off by default).
+
 ### Changed
+- An artist's page sorts their records under Albums, Singles & EPs, Live and
+  Compilations by the release types Melete has from MusicBrainz (Melete
+  0.8), as Melete's web does. An album not matched to MusicBrainz is still
+  sorted by its length, as before. With albums alone there's no heading.
 - Repeat after Play or Shuffle on an album, playlist, mix or artist loops all
   of it, songs you queued with Play Next or Play Last included. Before, a
   queued song made repeat loop only the first song and that one, and the rest

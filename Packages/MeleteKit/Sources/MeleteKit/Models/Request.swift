@@ -44,6 +44,12 @@ public struct RequestCandidate: Decodable, Equatable, Hashable, Sendable {
     public let wanted: Bool
     /// This user's open request for it, by id.
     public let requested: Int64?
+    /// Its picture's path on the server: an album's cover, a song's single's or
+    /// album's, an artist's portrait. Nil while the server has these off, and
+    /// from servers before 0.8.
+    public let poster: String?
+    /// Who took an artist's portrait and its licence, to be shown with it.
+    public let posterCredit: PosterCredit?
 
     /// Whether there's anything left to ask: not here, not wanted, not asked for.
     public var isAskable: Bool { !inLibrary && !wanted && requested == nil }
@@ -54,6 +60,31 @@ public struct RequestCandidate: Decodable, Equatable, Hashable, Sendable {
         let telling = detail.flatMap { $0.caseInsensitiveCompare(kind.word) == .orderedSame ? nil : $0 }
         return ([kind.word, artist, year.map(String.init), telling] as [String?]).compactMap { $0 }
             .joined(separator: " · ")
+    }
+}
+
+/// An artist's portrait's author and licence, from Wikimedia Commons. Its
+/// licence (CC BY-SA and the like) asks that both are shown with it.
+public struct PosterCredit: Decodable, Equatable, Hashable, Sendable {
+    public let author: String?
+    /// The licence's short name, such as "CC BY-SA 4.0".
+    public let licence: String?
+    public let licenceUrl: String?
+    /// The picture's page on Commons.
+    public let sourceUrl: String?
+
+    /// "Photo: Jane Doe, CC BY-SA 4.0"; nil when it names neither.
+    public var line: String? {
+        let parts = [author, licence].compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : "Photo: " + parts.joined(separator: ", ")
+    }
+
+    /// Where to read more: the picture's page, else the licence's. Web addresses
+    /// only.
+    public var link: URL? {
+        [sourceUrl, licenceUrl].lazy.compactMap { $0.flatMap(URL.init(string:)) }
+            .first { $0.scheme == "https" || $0.scheme == "http" }
     }
 }
 

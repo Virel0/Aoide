@@ -58,6 +58,9 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
     /// another shape. Nil from a server older than the palette, and for what
     /// isn't an album; empty until the server has worked them out.
     public var palette: [String]?
+    /// An album's kind of release, for its artist's page; nil for what isn't an
+    /// album, and in the downloads' list saved before it was read.
+    public var releaseKind: ReleaseKind?
 
     public init(
         id: String,
@@ -79,7 +82,8 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         liked: Bool = false,
         isrc: String? = nil,
         motionCover: String? = nil,
-        palette: [String]? = nil
+        palette: [String]? = nil,
+        releaseKind: ReleaseKind? = nil
     ) {
         self.id = id
         self.name = name
@@ -101,6 +105,7 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         self.isrc = isrc
         self.motionCover = motionCover
         self.palette = palette
+        self.releaseKind = releaseKind
     }
 
     /// The length in whole milliseconds, as the local store keeps it.
@@ -230,6 +235,10 @@ struct WireAlbum: Decodable {
     let liked: Bool?
     let motionCover: String?
     let colours: WireColours?
+    let compilation: Bool?
+    /// The MusicBrainz release group's types, from Melete 0.8; nil before.
+    let primaryType: String?
+    let secondaryTypes: [String]?
 
     var item: MusicItem {
         MusicItem(
@@ -246,7 +255,11 @@ struct WireAlbum: Decodable {
             hasCover: cover != nil,
             liked: liked ?? false,
             motionCover: motionCover,
-            palette: colours?.palette
+            palette: colours?.palette,
+            releaseKind: .of(
+                primaryType: primaryType, secondaryTypes: secondaryTypes ?? [],
+                compilation: compilation ?? false, tracks: tracks
+            )
         )
     }
 }

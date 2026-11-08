@@ -3,9 +3,9 @@ import SwiftUI
 
 /// An artist page: hero artwork, transport, then their records.
 ///
-/// Apple Music separates Albums / Singles & EPs / Appears On. Melete doesn't mark
-/// release type, so rather than invent a distinction we'd get wrong, this splits on
-/// something the data actually supports — track count — and labels it honestly.
+/// The records go under Albums, Singles & EPs, Live and Compilations by the
+/// release types Melete has from MusicBrainz (`ReleaseKind`), as its web shows
+/// them. With Albums alone there's no heading.
 struct ArtistDetailView: View {
     let artist: MusicItem
 
@@ -18,8 +18,7 @@ struct ArtistDetailView: View {
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
 
-    private var fullLength: [MusicItem] { albums.filter { ($0.childCount ?? 99) > 3 } }
-    private var shortReleases: [MusicItem] { albums.filter { ($0.childCount ?? 99) <= 3 } }
+    private var kinds: [(kind: ReleaseKind, albums: [MusicItem])] { ReleaseKind.grouped(albums) }
 
     var body: some View {
         ScrollView {
@@ -33,12 +32,11 @@ struct ArtistDetailView: View {
                 } else if albums.isEmpty {
                     ContentUnavailableView("No Albums", systemImage: "square.stack")
                         .padding(.top, 40)
+                } else if kinds.count == 1, kinds[0].kind == .albums {
+                    AlbumGrid(albums: albums).pageMargin()
                 } else {
-                    if !fullLength.isEmpty {
-                        section("Albums", fullLength)
-                    }
-                    if !shortReleases.isEmpty {
-                        section("Singles & EPs", shortReleases)
+                    ForEach(kinds, id: \.kind) { group in
+                        section(group.kind.title, group.albums)
                     }
                 }
             }

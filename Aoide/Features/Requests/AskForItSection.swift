@@ -5,8 +5,9 @@ import SwiftUI
 /// Asking for what the library doesn't have, at the foot of Search's results: the
 /// words looked up on MusicBrainz through Melete, in groups (songs, albums,
 /// artists), each showing its best few with the rest a tap away. A row says what
-/// it is and who by, and is marked in the library, wanted or asked for already,
-/// else has Ask. A song not in the library can go in a playlist straight away,
+/// it is and who by, with its cover or portrait where the server gives one (an
+/// artist's portrait with its author and licence), and is marked in the library,
+/// wanted or asked for already, else has Ask. A song not in the library can go in a playlist straight away,
 /// waiting there until it arrives.
 ///
 /// Looked up only when asked: MusicBrainz is slow and the server paces it, and a
@@ -76,8 +77,10 @@ struct AskForItSection: View {
     private func group(_ kind: RequestKind, _ candidates: [RequestCandidate]) -> some View {
         let isExpanded = expanded.contains(kind)
         let rows = isExpanded ? candidates : Array(candidates.prefix(Self.shown))
+        // A group with any picture gives every row the room, so the titles line up.
+        let pictured = candidates.contains { $0.poster != nil }
         return Section {
-            ForEach(rows, id: \.self) { row($0) }
+            ForEach(rows, id: \.self) { row($0, pictured: pictured) }
             if candidates.count > Self.shown {
                 Button(isExpanded ? "Show Fewer" : "Show \(candidates.count - Self.shown) More") {
                     withAnimation {
@@ -91,8 +94,9 @@ struct AskForItSection: View {
         }
     }
 
-    private func row(_ candidate: RequestCandidate) -> some View {
+    private func row(_ candidate: RequestCandidate, pictured: Bool) -> some View {
         HStack(spacing: 12) {
+            if pictured { RequestPicture(candidate: candidate) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.title)
                     .fontWeight(.medium)
@@ -108,6 +112,9 @@ struct AskForItSection: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                }
+                if candidate.poster != nil, let credit = candidate.posterCredit {
+                    PosterCreditLine(credit: credit)
                 }
             }
             Spacer(minLength: 8)
