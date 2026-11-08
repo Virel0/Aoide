@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.8 (10)] - 2026-11-08
+
 ### Added
 - Collections under Library: the songs you saved on Melete's web as a
   collection (genres, a span of years, liked songs only), with Play and
