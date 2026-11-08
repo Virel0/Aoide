@@ -71,7 +71,7 @@ extension MediaIntentHandler: @preconcurrency INPlayMediaIntentHandling {
             // `.siri` even when the request arrived through the car's voice button:
             // what was asked for was spoken, and that is what the source records.
             PlaybackContext.attributing(.siri) {
-                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled, repeatsWhole: true)
             }
             if let mode = request.repeatMode {
                 PlaybackEngine.shared.repeatMode = mode
@@ -222,7 +222,7 @@ extension MediaIntentHandler: @preconcurrency INSearchForMediaIntentHandling {
             let tracks = MeletePlaybackBridge.tracks(from: items, client: client)
             guard !tracks.isEmpty else { return }
             PlaybackContext.attributing(.siri) {
-                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled)
+                PlaybackEngine.shared.play(tracks, shuffled: request.shuffled, repeatsWhole: true)
             }
         }
         return INSearchForMediaIntentResponse(code: .success, userActivity: nil)

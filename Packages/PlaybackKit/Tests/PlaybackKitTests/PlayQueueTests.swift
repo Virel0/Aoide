@@ -691,3 +691,46 @@ struct RepeatPicksTests {
         #expect(queue.renderWindow(count: 4).map(\.track.title) == ["a2", "x", "y", "a2"])
     }
 }
+
+@Suite("Repeating a whole album started with Play")
+struct RepeatWholeTests {
+    /// An album started with its own Play, with a song queued by hand.
+    private func album() -> PlayQueue {
+        var queue = PlayQueue()
+        queue.load(makeTracks("a1", "a2", "a3"), repeatsWhole: true)
+        queue.append(makeTracks("x"))
+        queue.repeatMode = .all
+        return queue
+    }
+
+    @Test("repeat-all loops the whole album and the song queued by hand, not just the first song and it")
+    func loopsEverything() {
+        var queue = album()
+        var heard = [queue.currentTitle]
+        for _ in 0..<5 {
+            #expect(queue.advanceAutomatically() == .moved)
+            heard.append(queue.currentTitle)
+        }
+        #expect(heard == ["a1", "x", "a2", "a3", "a1", "x"])
+    }
+
+    @Test("previous wraps to the last song of the album")
+    func previousWraps() {
+        var queue = album()
+        #expect(queue.skipToPrevious() == .moved)
+        #expect(queue.currentTitle == "a3")
+    }
+
+    @Test("a song tapped afterwards loops the picks again")
+    func aTappedSongLoopsPicks() {
+        var queue = album()
+        queue.load(makeTracks("b1", "b2", "b3"), startingAt: 1)
+        queue.repeatMode = .all
+        var heard = [queue.currentTitle]
+        for _ in 0..<2 {
+            _ = queue.advanceAutomatically()
+            heard.append(queue.currentTitle)
+        }
+        #expect(heard == ["b2", "x", "b2"])
+    }
+}

@@ -64,6 +64,10 @@ public struct PlayQueue: Sendable {
     /// With songs queued by hand, repeat-all loops it and them; see ``isLooped(_:)``.
     private var startEntryId: UUID?
 
+    /// Whether a whole album or playlist was started (its Play or Shuffle), not a
+    /// song in it. Repeat-all then loops everything, the songs queued by hand too.
+    private var repeatsWhole = false
+
     public var isShuffled: Bool { unshuffledEntries != nil }
 
     public init() {}
@@ -141,8 +145,11 @@ public struct PlayQueue: Sendable {
 
     /// Replaces the queue. `startingAt` is an index into `tracks` as given, before
     /// any shuffling — so "shuffle this album starting from track 4" still begins on
-    /// track 4 and shuffles the rest.
-    public mutating func load(_ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false) {
+    /// track 4 and shuffles the rest. `repeatsWhole` says a whole album or playlist
+    /// was started, rather than a song tapped in it; see ``loopsPicks``.
+    public mutating func load(
+        _ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false, repeatsWhole: Bool = false
+    ) {
         // What the listener queued by hand outlives the thing that was playing.
         // Picking a new album is a statement about the album, not a decision to
         // throw away the three songs they lined up a minute ago — and a lane
@@ -165,6 +172,7 @@ public struct PlayQueue: Sendable {
             position = 0
         }
         startEntryId = current?.id
+        self.repeatsWhole = repeatsWhole
     }
 
     public mutating func clear() {
@@ -172,6 +180,7 @@ public struct PlayQueue: Sendable {
         unshuffledEntries = nil
         position = nil
         startEntryId = nil
+        repeatsWhole = false
     }
 
     /// Drops everything after the current track, which keeps playing.
@@ -231,9 +240,11 @@ public struct PlayQueue: Sendable {
     /// from and the songs queued by hand. Someone who taps a song on an album and
     /// then lines up others means to hear those again, not the rest of the album,
     /// which stays in Up Next for when repeat is off. An album with nothing
-    /// queued by hand repeats whole.
+    /// queued by hand repeats whole, and so does one started with its own Play or
+    /// Shuffle (``repeatsWhole``): that listener chose the album, songs added to it
+    /// and all.
     private var loopsPicks: Bool {
-        repeatMode == .all && entries.contains(where: \.isManual)
+        repeatMode == .all && !repeatsWhole && entries.contains(where: \.isManual)
     }
 
     /// One of the picks repeat-all loops while ``loopsPicks``.

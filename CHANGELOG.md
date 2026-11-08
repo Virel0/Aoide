@@ -9,6 +9,13 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Changed
+- Repeat after Play or Shuffle on an album, playlist, mix or artist loops all
+  of it, songs you queued with Play Next or Play Last included. Before, a
+  queued song made repeat loop only the first song and that one, and the rest
+  of the album never came round. Tapping a song and then queuing others still
+  repeats just those.
+
 ### Fixed
 - Rediscover Mix and Heavy Rotation sync for every user on a server, not only
   the first to sync them. They were made under the same id for everyone, and

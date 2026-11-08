@@ -254,7 +254,7 @@ final class CarPlayBrowser: NSObject {
                     )
                     if let first = tracks.first { self.loadArtwork(for: first, into: item) }
                     item.handler = { [weak self] _, completion in
-                        self?.play(tracks, startingAt: 0)
+                        self?.play(tracks, startingAt: 0, repeatsWhole: true)
                         completion()
                     }
                     return item
@@ -363,7 +363,8 @@ final class CarPlayBrowser: NSObject {
 
     // MARK: - Playing
 
-    private func play(_ items: [MusicItem], startingAt index: Int, shuffled: Bool = false) {
+    /// `repeatsWhole`: a whole album or playlist, not a song in it (`LibraryStore.play`).
+    private func play(_ items: [MusicItem], startingAt index: Int, shuffled: Bool = false, repeatsWhole: Bool = false) {
         guard let client else { return }
         let mapped = MeletePlaybackBridge.playableTracks(from: items, client: client)
         guard !mapped.tracks.isEmpty else { return }
@@ -372,7 +373,9 @@ final class CarPlayBrowser: NSObject {
         // whatever kind of list it was. The phone knows it was an album; the car
         // knows the listener was driving, and that is the more interesting fact.
         PlaybackContext.attributing(.carplay) {
-            PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
+            PlaybackEngine.shared.play(
+                mapped.tracks, startingAt: start, shuffled: shuffled, repeatsWhole: repeatsWhole
+            )
         }
         SoundBoundsSync.shared.prefetch(ids: PlaybackEngine.shared.queue.entries.map(\.track.id))
         CarPlayNowPlaying.shared.present()
@@ -383,7 +386,7 @@ final class CarPlayBrowser: NSObject {
         guard let playlists else { return }
         let contents = await playlists.contents(of: list)
         guard !contents.playbackOrder.isEmpty else { return }
-        play(contents.playbackOrder, startingAt: 0)
+        play(contents.playbackOrder, startingAt: 0, repeatsWhole: true)
         remember(RecentContext(
             kind: .localPlaylist, id: list.id, name: list.name,
             subtitle: list.isSmart ? "Smart playlist" : nil,
@@ -397,7 +400,7 @@ final class CarPlayBrowser: NSObject {
         }
         let wanted = await TasteStore.shared.withoutNotInterested(songs)
         guard !wanted.isEmpty else { return }
-        play(wanted, startingAt: 0)
+        play(wanted, startingAt: 0, repeatsWhole: true)
     }
 
     /// The same resume the phone's Home does.

@@ -456,11 +456,16 @@ final class LibraryStore {
     /// `source` names where the listener started this from, and is written onto every
     /// play event the queue produces. It defaults to `.unknown` rather than to a
     /// plausible value: a recap built on a guess is wrong in a way nobody can spot.
+    ///
+    /// `repeatsWhole` is for an album's or playlist's own Play and Shuffle: with
+    /// repeat on, all of it loops, songs queued by hand included. A tapped song
+    /// leaves it false, and repeat loops that song and the ones queued by hand.
     func play(
         _ items: [MusicItem],
         startingAt index: Int = 0,
         shuffled: Bool = false,
-        from source: PlaySource = .unknown
+        from source: PlaySource = .unknown,
+        repeatsWhole: Bool = false
     ) {
         // `index` addresses `items`, but the bridge drops anything that isn't
         // playable — a list can hold non-audio entries. Clamping the
@@ -471,7 +476,9 @@ final class LibraryStore {
         guard !mapped.tracks.isEmpty else { return }
         let start = mapped.sourceIndices.firstIndex { $0 >= index } ?? (mapped.tracks.count - 1)
         PlaybackContext.attributing(source) {
-            PlaybackEngine.shared.play(mapped.tracks, startingAt: start, shuffled: shuffled)
+            PlaybackEngine.shared.play(
+                mapped.tracks, startingAt: start, shuffled: shuffled, repeatsWhole: repeatsWhole
+            )
             queueDidChange()
         }
     }
