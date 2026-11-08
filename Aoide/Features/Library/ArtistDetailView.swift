@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// The records go under Albums, Singles & EPs, Live and Compilations by the
 /// release types Melete has from MusicBrainz (`ReleaseKind`), as its web shows
-/// them. With Albums alone there's no heading.
+/// them.
 struct ArtistDetailView: View {
     let artist: MusicItem
 
@@ -32,8 +32,6 @@ struct ArtistDetailView: View {
                 } else if albums.isEmpty {
                     ContentUnavailableView("No Albums", systemImage: "square.stack")
                         .padding(.top, 40)
-                } else if kinds.count == 1, kinds[0].kind == .albums {
-                    AlbumGrid(albums: albums).pageMargin()
                 } else {
                     ForEach(kinds, id: \.kind) { group in
                         section(group.kind.title, group.albums)

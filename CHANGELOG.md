@@ -23,7 +23,7 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 - An artist's page sorts their records under Albums, Singles & EPs, Live and
   Compilations by the release types Melete has from MusicBrainz (Melete
   0.8), as Melete's web does. An album not matched to MusicBrainz is still
-  sorted by its length, as before. With albums alone there's no heading.
+  sorted by its length, as before.
 - Repeat after Play or Shuffle on an album, playlist, mix or artist loops all
   of it, songs you queued with Play Next or Play Last included. Before, a
   queued song made repeat loop only the first song and that one, and the rest
