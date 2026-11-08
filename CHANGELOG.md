@@ -10,6 +10,12 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 ## [Unreleased]
 
 ### Fixed
+- Rediscover Mix and Heavy Rotation sync for every user on a server, not only
+  the first to sync them. They were made under the same id for everyone, and
+  Melete gives each playlist id one owner, so every other user's were refused
+  (Melete#324). Each user's are now their own. On the first sync after the
+  update, the old ones are moved over, keeping a name or rules you changed,
+  and one you deleted stays deleted.
 - The Play button on album, playlist and artist pages is centred again, with
   its play icon. In those pages' lists the icon took the button's own colour,
   so it vanished but kept its space and pushed "Play" to the right.
