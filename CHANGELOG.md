@@ -16,6 +16,9 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
   (Melete#324). Each user's are now their own. On the first sync after the
   update, the old ones are moved over, keeping a name or rules you changed,
   and one you deleted stays deleted.
+- The Play button on album, playlist and artist pages is centred again, with
+  its play icon. In those pages' lists the icon took the button's own colour,
+  so it vanished but kept its space and pushed "Play" to the right.
 
 ## [1.7 (9)] - 2026-11-06
 

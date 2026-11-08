@@ -41,10 +41,17 @@ struct DetailActionRow: View {
             .accessibilityLabel(leadingLabel)
 
             Button(action: onPlay) {
-                Label("Play", systemImage: "play.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: height)
+                // An icon and text rather than a `Label`: in a `List` row (the
+                // album and playlist pages) a Label's icon takes the accent tint,
+                // the capsule's own colour, and vanished while keeping its width,
+                // which pushed "Play" off centre.
+                HStack(spacing: 7) {
+                    Image(systemName: "play.fill").accessibilityHidden(true)
+                    Text("Play")
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
             }
             .buttonStyle(.borderedProminent)
             .clipShape(.capsule)
