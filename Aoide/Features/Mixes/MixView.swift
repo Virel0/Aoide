@@ -106,7 +106,7 @@ struct MixView: View {
     private var actions: some View {
         HStack(spacing: 12) {
             Button {
-                library.play(tracks, from: .smart)
+                library.play(tracks, from: .smart, repeatsWhole: true)
             } label: {
                 Label("Play \(tracks.count)", systemImage: "play.fill")
             }

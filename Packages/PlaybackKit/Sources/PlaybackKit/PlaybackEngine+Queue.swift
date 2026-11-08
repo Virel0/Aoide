@@ -5,14 +5,17 @@ import Foundation
 // MARK: - Loading
 
 extension PlaybackEngine {
-    /// Replaces the queue and starts playing.
-    public func play(_ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false) {
+    /// Replaces the queue and starts playing. `repeatsWhole`: a whole album or
+    /// playlist was started, not a song in it (`PlayQueue.load`).
+    public func play(
+        _ tracks: [Track], startingAt index: Int = 0, shuffled: Bool = false, repeatsWhole: Bool = false
+    ) {
         guard !tracks.isEmpty else { return }
         stopReportingCurrent()
         // A fresh queue gets a fresh chance for anything that failed before — the
         // failure may well have been a passing network problem.
         forgetLoadFailures()
-        queue.load(tracks, startingAt: index, shuffled: shuffled)
+        queue.load(tracks, startingAt: index, shuffled: shuffled, repeatsWhole: repeatsWhole)
         beginCurrentTrack(autoplay: true)
     }
 

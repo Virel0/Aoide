@@ -284,10 +284,13 @@ struct DownloadedCollectionView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Play", systemImage: "play.fill") {
-                        store.play(tracks, from: collection.kind == .album ? .album : .playlist)
+                        store.play(tracks, from: collection.kind == .album ? .album : .playlist, repeatsWhole: true)
                     }
                     Button("Shuffle", systemImage: "shuffle") {
-                        store.play(tracks, shuffled: true, from: collection.kind == .album ? .album : .playlist)
+                        store.play(
+                            tracks, shuffled: true, from: collection.kind == .album ? .album : .playlist,
+                            repeatsWhole: true
+                        )
                     }
                     Divider()
                     Button("Remove Download", systemImage: "trash", role: .destructive) {

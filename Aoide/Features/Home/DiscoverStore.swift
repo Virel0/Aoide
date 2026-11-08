@@ -102,13 +102,13 @@ struct DiscoverView: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        library.play(tracks, from: .smart)
+                        library.play(tracks, from: .smart, repeatsWhole: true)
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     Button {
-                        library.play(tracks, shuffled: true, from: .smart)
+                        library.play(tracks, shuffled: true, from: .smart, repeatsWhole: true)
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }

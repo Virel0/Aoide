@@ -230,8 +230,11 @@ struct LocalPlaylistDetailView: View {
                 trailingLabel: current.isSmart ? "Edit Rules" : "Edit Details",
                 trailingFills: false,
                 isEnabled: !contents.playbackOrder.isEmpty,
-                onLeading: { library.play(contents.playbackOrder, shuffled: true, from: playSource); remember() },
-                onPlay: { library.play(contents.playbackOrder, from: playSource); remember() },
+                onLeading: {
+                    library.play(contents.playbackOrder, shuffled: true, from: playSource, repeatsWhole: true)
+                    remember()
+                },
+                onPlay: { library.play(contents.playbackOrder, from: playSource, repeatsWhole: true); remember() },
                 onTrailing: { if current.isSmart { isEditingRules = true } else { isEditingDetails = true } }
             )
             .padding(.top, 6)

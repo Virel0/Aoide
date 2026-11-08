@@ -134,7 +134,7 @@ struct ResumeGrid: View {
         switch context.kind {
         case .album:
             guard let tracks = try? await store.tracks(inAlbum: context.id) else { return }
-            store.play(tracks, from: .album)
+            store.play(tracks, from: .album, repeatsWhole: true)
         case .jellyfinPlaylist:
             // A playlist on the Jellyfin server Melete replaced: nothing to play.
             recents.forget(context)
@@ -145,7 +145,7 @@ struct ResumeGrid: View {
                 return
             }
             let contents = await playlists.contents(of: playlist)
-            store.play(contents.playbackOrder, from: playlist.isSmart ? .smart : .playlist)
+            store.play(contents.playbackOrder, from: playlist.isSmart ? .smart : .playlist, repeatsWhole: true)
         case .station:
             await store.startStation(seededById: context.id, named: context.name, artworkItemId: context.artworkItemId)
         }

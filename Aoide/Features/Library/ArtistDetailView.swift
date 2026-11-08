@@ -147,7 +147,7 @@ struct ArtistDetailView: View {
             everything += tracks
         }
         guard !everything.isEmpty else { return }
-        store.play(everything, shuffled: shuffled)
+        store.play(everything, shuffled: shuffled, repeatsWhole: true)
     }
 
     private func load() async {

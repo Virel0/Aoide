@@ -253,8 +253,11 @@ struct TrackListView: View {
             isEnabled: !tracks.isEmpty,
             // Shuffle is still the album: it says how these tracks are being
             // played, not where they came from.
-            onLeading: { store.play(tracks, shuffled: true, from: source.playSource); remember() },
-            onPlay: { store.play(tracks, from: source.playSource); remember() },
+            onLeading: {
+                store.play(tracks, shuffled: true, from: source.playSource, repeatsWhole: true)
+                remember()
+            },
+            onPlay: { store.play(tracks, from: source.playSource, repeatsWhole: true); remember() },
             onTrailing: {
                 // Drive from local intent and adopt what the server confirms, so a
                 // second tap never re-sends the value of a stale snapshot.
