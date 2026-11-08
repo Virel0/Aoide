@@ -159,6 +159,15 @@ extension MeleteClient {
         return url(path: "api/v1/music/albums/\(albumId)/cover", query: size ?? [])
     }
 
+    /// A picture Melete gave by its path here (a request result's `poster`), at
+    /// least `maxWidth` wide where it makes one that size. Fetching it needs
+    /// ``authorization``. Nil for anything but a path under this server's API.
+    public func posterURL(_ path: String, maxWidth: Int) -> URL? {
+        guard path.hasPrefix("/api/v1/"), !path.contains("?"), !path.contains("..") else { return nil }
+        let size = Self.coverSize(forWidth: maxWidth).map { [URLQueryItem(name: "size", value: String($0))] }
+        return url(path: path, query: size ?? [])
+    }
+
     /// The album a cover from ``artworkURL(itemId:tag:maxWidth:)`` belongs to:
     /// what the player knows of a track's album is its cover's address.
     public func albumId(fromArtworkURL url: URL) -> String? {
