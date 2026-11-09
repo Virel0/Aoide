@@ -232,6 +232,11 @@ final class LibraryStore {
         try await client.albums(byArtist: artistId)
     }
 
+    /// An artist as their page shows them, portrait included, with their albums.
+    func artistPage(id: String) async throws -> (artist: MusicItem, albums: [MusicItem]) {
+        try await client.artistPage(id: id)
+    }
+
     // MARK: - Paged lists
 
     /// A fresh paged list is built per sort order rather than re-sorting in memory,

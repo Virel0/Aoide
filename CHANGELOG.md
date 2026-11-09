@@ -9,6 +9,13 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Artists' pictures: an artist's portrait on their page, in the Artists
+  list, Search, Home's shelves and CarPlay. It's the picture in their folder
+  (artist.jpg or folder.jpg), else, with artist portraits switched on in
+  Melete, one from Wikimedia Commons, shown on their page with its
+  photographer and licence. Needs Melete 0.9.
+
 ## [1.8 (10)] - 2026-11-08
 
 ### Added

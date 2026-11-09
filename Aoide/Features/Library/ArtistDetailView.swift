@@ -1,7 +1,12 @@
 import MeleteKit
 import SwiftUI
 
-/// An artist page: hero artwork, transport, then their records.
+/// An artist page: their portrait, transport, then their records.
+///
+/// The portrait is what Melete has for them: a picture in their folder, else
+/// one from Wikimedia Commons, shown with its author and licence as the licence
+/// asks. The page asks for the artist afresh, so it has the portrait even when
+/// it was opened from a song's artist, which doesn't carry one.
 ///
 /// The records go under Albums, Singles & EPs, Live and Compilations by the
 /// release types Melete has from MusicBrainz (`ReleaseKind`), as its web shows
@@ -17,6 +22,11 @@ struct ArtistDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var palette: ArtworkPalette?
+    /// The artist as their page answered, with their portrait; the one opened
+    /// until then.
+    @State private var loaded: MusicItem?
+
+    private var shown: MusicItem { loaded ?? artist }
 
     private var kinds: [(kind: ReleaseKind, albums: [MusicItem])] { ReleaseKind.grouped(albums) }
 
@@ -46,8 +56,8 @@ struct ArtistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .task { await loadFinishRate() }
-        .task(id: artist.id) {
-            guard let url = store.artworkURL(for: artist, width: Design.ArtworkWidth.card) else { return }
+        .task(id: shown.portrait ?? artist.id) {
+            guard let url = store.artworkURL(for: shown, width: Design.ArtworkWidth.card) else { return }
             palette = await ArtworkColorExtractor.shared.palette(for: url)
         }
     }
@@ -55,11 +65,15 @@ struct ArtistDetailView: View {
     private var header: some View {
         VStack(spacing: 14) {
             ArtworkView(
-                url: store.artworkURL(for: artist, width: Design.ArtworkWidth.hero),
+                url: store.artworkURL(for: shown, width: Design.ArtworkWidth.hero),
                 cornerRadius: Design.Radius.round
             )
             .frame(width: 180, height: 180)
             .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+
+            if shown.portrait != nil, let credit = shown.portraitCredit {
+                PosterCreditLine(credit: credit)
+            }
 
             Text(artist.name)
                 .font(.title2.weight(.bold))
@@ -150,7 +164,9 @@ struct ArtistDetailView: View {
         isLoading = true
         errorMessage = nil
         do {
-            albums = try await store.albums(byArtist: artist.id)
+            let page = try await store.artistPage(id: artist.id)
+            loaded = page.artist
+            albums = page.albums
         } catch {
             errorMessage = (error as? MeleteError)?.errorDescription ?? error.localizedDescription
         }
