@@ -178,9 +178,13 @@ extension MeleteClient {
         return parts[parts.count - 2]
     }
 
-    /// The cover that stands for an item: an album's own, a track's album's.
+    /// The picture that stands for an item: an album's own cover, a track's
+    /// album's, an artist's portrait.
     public func artworkURL(for item: MusicItem, maxWidth: Int) -> URL? {
-        item.coverAlbumId.map { artworkURL(itemId: $0, maxWidth: maxWidth) }
+        if item.type == .musicArtist {
+            return item.portrait.flatMap { posterURL($0, maxWidth: maxWidth) }
+        }
+        return item.coverAlbumId.map { artworkURL(itemId: $0, maxWidth: maxWidth) }
     }
 
     /// Whether `url` is one of this server's, so a request to it may carry the

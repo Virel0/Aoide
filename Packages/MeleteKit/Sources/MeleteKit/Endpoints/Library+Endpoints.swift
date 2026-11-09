@@ -62,12 +62,14 @@ extension MeleteClient {
 
     /// An artist's own albums, then the ones they appear on.
     public func albums(byArtist artistId: String) async throws -> [MusicItem] {
-        struct Detail: Decodable {
-            let albumList: [WireAlbum]
-            let appearsOnList: [WireAlbum]
-        }
-        let detail: Detail = try await get(path: "api/v1/music/artists/\(artistId)")
-        return (detail.albumList + detail.appearsOnList).map(\.item)
+        try await artistPage(id: artistId).albums
+    }
+
+    /// An artist as their page shows them (with their portrait), and their own
+    /// albums, then the ones they appear on.
+    public func artistPage(id: String) async throws -> (artist: MusicItem, albums: [MusicItem]) {
+        let detail: WireArtistDetail = try await get(path: "api/v1/music/artists/\(id)")
+        return (detail.artist.item, (detail.albumList + detail.appearsOnList).map(\.item))
     }
 
     /// One artist.

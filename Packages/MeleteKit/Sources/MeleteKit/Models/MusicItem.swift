@@ -61,6 +61,14 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
     /// An album's kind of release, for its artist's page; nil for what isn't an
     /// album, and in the downloads' list saved before it was read.
     public var releaseKind: ReleaseKind?
+    /// An artist's portrait, as the path the server gave (`/api/v1/music/
+    /// artists/{id}/portrait`): a picture in their folder, else one from
+    /// Wikimedia Commons. Nil for what isn't an artist, one without, a server
+    /// older than portraits, and the downloads' list saved before it was read.
+    public var portrait: String?
+    /// A Commons portrait's author and licence, to show with it; nil for a
+    /// picture of the artist's own.
+    public var portraitCredit: PosterCredit?
 
     public init(
         id: String,
@@ -83,7 +91,9 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         isrc: String? = nil,
         motionCover: String? = nil,
         palette: [String]? = nil,
-        releaseKind: ReleaseKind? = nil
+        releaseKind: ReleaseKind? = nil,
+        portrait: String? = nil,
+        portraitCredit: PosterCredit? = nil
     ) {
         self.id = id
         self.name = name
@@ -106,6 +116,8 @@ public struct MusicItem: Codable, Hashable, Identifiable, Sendable {
         self.motionCover = motionCover
         self.palette = palette
         self.releaseKind = releaseKind
+        self.portrait = portrait
+        self.portraitCredit = portraitCredit
     }
 
     /// The length in whole milliseconds, as the local store keeps it.
@@ -274,9 +286,34 @@ struct WireArtist: Decodable {
     let id: Int64
     let name: String
     let albums: Int
+    /// Melete 0.9 on; nil from an older server.
+    let portrait: String?
+    let portraitCredit: PosterCredit?
 
     var item: MusicItem {
-        MusicItem(id: String(id), name: name, type: .musicArtist, childCount: albums)
+        MusicItem(
+            id: String(id), name: name, type: .musicArtist, childCount: albums,
+            portrait: portrait, portraitCredit: portrait == nil ? nil : portraitCredit
+        )
+    }
+}
+
+/// `MusicArtistDetail`: the artist, with their albums and the ones they
+/// appear on.
+struct WireArtistDetail: Decodable {
+    let artist: WireArtist
+    let albumList: [WireAlbum]
+    let appearsOnList: [WireAlbum]
+
+    private enum CodingKeys: String, CodingKey {
+        case albumList, appearsOnList
+    }
+
+    init(from decoder: any Decoder) throws {
+        artist = try WireArtist(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        albumList = try container.decode([WireAlbum].self, forKey: .albumList)
+        appearsOnList = try container.decode([WireAlbum].self, forKey: .appearsOnList)
     }
 }
 

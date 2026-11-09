@@ -63,9 +63,11 @@ public struct RequestCandidate: Decodable, Equatable, Hashable, Sendable {
     }
 }
 
-/// An artist's portrait's author and licence, from Wikimedia Commons. Its
-/// licence (CC BY-SA and the like) asks that both are shown with it.
-public struct PosterCredit: Decodable, Equatable, Hashable, Sendable {
+/// An artist's portrait's author and licence, from Wikimedia Commons, on a
+/// request search's result (`poster_credit`) or a library artist
+/// (`portrait_credit`). Its licence (CC BY-SA and the like) asks that both are
+/// shown with it.
+public struct PosterCredit: Codable, Equatable, Hashable, Sendable {
     public let author: String?
     /// The licence's short name, such as "CC BY-SA 4.0".
     public let licence: String?
