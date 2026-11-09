@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.9 (11)] - 2026-11-09
+
 ### Added
 - Artists' pictures: an artist's portrait on their page, in the Artists
   list, Search, Home's shelves and CarPlay. It's the picture in their folder
