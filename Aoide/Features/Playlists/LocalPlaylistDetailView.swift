@@ -62,8 +62,9 @@ struct LocalPlaylistDetailView: View {
                 emptyState
                     .listRowSeparator(.hidden)
             } else {
-                ForEach(contents.tracks) { track in
-                    row(track)
+                // Songs waiting to arrive hold their place, so they're counted too.
+                ForEach(Array(contents.tracks.enumerated()), id: \.element.id) { index, track in
+                    row(track, position: index + 1)
                 }
                 // Reordering is a property of a hand-made playlist. A smart playlist's
                 // order comes from its sort rule, so a drag here would be undone the next
@@ -129,9 +130,10 @@ struct LocalPlaylistDetailView: View {
 
     // MARK: - Rows
 
-    private func row(_ track: PlaylistTrack) -> some View {
+    private func row(_ track: PlaylistTrack, position: Int) -> some View {
         PlaylistRowView(
             track: track,
+            position: position,
             artworkURL: track.item.flatMap {
                 library.artworkURL(for: $0, width: Design.ArtworkWidth.thumbnail)
             },
@@ -490,11 +492,23 @@ struct LocalPlaylistDetailView: View {
 /// when tapped.
 struct PlaylistRowView: View {
     let track: PlaylistTrack
+    /// The song's place in the playlist, counted from 1.
+    var position: Int?
     let artworkURL: URL?
     var isCurrent = false
 
     var body: some View {
         HStack(spacing: 12) {
+            if let position {
+                Text("\(position)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: 28, alignment: .center)
+                    .accessibilityHidden(true)
+            }
+
             ArtworkView(url: artworkURL, cornerRadius: Design.Radius.thumbnail)
                 .frame(width: 44, height: 44)
                 .opacity(track.isPlayable ? 1 : 0.4)
