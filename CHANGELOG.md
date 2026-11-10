@@ -9,6 +9,10 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- A playlist numbers its songs: each one's place in the list, before its
+  cover, songs still waiting to arrive included.
+
 ## [1.9 (11)] - 2026-11-09
 
 ### Added
