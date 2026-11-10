@@ -32,6 +32,17 @@ extension MeleteClient {
         )
     }
 
+    // MARK: - For You
+
+    /// This listener's For You list, at most `limit` songs (1 to 100). Throws
+    /// ``MeleteError/notFound(path:)`` from a server before For You.
+    public func forYou(limit: Int = 40) async throws -> ForYou {
+        let wire: WireForYou = try await get(path: "api/v1/music/for-you", query: [
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return wire.forYou
+    }
+
     // MARK: - Likes
 
     /// The tracks the signed-in user likes, newest like first; a liked track gone

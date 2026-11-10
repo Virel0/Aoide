@@ -17,6 +17,13 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 - Hold a Home tile for Play Next and Play Last, beside Remove from Recents.
 - A playlist numbers its songs: each one's place in the list, before its
   cover, songs still waiting to arrive included.
+- A For You shelf on Home: songs suggested from what you finished lately,
+  each saying "Because you listened to" the song or artist it came from. One
+  in the library plays on a tap, followed by the shelf's other songs, and
+  holds Play Next, Play Last and the taste flags; one the library doesn't
+  have has Ask, as in Search, and shows Asked For once asked. Pull to refresh
+  fetches it again. The shelf stays hidden until the list is ready. Needs
+  Melete with For You and ListenBrainz turned on.
 
 ### Fixed
 - "Pick up from …" on Home shows the cover of the song the other device was
