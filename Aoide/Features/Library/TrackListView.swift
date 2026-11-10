@@ -123,7 +123,7 @@ struct TrackListView: View {
         .contentShape(.rect)
         .onTapGesture {
             store.play(tracks, startingAt: index, from: source.playSource)
-            remember()
+            remember(song: track)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -271,6 +271,20 @@ struct TrackListView: View {
             }
         )
         .padding(.top, 6)
+    }
+
+    /// A song picked from this page, as a thing Home can offer to resume: the
+    /// song, not the whole album, since that's what was chosen.
+    private func remember(song track: MusicItem) {
+        let albumId: String
+        switch source {
+        case .album(let id): albumId = id
+        }
+        store.remember(RecentContext(
+            kind: .song, id: track.id, name: track.name,
+            subtitle: track.subtitle.isEmpty ? title : track.subtitle,
+            artworkItemId: artworkItem.id, albumId: albumId, lastOpened: Date().millis
+        ))
     }
 
     /// This page as a thing Home can offer to resume.

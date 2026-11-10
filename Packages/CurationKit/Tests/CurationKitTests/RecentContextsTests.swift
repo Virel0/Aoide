@@ -26,6 +26,30 @@ struct RecentContextsTests {
         #expect(list.contexts.count == 2)
     }
 
+    @Test("an album and a song picked from it share one place, the latest one's")
+    func songsOfAnAlbum() {
+        var list = RecentContextList()
+        list.remember(album("a", at: 1))
+        list.remember(RecentContext(kind: .song, id: "s1", name: "Lantern", albumId: "a", lastOpened: 2))
+        #expect(list.contexts.map(\.key) == ["song:s1"])
+        list.remember(RecentContext(kind: .song, id: "s2", name: "Saltwater", albumId: "a", lastOpened: 3))
+        list.remember(RecentContext(kind: .song, id: "s9", name: "Elsewhere", albumId: "b", lastOpened: 4))
+        #expect(list.contexts.map(\.key) == ["song:s9", "song:s2"])
+        list.remember(album("a", at: 5))
+        #expect(list.contexts.map(\.key) == ["album:a", "song:s9"])
+        // A song whose album isn't known stands alone.
+        list.remember(RecentContext(kind: .song, id: "s0", name: "Loose", lastOpened: 6))
+        #expect(list.contexts.count == 3)
+    }
+
+    @Test("a list saved before songs and their albums were kept still reads")
+    func olderSave() throws {
+        let saved = Data(#"{"contexts":[{"kind":"album","id":"a","name":"Album a","lastOpened":1}]}"#.utf8)
+        let list = try JSONDecoder().decode(RecentContextList.self, from: saved)
+        #expect(list.contexts.first?.albumId == nil)
+        #expect(list.contexts.first?.kind == .album)
+    }
+
     @Test("bounded, dropping the oldest")
     func capacity() {
         var list = RecentContextList()

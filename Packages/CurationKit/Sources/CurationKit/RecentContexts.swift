@@ -1,7 +1,8 @@
 import Foundation
 
 /// Something a listener was *in*: an album, a playlist, a station — the things a
-/// session starts from, as opposed to the songs it contains.
+/// session starts from — or a song picked out of an album, which is what was
+/// chosen when it wasn't the whole album.
 ///
 /// Kept so Home can open on the last few of them and resume any in one tap. The
 /// brief this follows is blunt about it: most sessions should start in one tap,
@@ -14,6 +15,8 @@ public struct RecentContext: Codable, Hashable, Sendable, Identifiable {
         case jellyfinPlaylist
         case localPlaylist
         case station
+        /// One song chosen from an album's list; resumed from that song on.
+        case song
     }
 
     public var kind: Kind
@@ -24,18 +27,34 @@ public struct RecentContext: Codable, Hashable, Sendable, Identifiable {
     /// An item whose cover stands for this context, if any.
     public var artworkItemId: String?
     public var lastOpened: Millis
+    /// A song's album, which it is resumed in. Nil for every other kind.
+    public var albumId: String?
 
-    public init(kind: Kind, id: String, name: String, subtitle: String? = nil, artworkItemId: String? = nil, lastOpened: Millis) {
+    public init(
+        kind: Kind, id: String, name: String, subtitle: String? = nil, artworkItemId: String? = nil,
+        albumId: String? = nil, lastOpened: Millis
+    ) {
         self.kind = kind
         self.id = id
         self.name = name
         self.subtitle = subtitle
         self.artworkItemId = artworkItemId
+        self.albumId = albumId
         self.lastOpened = lastOpened
     }
 
     /// One entry per thing, whatever its name is today.
     public var key: String { "\(kind.rawValue):\(id)" }
+
+    /// The album this stands for, an album's own id or a song's album: one album
+    /// is one tile, whether it was last played whole or from one of its songs.
+    var album: String? {
+        switch kind {
+        case .album: id
+        case .song: albumId
+        case .jellyfinPlaylist, .localPlaylist, .station: nil
+        }
+    }
 }
 
 /// The recent contexts, newest first, one per thing, bounded.
@@ -51,9 +70,10 @@ public struct RecentContextList: Codable, Equatable, Sendable {
     }
 
     /// Records a visit. The same thing opened again moves to the front and takes
-    /// the new name and artwork; nothing is ever listed twice.
+    /// the new name and artwork; nothing is ever listed twice. An album played
+    /// whole replaces a song of it played before, and the other way round.
     public mutating func remember(_ context: RecentContext) {
-        contexts.removeAll { $0.key == context.key }
+        contexts.removeAll { $0.key == context.key || (context.album != nil && $0.album == context.album) }
         contexts.insert(context, at: 0)
         if contexts.count > Self.capacity {
             contexts.removeLast(contexts.count - Self.capacity)

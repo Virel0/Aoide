@@ -10,8 +10,17 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 ## [Unreleased]
 
 ### Added
+- Home's top tiles show what you last played: tapping one song on an album
+  page makes a tile for that song (its name and artist), and the tile plays
+  from that song through the rest of the album. Playing the album whole
+  makes it the album's tile again; one album never takes two tiles.
+- Hold a Home tile for Play Next and Play Last, beside Remove from Recents.
 - A playlist numbers its songs: each one's place in the list, before its
   cover, songs still waiting to arrive included.
+
+### Fixed
+- "Pick up from …" on Home shows the cover of the song the other device was
+  on; it asked for an album's cover by the song's id and never had one.
 
 ## [1.9 (11)] - 2026-11-09
 
