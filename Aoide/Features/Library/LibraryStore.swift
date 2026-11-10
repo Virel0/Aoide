@@ -327,6 +327,21 @@ final class LibraryStore {
         if next { playNext(tracks, from: .album) } else { addToQueue(tracks, from: .album) }
     }
 
+    /// A song picked from an album, played again as it was: from that song on
+    /// through the rest of its album. Just the song when the album can't be read
+    /// or no longer has it. False when there was nothing to play.
+    @discardableResult
+    func playSong(_ id: String, inAlbum albumId: String?) async -> Bool {
+        if let albumId, let tracks = try? await tracks(inAlbum: albumId),
+           let index = tracks.firstIndex(where: { $0.id == id }) {
+            play(tracks, startingAt: index, from: .album)
+            return true
+        }
+        guard let song = try? await items(ids: [id]).first else { return false }
+        play([song], from: .album)
+        return true
+    }
+
     /// Shuffle the whole library.
     ///
     /// Samples the library at random places rather than fetching everything and

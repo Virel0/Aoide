@@ -153,6 +153,7 @@ final class CarPlayBrowser: NSObject {
         case .album: "Album"
         case .jellyfinPlaylist, .localPlaylist: "Playlist"
         case .station: "Station"
+        case .song: "Song"
         }
     }
 
@@ -427,6 +428,15 @@ final class CarPlayBrowser: NSObject {
             let mix = (try? await Station.tracks(seed: context.id, client: client)) ?? []
             guard !mix.isEmpty else { return }
             play(mix, startingAt: 0)
+        case .song:
+            if let albumId = context.albumId, let tracks = try? await client.tracks(inAlbum: albumId),
+               let index = tracks.firstIndex(where: { $0.id == context.id }) {
+                play(tracks, startingAt: index)
+            } else if let song = try? await client.items(ids: [context.id]).first {
+                play([song], startingAt: 0)
+            } else {
+                return
+            }
         }
         remember(context)
     }

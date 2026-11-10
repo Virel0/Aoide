@@ -15,6 +15,9 @@ struct ResumeGrid: View {
     @State private var recents = RecentContextStore.shared
     @State private var sync = SyncCoordinator.shared
     @State private var handoff: QueueState?
+    /// The album of the song the other device was on, whose cover the Pick up
+    /// tile draws: covers belong to albums, and the queue names only songs.
+    @State private var handoffAlbum: String?
     @State private var isResuming = false
 
     private static let tiles = 6
@@ -31,7 +34,7 @@ struct ResumeGrid: View {
                         tile(
                             name: "Pick up from \(handoff.deviceName)",
                             detail: "\(handoff.trackIdList.count) tracks",
-                            artworkId: handoff.trackIdList.indices.contains(handoff.position) ? handoff.trackIdList[handoff.position] : nil,
+                            artworkId: handoffAlbum,
                             symbol: "arrow.down.left.circle.fill"
                         ) { Task { await pickUp(handoff) } }
                     }
@@ -43,6 +46,15 @@ struct ResumeGrid: View {
                             Task { await resume(context) }
                         }
                         .contextMenu {
+                            if queueable(context) {
+                                Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                                    Task { await queue(context, next: true) }
+                                }
+                                Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                                    Task { await queue(context, next: false) }
+                                }
+                                Divider()
+                            }
                             Button("Remove from Recents", systemImage: "xmark.circle") { recents.forget(context) }
                         }
                     }
@@ -103,6 +115,7 @@ struct ResumeGrid: View {
         case .album: "Album"
         case .jellyfinPlaylist, .localPlaylist: "Playlist"
         case .station: "Station"
+        case .song: "Song"
         }
     }
 
@@ -111,6 +124,7 @@ struct ResumeGrid: View {
         case .album: "square.stack"
         case .jellyfinPlaylist, .localPlaylist: "music.note.list"
         case .station: "dot.radiowaves.left.and.right"
+        case .song: "music.note"
         }
     }
 
@@ -123,9 +137,45 @@ struct ResumeGrid: View {
         // the phone's own last album is the better first tile.
         if let found, found.updatedAt > (recents.list.contexts.first?.lastOpened ?? 0) {
             handoff = found
+            let current = found.trackIdList.indices.contains(found.position) ? found.trackIdList[found.position] : nil
+            if let current, let song = try? await store.items(ids: [current]).first {
+                handoffAlbum = song.coverAlbumId
+            } else {
+                handoffAlbum = nil
+            }
         } else {
             handoff = nil
+            handoffAlbum = nil
         }
+    }
+
+    /// Whether a tile's songs can be put in the queue: a station is endless and
+    /// a Jellyfin playlist is gone.
+    private func queueable(_ context: RecentContext) -> Bool {
+        switch context.kind {
+        case .album, .localPlaylist, .song: true
+        case .jellyfinPlaylist, .station: false
+        }
+    }
+
+    /// A tile's songs after the playing one, or at the end of the queue.
+    private func queue(_ context: RecentContext, next: Bool) async {
+        let songs: [MusicItem]
+        let source: PlaySource
+        switch context.kind {
+        case .album:
+            guard let tracks = try? await store.tracks(inAlbum: context.id) else { return }
+            (songs, source) = (tracks, .album)
+        case .song:
+            guard let song = try? await store.items(ids: [context.id]).first else { return }
+            (songs, source) = ([song], .album)
+        case .localPlaylist:
+            guard let playlist = playlists.playlists.first(where: { $0.id == context.id }) else { return }
+            (songs, source) = (await playlists.contents(of: playlist).playbackOrder, playlist.isSmart ? .smart : .playlist)
+        case .jellyfinPlaylist, .station:
+            return
+        }
+        if next { store.playNext(songs, from: source) } else { store.addToQueue(songs, from: source) }
     }
 
     private func resume(_ context: RecentContext) async {
@@ -148,11 +198,12 @@ struct ResumeGrid: View {
             store.play(contents.playbackOrder, from: playlist.isSmart ? .smart : .playlist, repeatsWhole: true)
         case .station:
             await store.startStation(seededById: context.id, named: context.name, artworkItemId: context.artworkItemId)
+        case .song:
+            guard await store.playSong(context.id, inAlbum: context.albumId) else { return }
         }
-        recents.remember(RecentContext(
-            kind: context.kind, id: context.id, name: context.name, subtitle: context.subtitle,
-            artworkItemId: context.artworkItemId, lastOpened: Date().millis
-        ))
+        var fresh = context
+        fresh.lastOpened = Date().millis
+        recents.remember(fresh)
     }
 
     /// Plays the other device's queue from where it left off.
