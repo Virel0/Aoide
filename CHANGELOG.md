@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.10 (12)] - 2026-11-09
+
 ### Added
 - Home's top tiles show what you last played: tapping one song on an album
   page makes a tile for that song (its name and artist), and the tile plays
