@@ -198,6 +198,7 @@ final class AppSession {
         MeletePlaybackBridge.disconnect()
         SyncCoordinator.shared.disconnect()
         DiscoverStore.shared.clear()
+        ForYouStore.shared.clear()
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil
@@ -236,6 +237,7 @@ final class AppSession {
         // took to time out, which read as the button doing nothing.
         let departing = client
         DiscoverStore.shared.clear()
+        ForYouStore.shared.clear()
         clearStoredCredentials()
         clearSpotlightIndex()
         client = nil

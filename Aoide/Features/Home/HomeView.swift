@@ -11,6 +11,7 @@ struct HomeView: View {
     @Environment(LibraryStore.self) private var store
     @Environment(AppSession.self) private var session
     @State private var discover = DiscoverStore.shared
+    @State private var forYou = ForYouStore.shared
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,8 @@ struct HomeView: View {
                         HeroCard(album: hero.album, eyebrow: hero.reason)
                     }
 
+                    ForYouShelf()
+
                     shelf("Recently Added", store.recentlyAdded)
                     shelf("Recently Played", store.recentlyPlayed)
                     shelf("Most Played", store.mostPlayed, subtitle: "The last 30 days")
@@ -48,10 +51,22 @@ struct HomeView: View {
             .miniPlayerInset()
             .appBackground()
             .navigationTitle("Home")
-            .refreshable { await store.refresh() }
+            .refreshable {
+                async let library: Void = store.refresh()
+                if let client = session.client {
+                    // Its own task: a refresh's task can be cancelled under it
+                    // (seen in testing), which left the old list showing.
+                    await Task { await forYou.reload(client: client) }.value
+                }
+                await library
+            }
             .task {
                 await store.loadHomeIfNeeded()
-                if let client = session.client { await discover.loadIfNeeded(client: client) }
+                if let client = session.client {
+                    async let picks: Void = forYou.loadIfNeeded(client: client)
+                    await discover.loadIfNeeded(client: client)
+                    await picks
+                }
             }
         }
     }

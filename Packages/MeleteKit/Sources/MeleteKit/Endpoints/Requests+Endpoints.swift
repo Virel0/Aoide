@@ -24,6 +24,16 @@ extension MeleteClient {
         case .album: body["mb_release_group_id"] = candidate.mbReleaseGroupId
         case .song, .other: body["mb_recording_id"] = candidate.mbRecordingId
         }
+        return try await ask(body)
+    }
+
+    /// Asks for a song For You suggested, by its recording, as a search's song is
+    /// asked for. HTTP 409 when it's been asked for already.
+    public func askFor(_ song: ForYouSong) async throws -> MusicRequest {
+        try await ask(["kind": RequestKind.song.rawValue, "mb_recording_id": song.mbRecordingId])
+    }
+
+    private func ask(_ body: [String: String?]) async throws -> MusicRequest {
         let path = "api/v1/requests"
         var request = request("POST", path: path)
         request.httpBody = try JSONEncoder().encode(body)
