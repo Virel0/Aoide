@@ -9,6 +9,8 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+## [1.11 (13)] - 2026-11-12
+
 ### Added
 - Merge into, in a playlist's menu: adds its songs to the end of another of
   your playlists, skipping ones that playlist already has, songs still
