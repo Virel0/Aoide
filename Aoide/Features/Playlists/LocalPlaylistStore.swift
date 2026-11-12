@@ -294,6 +294,17 @@ final class LocalPlaylistStore {
         await reload()
     }
 
+    /// Adds the songs of one playlist that another doesn't have to its end. The source
+    /// is left as it was; `nil` when the merge failed, with the reason in
+    /// `lastErrorMessage`.
+    func merge(_ source: Playlist, into target: Playlist) async -> MergeReport? {
+        let report = await run("merge those playlists") { store in
+            try store.merge(playlist: source.id, into: target.id)
+        }
+        await reload()
+        return report
+    }
+
     func move(_ playlist: Playlist, toFolder folderId: String?) async {
         await run("move that playlist") { store in
             try store.move(playlist: playlist.id, toFolder: folderId)

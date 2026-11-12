@@ -9,6 +9,13 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Added
+- Merge into, in a playlist's menu: adds its songs to the end of another of
+  your playlists, skipping ones that playlist already has, songs still
+  waiting to arrive included. A smart playlist can be merged in, which copies
+  the songs it matches now; smart playlists can't be merged into. You're then
+  asked whether to delete the original; keeping it is the default.
+
 ## [1.10 (12)] - 2026-11-09
 
 ### Added
