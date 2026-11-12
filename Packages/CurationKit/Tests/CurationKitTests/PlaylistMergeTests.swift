@@ -76,6 +76,19 @@ struct PlaylistMergeTests {
         #expect(merged[1].jellyfinId == "a")
     }
 
+    @Test("an unrequested waiting song matches whatever its case and accents")
+    func waitingSongsMatchIgnoringAccents() throws {
+        let store = try store()
+        let source = try store.createPlaylist(name: "Source", now: 1_000)
+        let target = try store.createPlaylist(name: "Target", now: 1_000)
+        try store.addPendingSong(PendingSong(requestId: nil, title: "Déjà Vu", artist: "Beyoncé"), to: source.id, now: 1_000)
+        try store.addPendingSong(PendingSong(requestId: nil, title: "deja vu", artist: "BEYONCE"), to: target.id, now: 1_000)
+
+        let report = try store.merge(playlist: source.id, into: target.id, now: 2_000)
+
+        #expect(report.total == 0)
+    }
+
     @Test("a smart playlist gives the songs its rules match now")
     func smartSourceIsASnapshot() throws {
         let store = try store()

@@ -129,6 +129,12 @@ private struct MergeKeys {
 
     private static func key(_ song: PendingSong) -> String {
         if let requestId = song.requestId { return "request:\(requestId)" }
-        return "song:\(song.title.lowercased())|\((song.artist ?? "").lowercased())"
+        return "song:\(folded(song.title))|\(folded(song.artist ?? ""))"
+    }
+
+    /// Case and accents ignored, so "Beyoncé" and "beyonce" are one artist.
+    private static func folded(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespaces)
     }
 }
