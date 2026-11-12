@@ -26,6 +26,7 @@ struct PlaylistsHomeView: View {
     @State private var isBuildingSmart = false
     @State private var isImportingPlaylist = false
     @State private var errorMessage: String?
+    @State private var mergeOutcome: MergeOutcome?
 
     private enum RenameTarget {
         case playlist(Playlist)
@@ -131,6 +132,9 @@ struct PlaylistsHomeView: View {
             } else {
                 Text("The songs stay in your library. Only the playlist goes.")
             }
+        }
+        .mergeOutcomeDialog($mergeOutcome) { source in
+            Task { await playlists.delete(source) }
         }
         .sheet(isPresented: $isBuildingSmart) {
             // A sheet is an environment boundary, and this one is presented from a
@@ -287,6 +291,7 @@ struct PlaylistsHomeView: View {
         .contextMenu {
             Button("Rename", systemImage: "pencil") { beginRenaming(.playlist(list)) }
             moveMenu(for: list)
+            MergePlaylistMenu(source: list) { mergeOutcome = $0 }
             Divider()
             Button("Delete", systemImage: "trash", role: .destructive) { beginDeleting(.playlist(list)) }
         }

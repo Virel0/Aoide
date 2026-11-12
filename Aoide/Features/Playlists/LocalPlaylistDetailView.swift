@@ -28,6 +28,7 @@ struct LocalPlaylistDetailView: View {
     @State private var current: Playlist
     @State private var isEditingDetails = false
     @State private var isEditingRules = false
+    @State private var mergeOutcome: MergeOutcome?
 
     init(playlist: Playlist) {
         self.playlist = playlist
@@ -81,6 +82,12 @@ struct LocalPlaylistDetailView: View {
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .mergeOutcomeDialog($mergeOutcome) { source in
+            Task {
+                await playlists.delete(source)
+                dismiss()
+            }
+        }
         .sheet(isPresented: $isChoosingCover) {
             // Both stores handed in explicitly: a sheet is an environment boundary,
             // and a missing `@Environment` observable is a crash rather than a nil.
@@ -412,6 +419,7 @@ struct LocalPlaylistDetailView: View {
                         Task { await playlists.setArtwork(nil, on: current) }
                     }
                 }
+                MergePlaylistMenu(source: current) { mergeOutcome = $0 }
                 Divider()
                 Button("Delete Playlist", systemImage: "trash", role: .destructive) {
                     // Popped as well as deleted. Staying here would leave a whole screen
