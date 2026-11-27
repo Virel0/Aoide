@@ -9,6 +9,9 @@ installed through TestFlight). Versions are the app's own: 1.0 (2) is version
 
 ## [Unreleased]
 
+### Changed
+- A request Melete is fetching from YouTube says "Downloading from YouTube".
+
 ## [1.11 (13)] - 2026-11-12
 
 ### Added
