@@ -171,6 +171,7 @@ public struct MusicRequest: Decodable, Equatable, Identifiable, Sendable {
                 let from = switch progress.source {
                 case "soulseek": " from Soulseek"
                 case "torrent": " by torrent"
+                case "youtube": " from YouTube"
                 default: ""
                 }
                 return progress.percent.map { "Downloading\(from), \(Int($0.rounded()))%" } ?? "Downloading\(from)"

@@ -73,6 +73,16 @@ struct MusicRequestTests {
         #expect(try decoded("approved", step: "failed").standing == "Couldn't be fetched: No release fits")
     }
 
+    @Test("a song fetched from YouTube says so")
+    func fromYouTube() throws {
+        let request = Self.request("approved", progress: [
+            "step": "downloading", "percent": 30, "message": NSNull(), "source": "youtube",
+            "updated_at": 1_790_000_200, "copied": NSNull(),
+        ])
+        let decoded = try JSONDecoder.melete.decode(MusicRequest.self, from: Fixture.json(request))
+        #expect(decoded.standing == "Downloading from YouTube, 30%")
+    }
+
     @Test("the feed hands over each requests event, music only, until the stream ends")
     @MainActor
     func feed() async throws {
